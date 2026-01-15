@@ -1,6 +1,6 @@
 {
   "name": "minienv",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Multi-backend environment variable and secrets manager with AES-256-GCM encryption",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
