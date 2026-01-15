@@ -128,8 +128,16 @@ backend:
   # SECURITY: Use environment variables for credentials!
   # Supports: ${VAR}, ${VAR:-default}, $VAR
 
-  # AWS S3 (uses AWS credential chain - recommended)
+  # Single backend URL
   url: s3://my-bucket/envs?region=us-east-1
+
+  # Or multiple URLs with fallback (tries in order until one succeeds)
+  # urls:
+  #   - s3://my-bucket/envs?region=us-east-1     # Primary (CI/CD)
+  #   - file:///home/user/.minienv-store         # Fallback (local dev)
+
+  # AWS S3 (uses AWS credential chain - recommended)
+  # url: s3://my-bucket/envs?region=us-east-1
 
   # AWS S3 with specific profile
   # url: s3://bucket/envs?region=us-east-1&profile=${AWS_PROFILE:-default}
@@ -222,6 +230,30 @@ https://${R2_ACCESS_KEY}:${R2_SECRET_KEY}@${R2_ACCOUNT_ID}.r2.cloudflarestorage.
 ```bash
 file:///path/to/storage    # FileSystem backend
 memory://bucket-name       # In-memory (testing)
+```
+
+### Multi-Backend Fallback
+
+Configure multiple backends for automatic failover. minienv tries each URL in order until one succeeds:
+
+```yaml
+backend:
+  urls:
+    - s3://my-bucket/envs?region=us-east-1     # Primary (CI/CD with IAM roles)
+    - file:///home/user/.minienv-store         # Fallback (local development)
+```
+
+This is useful for:
+- **Local development**: Use local filesystem when AWS credentials aren't available
+- **CI/CD**: Primary S3 backend with local fallback for tests
+- **High availability**: Multiple S3 regions for redundancy
+
+In verbose mode (`-v`), minienv logs which backend it connected to:
+```bash
+minienv list -e dev -v
+# Trying backend: s3://my-bucket/envs?region=us-east-1
+# Failed, trying next: file:///home/user/.minienv-store
+# Connected to: file:///home/user/.minienv-store
 ```
 
 > **Security Note:** Never hardcode credentials in config files. Use environment variables or `config.local.yaml` (gitignored).

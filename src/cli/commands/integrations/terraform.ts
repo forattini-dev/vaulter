@@ -5,8 +5,7 @@
  */
 
 import type { CLIArgs, MiniEnvConfig, Environment } from '../../../types.js'
-import { MiniEnvClient } from '../../../client.js'
-import { loadEncryptionKey } from '../../../lib/config-loader.js'
+import { createClientFromConfig } from '../../lib/create-client.js'
 
 interface TerraformContext {
   args: CLIArgs
@@ -33,14 +32,7 @@ export async function runTfVars(context: TerraformContext): Promise<void> {
     console.error(`Generating Terraform tfvars for ${project}/${environment}`)
   }
 
-  // Build connection string
-  const connectionString = args.backend || args.b || config?.backend?.url
-  const passphrase = config ? await loadEncryptionKey(config) : undefined
-
-  const client = new MiniEnvClient({
-    connectionString: connectionString || undefined,
-    passphrase: passphrase || undefined
-  })
+  const client = await createClientFromConfig({ args, config, verbose })
 
   try {
     await client.connect()
@@ -88,14 +80,7 @@ export async function runTfJson(context: TerraformContext): Promise<void> {
     console.error(`Generating Terraform JSON for ${project}/${environment}`)
   }
 
-  // Build connection string
-  const connectionString = args.backend || args.b || config?.backend?.url
-  const passphrase = config ? await loadEncryptionKey(config) : undefined
-
-  const client = new MiniEnvClient({
-    connectionString: connectionString || undefined,
-    passphrase: passphrase || undefined
-  })
+  const client = await createClientFromConfig({ args, config, verbose })
 
   try {
     await client.connect()

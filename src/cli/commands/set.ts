@@ -5,8 +5,7 @@
  */
 
 import type { CLIArgs, MiniEnvConfig, Environment } from '../../types.js'
-import { MiniEnvClient } from '../../client.js'
-import { loadEncryptionKey } from '../../lib/config-loader.js'
+import { createClientFromConfig } from '../lib/create-client.js'
 
 interface SetContext {
   args: CLIArgs
@@ -81,14 +80,7 @@ export async function runSet(context: SetContext): Promise<void> {
     return
   }
 
-  // Build connection string
-  const connectionString = args.backend || args.b || config?.backend?.url
-  const passphrase = config ? await loadEncryptionKey(config) : undefined
-
-  const client = new MiniEnvClient({
-    connectionString: connectionString || undefined,
-    passphrase: passphrase || undefined
-  })
+  const client = await createClientFromConfig({ args, config, verbose })
 
   try {
     await client.connect()
