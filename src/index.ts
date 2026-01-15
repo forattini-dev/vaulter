@@ -63,3 +63,7 @@ export {
   hasStdinData,
   parseEnvFromStdin
 } from './lib/env-parser.js'
+
+// Loader (dotenv integration)
+export { loader, parse } from './loader.js'
+export type { LoaderOptions } from './loader.js'

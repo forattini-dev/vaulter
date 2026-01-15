@@ -6,7 +6,9 @@
   "types": "./dist/index.d.ts",
   "type": "module",
   "sideEffects": [
-    "src/cli/preload.ts"
+    "src/cli/preload.ts",
+    "src/load.ts",
+    "dist/load.js"
   ],
   "keywords": [
     "env",
@@ -51,6 +53,16 @@
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
+    "./load": {
+      "types": "./dist/load.d.ts",
+      "import": "./dist/load.js",
+      "default": "./dist/load.js"
+    },
+    "./loader": {
+      "types": "./dist/loader.d.ts",
+      "import": "./dist/loader.js",
+      "default": "./dist/loader.js"
+    },
     "./package.json": "./package.json"
   },
   "bin": {
@@ -83,6 +95,7 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.25.2",
     "bcrypt": "^6.0.0",
+    "dotenv": "^17.2.3",
     "minimist": "^1.2.8",
     "p-limit": "^6.2.0",
     "s3db.js": "^19.2.4",
