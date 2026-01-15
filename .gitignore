@@ -10,6 +10,8 @@ releases/
 .env
 .env.*
 .minienv/.key
+.minienv/config.local.yaml
+**/config.local.yaml
 *.key
 
 # IDE

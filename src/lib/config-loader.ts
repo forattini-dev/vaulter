@@ -13,8 +13,59 @@ import { loadKeyFromS3 } from './s3-key-loader.js'
 
 const CONFIG_DIR = '.minienv'
 const CONFIG_FILE = 'config.yaml'
+const CONFIG_LOCAL_FILE = 'config.local.yaml'
 const MAX_SEARCH_DEPTH = 5
 const MAX_EXTENDS_DEPTH = 10
+
+/**
+ * Expand environment variables in a string
+ * Supports: ${VAR}, ${VAR:-default}, $VAR
+ */
+function expandEnvVars(str: string): string {
+  if (typeof str !== 'string') return str
+
+  // Handle ${VAR:-default} syntax
+  str = str.replace(/\$\{([^}:]+):-([^}]*)\}/g, (_, varName, defaultValue) => {
+    return process.env[varName] || defaultValue
+  })
+
+  // Handle ${VAR} syntax
+  str = str.replace(/\$\{([^}]+)\}/g, (_, varName) => {
+    return process.env[varName] || ''
+  })
+
+  // Handle $VAR syntax (word boundary)
+  str = str.replace(/\$([A-Z_][A-Z0-9_]*)/gi, (_, varName) => {
+    return process.env[varName] || ''
+  })
+
+  return str
+}
+
+/**
+ * Recursively expand env vars in an object
+ */
+function expandEnvVarsInObject<T>(obj: T): T {
+  if (obj === null || obj === undefined) return obj
+
+  if (typeof obj === 'string') {
+    return expandEnvVars(obj) as T
+  }
+
+  if (Array.isArray(obj)) {
+    return obj.map(item => expandEnvVarsInObject(item)) as T
+  }
+
+  if (typeof obj === 'object') {
+    const result: Record<string, any> = {}
+    for (const [key, value] of Object.entries(obj)) {
+      result[key] = expandEnvVarsInObject(value)
+    }
+    return result as T
+  }
+
+  return obj
+}
 
 /**
  * Default configuration
@@ -75,15 +126,19 @@ export function findConfigDir(startDir: string = process.cwd()): string | null {
 /**
  * Load a single config file
  */
-function loadConfigFile(configPath: string): Partial<MiniEnvConfig> {
+function loadConfigFile(configPath: string, required: boolean = true): Partial<MiniEnvConfig> {
   if (!fs.existsSync(configPath)) {
-    throw new Error(`Config file not found: ${configPath}`)
+    if (required) {
+      throw new Error(`Config file not found: ${configPath}`)
+    }
+    return {}
   }
 
   const content = fs.readFileSync(configPath, 'utf-8')
   const parsed = parseYaml(content) as Partial<MiniEnvConfig>
 
-  return parsed || {}
+  // Expand environment variables in all string values
+  return expandEnvVarsInObject(parsed || {})
 }
 
 /**
@@ -157,6 +212,7 @@ function loadConfigWithExtends(
 
 /**
  * Load configuration from the nearest .minienv/config.yaml
+ * Also merges config.local.yaml if it exists (for secrets/overrides)
  */
 export function loadConfig(startDir?: string): MiniEnvConfig {
   const configDir = findConfigDir(startDir)
@@ -167,7 +223,17 @@ export function loadConfig(startDir?: string): MiniEnvConfig {
   }
 
   const configPath = path.join(configDir, CONFIG_FILE)
-  return loadConfigWithExtends(configPath)
+  let config = loadConfigWithExtends(configPath)
+
+  // Load and merge local config (for secrets that shouldn't be committed)
+  const localConfigPath = path.join(configDir, CONFIG_LOCAL_FILE)
+  const localConfig = loadConfigFile(localConfigPath, false)
+
+  if (Object.keys(localConfig).length > 0) {
+    config = deepMerge(config, localConfig as Partial<MiniEnvConfig>)
+  }
+
+  return config
 }
 
 /**
@@ -271,7 +337,7 @@ export function createDefaultConfig(
   // Write config file
   const configPath = path.join(configDir, CONFIG_FILE)
   const yamlContent = `# MiniEnv Configuration
-# Version: 1
+# https://github.com/forattini-dev/minienv
 
 version: "1"
 
@@ -280,16 +346,33 @@ project: ${project}
 # service: optional-service-name
 
 # Backend configuration
-# backend:
-#   url: s3://bucket/envs?region=us-east-1
-#   url: file://${process.env.HOME}/.minienv/store
-#   url: memory://test
+# SECURITY: Use environment variables for credentials!
+# Supports: \${VAR}, \${VAR:-default}, $VAR
+backend:
+  # AWS S3 (uses AWS credential chain - no creds in URL)
+  # url: s3://bucket/envs?region=us-east-1
+
+  # S3 with explicit credentials from env vars
+  # url: s3://\${AWS_ACCESS_KEY_ID}:\${AWS_SECRET_ACCESS_KEY}@bucket/envs?region=us-east-1
+
+  # Or use a single env var for the whole URL
+  # url: \${MINIENV_BACKEND_URL}
+
+  # MinIO / S3-compatible
+  # url: http://\${MINIO_ACCESS_KEY}:\${MINIO_SECRET_KEY}@localhost:9000/envs
+
+  # Local filesystem (development)
+  url: file://${process.env.HOME}/.minienv/store
+
+  # In-memory (testing)
+  # url: memory://test
 
 # Encryption settings
-# encryption:
-#   key_source:
-#     - env: MINIENV_KEY
-#     - file: .minienv/.key
+encryption:
+  key_source:
+    - env: MINIENV_KEY        # 1. Try environment variable first
+    - file: .minienv/.key     # 2. Then local file (gitignored)
+    # - s3: s3://secure-bucket/keys/minienv.key  # 3. Remote key
 
 # Available environments
 environments:
@@ -316,6 +399,12 @@ security:
       - "*_TOKEN"
       - "*_PASSWORD"
       - "DATABASE_URL"
+
+# TIP: For credentials, create .minienv/config.local.yaml (gitignored)
+# and put sensitive overrides there:
+#
+#   backend:
+#     url: s3://real-key:real-secret@bucket/envs
 `
 
   fs.writeFileSync(configPath, yamlContent)
