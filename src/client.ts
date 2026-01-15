@@ -75,13 +75,13 @@ export class MiniEnvClient {
             value: 'secret|required', // Auto-encrypted with AES-256-GCM
             project: 'string|required',
             service: 'string|optional',
-            environment: 'enum:dev,stg,prd,sbx,dr|required',
+            environment: { type: 'string', enum: ['dev', 'stg', 'prd', 'sbx', 'dr'], required: true },
             tags: 'array|items:string|optional',
             metadata: {
               description: 'string|optional',
               owner: 'string|optional',
               rotateAfter: 'date|optional',
-              source: 'enum:manual,sync,import|optional'
+              source: { type: 'string', enum: ['manual', 'sync', 'import'], optional: true }
             }
           },
 
@@ -323,18 +323,20 @@ export class MiniEnvClient {
   /**
    * Sync variables from a Record<string, string>
    * Returns sync statistics
+   * Optionally deletes remote keys that are missing from input
    */
   async sync(
     vars: Record<string, string>,
     project: string,
     environment: Environment,
     service?: string,
-    options: { source?: 'manual' | 'sync' | 'import' } = {}
+    options: { source?: 'manual' | 'sync' | 'import'; deleteMissing?: boolean } = {}
   ): Promise<SyncResult> {
     this.ensureConnected()
 
     const existing = await this.list({ project, environment, service })
     const existingMap = new Map(existing.map(v => [v.key, v]))
+    const deleteMissing = options.deleteMissing ?? false
 
     const result: SyncResult = {
       added: [],
@@ -379,8 +381,11 @@ export class MiniEnvClient {
     }
 
     // Remaining are deleted (not in new vars)
-    for (const [key] of existingMap) {
-      result.deleted.push(key)
+    if (deleteMissing) {
+      for (const [key, existingVar] of existingMap) {
+        await this.resource.delete(existingVar.id)
+        result.deleted.push(key)
+      }
     }
 
     return result

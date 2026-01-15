@@ -9,8 +9,10 @@ import fs from 'node:fs'
 import path from 'node:path'
 import type { CLIArgs, MiniEnvConfig, Environment, SyncResult } from '../../types.js'
 import { createClientFromConfig } from '../lib/create-client.js'
+import { runHook } from '../lib/hooks.js'
 import { findConfigDir, getEnvFilePath } from '../../lib/config-loader.js'
-import { parseEnvFile, hasStdinData, parseEnvFromStdin } from '../../lib/env-parser.js'
+import { parseEnvFile, hasStdinData, parseEnvFromStdin, serializeEnv } from '../../lib/env-parser.js'
+import { compileGlobPatterns } from '../../lib/pattern-matcher.js'
 import { discoverServices, filterServices, findMonorepoRoot, formatServiceList, type ServiceInfo } from '../../lib/monorepo.js'
 import { runBatch, formatBatchResult, formatBatchResultJson } from '../../lib/batch-runner.js'
 
@@ -39,15 +41,21 @@ async function syncSingleService(
   context: SyncContext,
   serviceInfo?: ServiceInfo
 ): Promise<SyncResult> {
-  const { args, config, project, service, environment, verbose, dryRun, jsonOutput } = context
+  const { args, config, project, service, environment, verbose, dryRun } = context
 
   // Use service info if provided (batch mode)
   const effectiveConfig = serviceInfo?.config || config
   const effectiveProject = serviceInfo?.config.project || project
   const effectiveService = serviceInfo?.name || service
+  const syncConfig = effectiveConfig?.sync
+  const conflictMode = syncConfig?.conflict || 'local'
+  const ignorePatterns = syncConfig?.ignore || []
+  const requiredKeys = syncConfig?.required?.[environment] || []
+  const isIgnored = compileGlobPatterns(ignorePatterns)
 
   // Determine source of variables
   let localVars: Record<string, string>
+  let envFilePath: string | null = null
 
   if (hasStdinData() && !serviceInfo) {
     // Read from stdin (only for single service mode)
@@ -58,32 +66,37 @@ async function syncSingleService(
   } else {
     // Read from file
     const filePath = args.file || args.f
-    let envFilePath: string
+    let resolvedPath: string
 
     if (filePath && !serviceInfo) {
-      envFilePath = path.resolve(filePath)
+      resolvedPath = path.resolve(filePath)
     } else {
       // Default to .minienv/environments/<env>.env
       const configDir = serviceInfo?.configDir || findConfigDir()
       if (!configDir) {
         throw new Error('No config directory found and no file specified')
       }
-      envFilePath = getEnvFilePath(configDir, environment)
+      resolvedPath = getEnvFilePath(configDir, environment)
     }
 
-    if (!fs.existsSync(envFilePath)) {
-      throw new Error(`File not found: ${envFilePath}`)
+    if (!fs.existsSync(resolvedPath)) {
+      throw new Error(`File not found: ${resolvedPath}`)
     }
 
     if (verbose) {
-      console.error(`Reading variables from ${envFilePath}`)
+      console.error(`Reading variables from ${resolvedPath}`)
     }
 
-    localVars = parseEnvFile(envFilePath)
+    envFilePath = resolvedPath
+    localVars = parseEnvFile(resolvedPath)
   }
 
   if (verbose) {
     console.error(`Found ${Object.keys(localVars).length} local variables`)
+  }
+
+  if (!dryRun) {
+    runHook(effectiveConfig?.hooks?.pre_sync, 'pre_sync', verbose)
   }
 
   const client = await createClientFromConfig({ args, config: effectiveConfig, verbose })
@@ -91,46 +104,126 @@ async function syncSingleService(
   try {
     await client.connect()
 
-    if (dryRun) {
-      // Get remote vars for comparison
-      const remoteVars = await client.export(effectiveProject, environment, effectiveService)
+    const remoteVars = await client.export(effectiveProject, environment, effectiveService)
 
-      const toAdd: string[] = []
-      const toUpdate: string[] = []
-      const toDelete: string[] = []
-      const unchanged: string[] = []
+    const mergedVars = { ...localVars }
+    const syncVars: Record<string, string> = {}
+    const added: string[] = []
+    const updated: string[] = []
+    const unchanged: string[] = []
+    const localAdded: string[] = []
+    const localUpdated: string[] = []
+    const conflicts: SyncResult['conflicts'] = []
+    const canUpdateLocal = !!envFilePath
 
-      // Compare local vs remote
-      for (const [key, value] of Object.entries(localVars)) {
-        if (!(key in remoteVars)) {
-          toAdd.push(key)
-        } else if (remoteVars[key] !== value) {
-          toUpdate.push(key)
-        } else {
+    const allKeys = new Set<string>([
+      ...Object.keys(localVars),
+      ...Object.keys(remoteVars)
+    ])
+
+    for (const key of allKeys) {
+      if (isIgnored(key)) {
+        continue
+      }
+
+      const localValue = localVars[key]
+      const remoteValue = remoteVars[key]
+
+      if (localValue !== undefined && remoteValue !== undefined) {
+        if (localValue === remoteValue) {
+          syncVars[key] = localValue
           unchanged.push(key)
+          continue
         }
+
+        if (conflictMode === 'local') {
+          syncVars[key] = localValue
+          updated.push(key)
+          continue
+        }
+
+        if (conflictMode === 'remote') {
+          if (!canUpdateLocal) {
+            conflicts.push({ key, localValue, remoteValue })
+            continue
+          }
+          mergedVars[key] = remoteValue
+          localUpdated.push(key)
+          syncVars[key] = remoteValue
+          continue
+        }
+
+        conflicts.push({ key, localValue, remoteValue })
+        continue
       }
 
-      // Find deleted (in remote but not in local)
-      for (const key of Object.keys(remoteVars)) {
-        if (!(key in localVars)) {
-          toDelete.push(key)
-        }
+      if (localValue !== undefined) {
+        syncVars[key] = localValue
+        added.push(key)
+        continue
       }
 
-      return {
-        added: toAdd,
-        updated: toUpdate,
-        deleted: toDelete,
-        unchanged: unchanged,
-        conflicts: []
+      if (remoteValue !== undefined) {
+        if (!canUpdateLocal) {
+          if (conflictMode === 'remote' || conflictMode === 'prompt' || conflictMode === 'error') {
+            conflicts.push({ key, localValue: '', remoteValue })
+          }
+          syncVars[key] = remoteValue
+          continue
+        }
+        mergedVars[key] = remoteValue
+        localAdded.push(key)
+        syncVars[key] = remoteValue
       }
     }
 
-    // Perform actual sync
-    return await client.sync(localVars, effectiveProject, environment, effectiveService, {
-      source: 'sync'
-    })
+    const missingRequired = requiredKeys
+      .filter(key => !isIgnored(key))
+      .filter(key => !(key in syncVars))
+
+    if (missingRequired.length > 0) {
+      throw new Error(`Missing required keys for ${environment}: ${missingRequired.join(', ')}`)
+    }
+
+    const isBlockingConflict = (conflictMode === 'prompt' || conflictMode === 'error') &&
+      conflicts.length > 0
+
+    if (isBlockingConflict && !dryRun) {
+      const conflictKeys = conflicts.map(c => c.key).join(', ')
+      throw new Error(`Sync conflicts detected: ${conflictKeys}`)
+    }
+
+    if (!dryRun) {
+      if (canUpdateLocal && envFilePath && (localAdded.length > 0 || localUpdated.length > 0)) {
+        const envContent = serializeEnv(mergedVars)
+        fs.writeFileSync(envFilePath, envContent + '\n')
+      }
+
+      for (const key of [...added, ...updated]) {
+        await client.set({
+          key,
+          value: syncVars[key],
+          project: effectiveProject,
+          environment,
+          service: effectiveService,
+          metadata: {
+            source: 'sync'
+          }
+        })
+      }
+
+      runHook(effectiveConfig?.hooks?.post_sync, 'post_sync', verbose)
+    }
+
+    return {
+      added,
+      updated,
+      deleted: [],
+      unchanged,
+      conflicts,
+      localAdded,
+      localUpdated
+    }
   } finally {
     await client.disconnect()
   }
@@ -178,38 +271,58 @@ export async function runSync(context: SyncContext): Promise<void> {
         updated: result.updated,
         deleted: result.deleted,
         unchanged: result.unchanged,
-        conflicts: result.conflicts
+        conflicts: result.conflicts,
+        localAdded: result.localAdded || [],
+        localUpdated: result.localUpdated || [],
+        localDeleted: result.localDeleted || []
       }))
     } else if (dryRun) {
       console.log('Dry run - changes that would be made:')
       if (result.added.length > 0) {
-        console.log(`  Add (${result.added.length}): ${result.added.join(', ')}`)
+        console.log(`  Remote add (${result.added.length}): ${result.added.join(', ')}`)
       }
       if (result.updated.length > 0) {
-        console.log(`  Update (${result.updated.length}): ${result.updated.join(', ')}`)
+        console.log(`  Remote update (${result.updated.length}): ${result.updated.join(', ')}`)
       }
-      if (result.deleted.length > 0) {
-        console.log(`  Delete (${result.deleted.length}): ${result.deleted.join(', ')}`)
+      if ((result.localAdded || []).length > 0) {
+        console.log(`  Local add (${result.localAdded?.length}): ${result.localAdded?.join(', ')}`)
+      }
+      if ((result.localUpdated || []).length > 0) {
+        console.log(`  Local update (${result.localUpdated?.length}): ${result.localUpdated?.join(', ')}`)
       }
       if (result.unchanged.length > 0) {
         console.log(`  Unchanged: ${result.unchanged.length} variables`)
       }
-      if (result.added.length === 0 && result.updated.length === 0 && result.deleted.length === 0) {
+      if (result.conflicts.length > 0) {
+        console.log(`  Conflicts (${result.conflicts.length}): ${result.conflicts.map(c => c.key).join(', ')}`)
+      }
+      if (
+        result.added.length === 0 &&
+        result.updated.length === 0 &&
+        (result.localAdded || []).length === 0 &&
+        (result.localUpdated || []).length === 0
+      ) {
         console.log('  No changes needed')
       }
     } else {
       console.log(`✓ Synced ${project}/${environment}`)
       if (result.added.length > 0) {
-        console.log(`  Added: ${result.added.length} (${result.added.join(', ')})`)
+        console.log(`  Remote added: ${result.added.length} (${result.added.join(', ')})`)
       }
       if (result.updated.length > 0) {
-        console.log(`  Updated: ${result.updated.length} (${result.updated.join(', ')})`)
+        console.log(`  Remote updated: ${result.updated.length} (${result.updated.join(', ')})`)
       }
-      if (result.deleted.length > 0) {
-        console.log(`  Deleted: ${result.deleted.length} (${result.deleted.join(', ')})`)
+      if ((result.localAdded || []).length > 0) {
+        console.log(`  Local added: ${result.localAdded?.length} (${result.localAdded?.join(', ')})`)
+      }
+      if ((result.localUpdated || []).length > 0) {
+        console.log(`  Local updated: ${result.localUpdated?.length} (${result.localUpdated?.join(', ')})`)
       }
       if (result.unchanged.length > 0) {
         console.log(`  Unchanged: ${result.unchanged.length}`)
+      }
+      if (result.conflicts.length > 0) {
+        console.log(`  Conflicts: ${result.conflicts.map(c => c.key).join(', ')}`)
       }
     }
   } catch (err) {
@@ -292,8 +405,17 @@ async function runBatchSync(context: SyncContext): Promise<void> {
         return `✗ ${op.service.name}: ${op.error.message}`
       }
       const r = op.result!
-      const changes = r.added.length + r.updated.length + r.deleted.length
-      return `✓ ${op.service.name}: ${changes} changes (${op.duration}ms)`
+      const remoteChanges = r.added.length + r.updated.length + r.deleted.length
+      const localChanges = (r.localAdded?.length || 0) + (r.localUpdated?.length || 0) + (r.localDeleted?.length || 0)
+      const parts: string[] = []
+      if (remoteChanges > 0) {
+        parts.push(`remote ${remoteChanges}`)
+      }
+      if (localChanges > 0) {
+        parts.push(`local ${localChanges}`)
+      }
+      const summary = parts.length > 0 ? parts.join(', ') : 'no changes'
+      return `✓ ${op.service.name}: ${summary} (${op.duration}ms)`
     }))
   }
 

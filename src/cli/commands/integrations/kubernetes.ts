@@ -6,6 +6,7 @@
 
 import type { CLIArgs, MiniEnvConfig, Environment } from '../../../types.js'
 import { createClientFromConfig } from '../../lib/create-client.js'
+import { getSecretPatterns, splitVarsBySecret } from '../../../lib/secret-patterns.js'
 
 interface K8sContext {
   args: CLIArgs
@@ -70,11 +71,19 @@ export async function runK8sSecret(context: K8sContext): Promise<void> {
       return
     }
 
+    const patterns = getSecretPatterns(config)
+    const { secrets } = splitVarsBySecret(vars, patterns)
+    const secretVars = Object.keys(secrets).length > 0 ? secrets : vars
+
+    if (Object.keys(secrets).length === 0 && patterns.length > 0) {
+      console.error('Warning: No variables matched secret patterns, exporting all variables')
+    }
+
     // Generate YAML
     const yaml = generateSecretYaml(
       sanitizeK8sName(secretName),
       sanitizeK8sName(namespace),
-      vars,
+      secretVars,
       {
         project,
         service,
@@ -88,7 +97,7 @@ export async function runK8sSecret(context: K8sContext): Promise<void> {
         kind: 'Secret',
         name: secretName,
         namespace,
-        variableCount: Object.keys(vars).length
+        variableCount: Object.keys(secretVars).length
       }))
     } else {
       console.log(yaml)
@@ -133,11 +142,18 @@ export async function runK8sConfigMap(context: K8sContext): Promise<void> {
       return
     }
 
+    const patterns = getSecretPatterns(config)
+    const { plain } = splitVarsBySecret(vars, patterns)
+    if (Object.keys(plain).length === 0) {
+      console.error('Warning: No non-secret variables found for ConfigMap')
+      return
+    }
+
     // Generate YAML
     const yaml = generateConfigMapYaml(
       sanitizeK8sName(configMapName),
       sanitizeK8sName(namespace),
-      vars,
+      plain,
       {
         project,
         service,
@@ -151,7 +167,7 @@ export async function runK8sConfigMap(context: K8sContext): Promise<void> {
         kind: 'ConfigMap',
         name: configMapName,
         namespace,
-        variableCount: Object.keys(vars).length
+        variableCount: Object.keys(plain).length
       }))
     } else {
       console.log(yaml)

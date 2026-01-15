@@ -16,7 +16,7 @@ import {
   McpError
 } from '@modelcontextprotocol/sdk/types.js'
 import { registerTools, handleToolCall } from './tools.js'
-import { registerResources, handleResourceRead, listResources } from './resources.js'
+import { handleResourceRead, listResources } from './resources.js'
 
 const SERVER_NAME = 'minienv'
 const SERVER_VERSION = process.env.MINIENV_VERSION || '0.1.0'

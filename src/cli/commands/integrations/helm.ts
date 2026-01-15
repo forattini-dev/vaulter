@@ -6,6 +6,7 @@
 
 import type { CLIArgs, MiniEnvConfig, Environment } from '../../../types.js'
 import { createClientFromConfig } from '../../lib/create-client.js'
+import { getSecretPatterns, splitVarsBySecret } from '../../../lib/secret-patterns.js'
 
 interface HelmContext {
   args: CLIArgs
@@ -52,8 +53,11 @@ export async function runHelmValues(context: HelmContext): Promise<void> {
         variableCount: Object.keys(vars).length
       }))
     } else {
+      const patterns = getSecretPatterns(config)
+      const { plain, secrets } = splitVarsBySecret(vars, patterns)
+
       // Generate Helm values YAML
-      const yaml = generateHelmValuesYaml(vars, {
+      const yaml = generateHelmValuesYaml(plain, secrets, {
         project,
         service,
         environment
@@ -70,15 +74,15 @@ export async function runHelmValues(context: HelmContext): Promise<void> {
  *
  * Creates a structure like:
  * env:
- *   DATABASE_URL: "..."
- *   API_KEY: "..."
+ *   PUBLIC_URL: "..."
  *
  * secrets:
  *   DATABASE_URL: "..."
  *   API_KEY: "..."
  */
 function generateHelmValuesYaml(
-  vars: Record<string, string>,
+  plainVars: Record<string, string>,
+  secretVars: Record<string, string>,
   metadata: { project: string; service?: string; environment: string }
 ): string {
   const lines: string[] = [
@@ -93,15 +97,15 @@ function generateHelmValuesYaml(
   ].filter(Boolean) as string[]
 
   // Add env vars
-  for (const [key, value] of Object.entries(vars)) {
+  for (const [key, value] of Object.entries(plainVars)) {
     lines.push(`  ${key}: ${formatYamlValue(value)}`)
   }
 
   lines.push('')
-  lines.push('# Secrets (same values, for use with secretKeyRef)')
+  lines.push('# Secrets (matching patterns, for use with secretKeyRef)')
   lines.push('secrets:')
 
-  for (const [key, value] of Object.entries(vars)) {
+  for (const [key, value] of Object.entries(secretVars)) {
     lines.push(`  ${key}: ${formatYamlValue(value)}`)
   }
 
