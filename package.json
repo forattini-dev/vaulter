@@ -1,0 +1,98 @@
+{
+  "name": "minienv",
+  "version": "0.1.0",
+  "description": "Multi-backend environment variable and secrets manager with AES-256-GCM encryption",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "type": "module",
+  "sideEffects": [
+    "src/cli/preload.ts"
+  ],
+  "keywords": [
+    "env",
+    "environment",
+    "variables",
+    "secrets",
+    "s3",
+    "minio",
+    "r2",
+    "encryption",
+    "aes-256-gcm",
+    "kubernetes",
+    "k8s",
+    "helm",
+    "terraform",
+    "terragrunt",
+    "cli",
+    "dotenv",
+    "monorepo"
+  ],
+  "author": "Forattini <contact@forattini.dev>",
+  "license": "MIT",
+  "homepage": "https://github.com/forattini-dev/minienv",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/forattini-dev/minienv.git"
+  },
+  "bugs": {
+    "url": "https://github.com/forattini-dev/minienv/issues"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "bin": {
+    "minienv": "./dist/cli/index.js"
+  },
+  "scripts": {
+    "dev": "tsx watch src/cli/index.ts",
+    "build": "tsc && node -e \"const fs=require('fs');const f='dist/cli/index.js';if(fs.existsSync(f)){const c=fs.readFileSync(f,'utf8');if(!c.startsWith('#!')){fs.writeFileSync(f,'#!/usr/bin/env node\\n'+c)}}\"",
+    "build:bundle": "node esbuild.config.js",
+    "build:binaries": "pnpm build:bundle && npx pkg ./dist/bin/minienv.cjs --output releases/minienv --targets node22-linux-x64,node22-linux-arm64,node22-macos-x64,node22-macos-arm64,node22-win-x64",
+    "build:all": "pnpm build && pnpm build:bundle",
+    "test": "vitest run",
+    "test:watch": "vitest watch",
+    "test:coverage": "vitest run --coverage",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist releases",
+    "lint": "echo \"No linting configured for this project.\" && exit 0",
+    "prepublishOnly": "pnpm build",
+    "cli": "tsx src/cli/index.ts"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.25.2",
+    "bcrypt": "^6.0.0",
+    "minimist": "^1.2.8",
+    "p-limit": "^6.2.0",
+    "s3db.js": "^19.2.4",
+    "tuiuiu.js": "^1.0.50",
+    "ws": "^8.19.0",
+    "yaml": "^2.7.1"
+  },
+  "devDependencies": {
+    "@aws-sdk/client-s3": "^3.969.0",
+    "@types/minimist": "^1.2.5",
+    "@types/node": "^22.15.21",
+    "@vitest/coverage-v8": "^4.0.16",
+    "esbuild": "^0.27.2",
+    "pkg": "^5.8.1",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.16"
+  }
+}
