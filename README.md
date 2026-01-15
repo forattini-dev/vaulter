@@ -324,19 +324,99 @@ security:
 
 ## Monorepo Support
 
+Vaulter auto-discovers services with `.vaulter/` directories and supports config inheritance.
+
+### NX Monorepo
+
 ```
-my-monorepo/
+my-nx-workspace/
 ├── .vaulter/
-│   ├── config.yaml          # Root config
+│   ├── config.yaml              # Shared config (backend, encryption)
 │   └── environments/
-├── services/
-│   ├── api/
+│       └── dev.env              # Shared dev vars
+├── apps/
+│   ├── web/
 │   │   └── .vaulter/
-│   │       ├── config.yaml  # extends: ../../../.vaulter/config.yaml
+│   │       ├── config.yaml      # extends: ../../../.vaulter/config.yaml
 │   │       └── environments/
-│   └── worker/
+│   │           └── dev.env      # App-specific vars
+│   └── api/
 │       └── .vaulter/
+│           ├── config.yaml
+│           └── environments/
+├── libs/                        # No .vaulter needed for libs
+├── nx.json
+└── package.json
 ```
+
+```bash
+# From workspace root
+vaulter services                 # List: web, api
+
+# Sync all apps
+vaulter sync -e dev --all
+
+# Sync single app (from root or app dir)
+vaulter sync -e dev -s api
+cd apps/api && vaulter sync -e dev
+
+# NX run with env vars
+eval $(vaulter export -e dev -s api) && nx serve api
+```
+
+### Turborepo
+
+```
+my-turbo-monorepo/
+├── .vaulter/
+│   ├── config.yaml              # Root config
+│   └── environments/
+├── apps/
+│   ├── web/
+│   │   ├── .vaulter/
+│   │   │   ├── config.yaml      # extends: ../../../.vaulter/config.yaml
+│   │   │   └── environments/
+│   │   └── package.json
+│   └── docs/
+│       └── .vaulter/
+├── packages/                    # Shared packages (no .vaulter)
+├── turbo.json
+└── package.json
+```
+
+```bash
+# List discovered services
+vaulter services
+
+# Batch sync before turbo build
+vaulter sync -e prd --all && turbo build
+
+# Export for specific app
+cd apps/web && eval $(vaulter export -e dev)
+
+# Turbo with env passthrough (turbo.json)
+# { "pipeline": { "build": { "env": ["DATABASE_URL", "API_KEY"] } } }
+vaulter export -e prd -s web --format=shell >> apps/web/.env
+turbo build --filter=web
+```
+
+### Service Config Inheritance
+
+```yaml
+# apps/api/.vaulter/config.yaml
+extends: ../../../.vaulter/config.yaml  # Inherit root config
+
+service: api                            # Override service name
+
+# Override or add service-specific settings
+sync:
+  required:
+    prd:
+      - DATABASE_URL
+      - REDIS_URL
+```
+
+### Commands
 
 ```bash
 # List services
@@ -345,8 +425,12 @@ vaulter services
 # Sync all services
 vaulter sync -e dev --all
 
-# Sync specific services
+# Sync specific services (glob supported)
 vaulter sync -e dev -s api,worker
+vaulter sync -e dev -s "svc-*"
+
+# Batch export
+vaulter export -e prd --all --format=json
 ```
 
 ## MCP Tools
