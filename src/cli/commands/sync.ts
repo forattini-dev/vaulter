@@ -1,5 +1,5 @@
 /**
- * MiniEnv CLI - Sync Command
+ * Vaulter CLI - Sync Command
  *
  * Bidirectional sync between local .env file and backend
  * with conflict detection
@@ -7,7 +7,7 @@
 
 import fs from 'node:fs'
 import path from 'node:path'
-import type { CLIArgs, MiniEnvConfig, Environment, SyncResult } from '../../types.js'
+import type { CLIArgs, VaulterConfig, Environment, SyncResult } from '../../types.js'
 import { createClientFromConfig } from '../lib/create-client.js'
 import { runHook } from '../lib/hooks.js'
 import { findConfigDir, getEnvFilePath } from '../../lib/config-loader.js'
@@ -18,7 +18,7 @@ import { runBatch, formatBatchResult, formatBatchResultJson } from '../../lib/ba
 
 interface SyncContext {
   args: CLIArgs
-  config: MiniEnvConfig | null
+  config: VaulterConfig | null
   project: string
   service?: string
   environment: Environment
@@ -71,7 +71,7 @@ async function syncSingleService(
     if (filePath && !serviceInfo) {
       resolvedPath = path.resolve(filePath)
     } else {
-      // Default to .minienv/environments/<env>.env
+      // Default to .vaulter/environments/<env>.env
       const configDir = serviceInfo?.configDir || findConfigDir()
       if (!configDir) {
         throw new Error('No config directory found and no file specified')
@@ -246,7 +246,7 @@ export async function runSync(context: SyncContext): Promise<void> {
 
   if (!project) {
     console.error('Error: Project not specified and no config found')
-    console.error('Run "minienv init" or specify --project')
+    console.error('Run "vaulter init" or specify --project')
     process.exit(1)
   }
 
@@ -341,7 +341,7 @@ async function runBatchSync(context: SyncContext): Promise<void> {
   const root = findMonorepoRoot()
   if (!root) {
     console.error('Error: Not inside a monorepo')
-    console.error('Run this command from within a project that has nested .minienv directories')
+    console.error('Run this command from within a project that has nested .vaulter directories')
     process.exit(1)
   }
 

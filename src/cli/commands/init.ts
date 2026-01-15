@@ -1,17 +1,17 @@
 /**
- * MiniEnv CLI - Init Command
+ * Vaulter CLI - Init Command
  *
- * Initialize a new .minienv configuration in the current directory
+ * Initialize a new .vaulter configuration in the current directory
  */
 
 import fs from 'node:fs'
 import path from 'node:path'
-import type { CLIArgs, MiniEnvConfig } from '../../types.js'
+import type { CLIArgs, VaulterConfig } from '../../types.js'
 import { createDefaultConfig, configExists, findConfigDir } from '../../lib/config-loader.js'
 
 interface InitContext {
   args: CLIArgs
-  config: MiniEnvConfig | null
+  config: VaulterConfig | null
   project: string
   verbose: boolean
   dryRun: boolean
@@ -31,7 +31,7 @@ export async function runInit(context: InitContext): Promise<void> {
       if (jsonOutput) {
         console.log(JSON.stringify({ error: 'already_initialized', path: existingDir }))
       } else {
-        console.error(`MiniEnv already initialized at ${existingDir}`)
+        console.error(`Vaulter already initialized at ${existingDir}`)
         console.error('Use --force to reinitialize')
       }
       process.exit(1)
@@ -42,10 +42,10 @@ export async function runInit(context: InitContext): Promise<void> {
   const projectName = args.project || args.p || path.basename(process.cwd())
 
   // Config directory path
-  const configDir = path.join(process.cwd(), '.minienv')
+  const configDir = path.join(process.cwd(), '.vaulter')
 
   if (verbose) {
-    console.log(`Initializing minienv for project: ${projectName}`)
+    console.log(`Initializing vaulter for project: ${projectName}`)
     console.log(`Config directory: ${configDir}`)
   }
 
@@ -71,7 +71,7 @@ export async function runInit(context: InitContext): Promise<void> {
   // Create .gitignore for sensitive files
   const gitignorePath = path.join(configDir, '.gitignore')
   if (!fs.existsSync(gitignorePath)) {
-    fs.writeFileSync(gitignorePath, `# MiniEnv sensitive files
+    fs.writeFileSync(gitignorePath, `# Vaulter sensitive files
 .key
 *.key
 *.pem
@@ -104,13 +104,13 @@ export async function runInit(context: InitContext): Promise<void> {
       ]
     }))
   } else {
-    console.log(`✓ Initialized minienv for project: ${projectName}`)
+    console.log(`✓ Initialized vaulter for project: ${projectName}`)
     console.log(`  Config: ${configDir}/config.yaml`)
     console.log(`  Environments: ${envDir}/`)
     console.log('')
     console.log('Next steps:')
-    console.log('  1. Edit .minienv/config.yaml to configure your backend')
-    console.log('  2. Add environment variables to .minienv/environments/*.env')
-    console.log('  3. Run "minienv sync -e dev" to sync with backend')
+    console.log('  1. Edit .vaulter/config.yaml to configure your backend')
+    console.log('  2. Add environment variables to .vaulter/environments/*.env')
+    console.log('  3. Run "vaulter sync -e dev" to sync with backend')
   }
 }

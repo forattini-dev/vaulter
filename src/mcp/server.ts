@@ -1,8 +1,8 @@
 /**
- * MiniEnv MCP Server
+ * Vaulter MCP Server
  *
  * Model Context Protocol server for Claude integration
- * Exposes minienv tools and resources via stdio transport
+ * Exposes vaulter tools and resources via stdio transport
  */
 
 import { Server } from '@modelcontextprotocol/sdk/server/index.js'
@@ -18,8 +18,8 @@ import {
 import { registerTools, handleToolCall } from './tools.js'
 import { handleResourceRead, listResources } from './resources.js'
 
-const SERVER_NAME = 'minienv'
-const SERVER_VERSION = process.env.MINIENV_VERSION || '0.1.0'
+const SERVER_NAME = 'vaulter'
+const SERVER_VERSION = process.env.VAULTER_VERSION || '0.1.0'
 
 /**
  * Create and configure the MCP server

@@ -1,12 +1,12 @@
 /**
- * MiniEnv CLI - Pull Command
+ * Vaulter CLI - Pull Command
  *
  * Pull variables from backend to local .env file
  */
 
 import fs from 'node:fs'
 import path from 'node:path'
-import type { CLIArgs, MiniEnvConfig, Environment } from '../../types.js'
+import type { CLIArgs, VaulterConfig, Environment } from '../../types.js'
 import { createClientFromConfig } from '../lib/create-client.js'
 import { runHook } from '../lib/hooks.js'
 import { findConfigDir, getEnvFilePath } from '../../lib/config-loader.js'
@@ -14,7 +14,7 @@ import { serializeEnv } from '../../lib/env-parser.js'
 
 interface PullContext {
   args: CLIArgs
-  config: MiniEnvConfig | null
+  config: VaulterConfig | null
   project: string
   service?: string
   environment: Environment
@@ -31,7 +31,7 @@ export async function runPull(context: PullContext): Promise<void> {
 
   if (!project) {
     console.error('Error: Project not specified and no config found')
-    console.error('Run "minienv init" or specify --project')
+    console.error('Run "vaulter init" or specify --project')
     process.exit(1)
   }
 
@@ -42,7 +42,7 @@ export async function runPull(context: PullContext): Promise<void> {
   if (outputPath) {
     envFilePath = path.resolve(outputPath)
   } else {
-    // Default to .minienv/environments/<env>.env if config exists
+    // Default to .vaulter/environments/<env>.env if config exists
     const configDir = findConfigDir()
     if (configDir) {
       envFilePath = getEnvFilePath(configDir, environment)

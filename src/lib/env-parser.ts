@@ -1,5 +1,5 @@
 /**
- * MiniEnv - .env File Parser
+ * Vaulter - .env File Parser
  *
  * Robust parser for .env files with support for:
  * - Single, double, and backtick quotes

@@ -1,5 +1,5 @@
 {
-  "name": "minienv",
+  "name": "vaulter",
   "version": "0.2.0",
   "description": "Multi-backend environment variable and secrets manager with AES-256-GCM encryption",
   "main": "./dist/index.js",
@@ -30,17 +30,18 @@
     "monorepo",
     "mcp",
     "claude",
-    "ai"
+    "ai",
+    "vaulter"
   ],
   "author": "Forattini <contact@forattini.dev>",
   "license": "MIT",
-  "homepage": "https://github.com/forattini-dev/minienv",
+  "homepage": "https://github.com/forattini-dev/vaulter",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/forattini-dev/minienv.git"
+    "url": "git+https://github.com/forattini-dev/vaulter.git"
   },
   "bugs": {
-    "url": "https://github.com/forattini-dev/minienv/issues"
+    "url": "https://github.com/forattini-dev/vaulter/issues"
   },
   "files": [
     "dist",
@@ -66,13 +67,13 @@
     "./package.json": "./package.json"
   },
   "bin": {
-    "minienv": "./dist/cli/index.js"
+    "vaulter": "./dist/cli/index.js"
   },
   "scripts": {
     "dev": "tsx watch src/cli/index.ts",
     "build": "tsc && node -e \"const fs=require('fs');const f='dist/cli/index.js';if(fs.existsSync(f)){const c=fs.readFileSync(f,'utf8');if(!c.startsWith('#!')){fs.writeFileSync(f,'#!/usr/bin/env node\\n'+c)}}\"",
     "build:bundle": "node esbuild.config.js",
-    "build:binaries": "pnpm build:bundle && npx pkg ./dist/bin/minienv.cjs --output releases/minienv --targets node22-linux-x64,node22-linux-arm64,node22-macos-x64,node22-macos-arm64,node22-win-x64",
+    "build:binaries": "pnpm build:bundle && npx pkg ./dist/bin/vaulter.cjs --output releases/vaulter --targets node22-linux-x64,node22-linux-arm64,node22-macos-x64,node22-macos-arm64,node22-win-x64",
     "build:all": "pnpm build && pnpm build:bundle",
     "test": "vitest run",
     "test:watch": "vitest watch",

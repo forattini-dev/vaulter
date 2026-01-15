@@ -5,7 +5,7 @@
 import { describe, it, expect } from 'vitest'
 import { getSecretPatterns, splitVarsBySecret } from '../../src/lib/secret-patterns.js'
 import { DEFAULT_SECRET_PATTERNS } from '../../src/types.js'
-import type { MiniEnvConfig } from '../../src/types.js'
+import type { VaulterConfig } from '../../src/types.js'
 
 describe('secret-patterns', () => {
   describe('getSecretPatterns', () => {
@@ -20,7 +20,7 @@ describe('secret-patterns', () => {
     })
 
     it('should return DEFAULT_SECRET_PATTERNS when no patterns in config', () => {
-      const config: MiniEnvConfig = {
+      const config: VaulterConfig = {
         version: '1',
         project: 'test'
       }
@@ -29,7 +29,7 @@ describe('secret-patterns', () => {
     })
 
     it('should return DEFAULT_SECRET_PATTERNS when patterns array is empty', () => {
-      const config: MiniEnvConfig = {
+      const config: VaulterConfig = {
         version: '1',
         project: 'test',
         security: {
@@ -44,7 +44,7 @@ describe('secret-patterns', () => {
 
     it('should return custom patterns when provided', () => {
       const customPatterns = ['CUSTOM_*', '*_CUSTOM']
-      const config: MiniEnvConfig = {
+      const config: VaulterConfig = {
         version: '1',
         project: 'test',
         security: {

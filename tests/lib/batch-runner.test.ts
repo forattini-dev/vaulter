@@ -12,15 +12,15 @@ import {
   type OperationFn
 } from '../../src/lib/batch-runner.js'
 import type { ServiceInfo } from '../../src/lib/monorepo.js'
-import type { MiniEnvConfig } from '../../src/types.js'
+import type { VaulterConfig } from '../../src/types.js'
 
 // Helper to create mock services
 function createMockService(name: string): ServiceInfo {
   return {
     name,
     path: `/app/${name}`,
-    configDir: `/app/${name}/.minienv`,
-    config: { version: '1', project: 'test' } as MiniEnvConfig
+    configDir: `/app/${name}/.vaulter`,
+    config: { version: '1', project: 'test' } as VaulterConfig
   }
 }
 

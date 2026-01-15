@@ -1,7 +1,7 @@
 /**
- * MiniEnv MCP Server Entry Point
+ * Vaulter MCP Server Entry Point
  *
- * Run with: npx minienv-mcp
+ * Run with: npx vaulter-mcp
  * Or: node dist/mcp/index.js
  */
 

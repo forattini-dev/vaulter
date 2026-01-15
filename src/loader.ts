@@ -1,8 +1,8 @@
 /**
- * MiniEnv - Programmatic environment loader
+ * Vaulter - Programmatic environment loader
  *
  * Usage:
- *   import { loader } from 'minienv'
+ *   import { loader } from 'vaulter'
  *   loader()
  *
  * With options:
@@ -41,7 +41,7 @@ export interface LoaderOptions extends DotenvConfigOptions {
  *
  * @example
  * // Basic usage
- * import { loader } from 'minienv'
+ * import { loader } from 'vaulter'
  * loader()
  *
  * @example
@@ -64,7 +64,7 @@ export function loader(options?: LoaderOptions): DotenvConfigOutput {
  * @returns Parsed key-value pairs
  *
  * @example
- * import { parse } from 'minienv'
+ * import { parse } from 'vaulter'
  * const vars = parse('FOO=bar\nBAZ=qux')
  * // { FOO: 'bar', BAZ: 'qux' }
  */

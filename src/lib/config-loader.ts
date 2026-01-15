@@ -1,17 +1,17 @@
 /**
- * MiniEnv Config Loader
+ * Vaulter Config Loader
  *
- * Loads and merges configuration from .minienv/config.yaml files
+ * Loads and merges configuration from .vaulter/config.yaml files
  * with support for inheritance via "extends" field.
  */
 
 import fs from 'node:fs'
 import path from 'node:path'
 import { parse as parseYaml } from 'yaml'
-import type { MiniEnvConfig, Environment } from '../types.js'
+import type { VaulterConfig, Environment } from '../types.js'
 import { loadKeyFromS3 } from './s3-key-loader.js'
 
-const CONFIG_DIR = '.minienv'
+const CONFIG_DIR = '.vaulter'
 const CONFIG_FILE = 'config.yaml'
 const CONFIG_LOCAL_FILE = 'config.local.yaml'
 const MAX_SEARCH_DEPTH = 5
@@ -70,7 +70,7 @@ function expandEnvVarsInObject<T>(obj: T): T {
 /**
  * Default configuration
  */
-export const DEFAULT_CONFIG: MiniEnvConfig = {
+export const DEFAULT_CONFIG: VaulterConfig = {
   version: '1',
   project: '',
   environments: ['dev', 'stg', 'prd', 'sbx', 'dr'],
@@ -96,7 +96,7 @@ export const DEFAULT_CONFIG: MiniEnvConfig = {
 }
 
 /**
- * Find the .minienv directory by searching up from the current directory
+ * Find the .vaulter directory by searching up from the current directory
  */
 export function findConfigDir(startDir: string = process.cwd()): string | null {
   let currentDir = path.resolve(startDir)
@@ -126,7 +126,7 @@ export function findConfigDir(startDir: string = process.cwd()): string | null {
 /**
  * Load a single config file
  */
-function loadConfigFile(configPath: string, required: boolean = true): Partial<MiniEnvConfig> {
+function loadConfigFile(configPath: string, required: boolean = true): Partial<VaulterConfig> {
   if (!fs.existsSync(configPath)) {
     if (required) {
       throw new Error(`Config file not found: ${configPath}`)
@@ -135,7 +135,7 @@ function loadConfigFile(configPath: string, required: boolean = true): Partial<M
   }
 
   const content = fs.readFileSync(configPath, 'utf-8')
-  const parsed = parseYaml(content) as Partial<MiniEnvConfig>
+  const parsed = parseYaml(content) as Partial<VaulterConfig>
 
   // Expand environment variables in all string values
   return expandEnvVarsInObject(parsed || {})
@@ -179,7 +179,7 @@ function loadConfigWithExtends(
   configPath: string,
   visited: Set<string> = new Set(),
   depth: number = 0
-): MiniEnvConfig {
+): VaulterConfig {
   if (depth > MAX_EXTENDS_DEPTH) {
     throw new Error(`Config inheritance depth exceeded (max ${MAX_EXTENDS_DEPTH})`)
   }
@@ -203,18 +203,18 @@ function loadConfigWithExtends(
     const { extends: _, ...configWithoutExtends } = config
 
     // Merge: parent <- current
-    return deepMerge(parentConfig, configWithoutExtends as Partial<MiniEnvConfig>)
+    return deepMerge(parentConfig, configWithoutExtends as Partial<VaulterConfig>)
   }
 
   // No extends, merge with defaults
-  return deepMerge(DEFAULT_CONFIG, config as Partial<MiniEnvConfig>)
+  return deepMerge(DEFAULT_CONFIG, config as Partial<VaulterConfig>)
 }
 
 /**
- * Load configuration from the nearest .minienv/config.yaml
+ * Load configuration from the nearest .vaulter/config.yaml
  * Also merges config.local.yaml if it exists (for secrets/overrides)
  */
-export function loadConfig(startDir?: string): MiniEnvConfig {
+export function loadConfig(startDir?: string): VaulterConfig {
   const configDir = findConfigDir(startDir)
 
   if (!configDir) {
@@ -230,7 +230,7 @@ export function loadConfig(startDir?: string): MiniEnvConfig {
   const localConfig = loadConfigFile(localConfigPath, false)
 
   if (Object.keys(localConfig).length > 0) {
-    config = deepMerge(config, localConfig as Partial<MiniEnvConfig>)
+    config = deepMerge(config, localConfig as Partial<VaulterConfig>)
   }
 
   return config
@@ -239,7 +239,7 @@ export function loadConfig(startDir?: string): MiniEnvConfig {
 /**
  * Get the project name from config or directory name
  */
-export function getProjectName(config: MiniEnvConfig, startDir?: string): string {
+export function getProjectName(config: VaulterConfig, startDir?: string): string {
   if (config.project) {
     return config.project
   }
@@ -273,7 +273,7 @@ export function configExists(startDir?: string): boolean {
 /**
  * Get the encryption key from configured sources
  */
-export async function loadEncryptionKey(config: MiniEnvConfig): Promise<string | null> {
+export async function loadEncryptionKey(config: VaulterConfig): Promise<string | null> {
   const keySources = config.encryption?.key_source || []
 
   for (const source of keySources) {
@@ -294,16 +294,16 @@ export async function loadEncryptionKey(config: MiniEnvConfig): Promise<string |
         if (key) return key
       } catch (err: any) {
         // Log error but continue to next source
-        if (process.env.MINIENV_VERBOSE) {
+        if (process.env.VAULTER_VERBOSE) {
           console.warn(`Failed to load key from S3: ${err.message}`)
         }
       }
     }
   }
 
-  // Fallback to MINIENV_KEY environment variable
-  if (process.env.MINIENV_KEY) {
-    return process.env.MINIENV_KEY
+  // Fallback to VAULTER_KEY environment variable
+  if (process.env.VAULTER_KEY) {
+    return process.env.VAULTER_KEY
   }
 
   return null
@@ -315,9 +315,9 @@ export async function loadEncryptionKey(config: MiniEnvConfig): Promise<string |
 export function createDefaultConfig(
   configDir: string,
   project: string,
-  options: Partial<MiniEnvConfig> = {}
+  options: Partial<VaulterConfig> = {}
 ): void {
-  const config: MiniEnvConfig = {
+  const config: VaulterConfig = {
     version: '1',
     project,
     ...options
@@ -336,8 +336,8 @@ export function createDefaultConfig(
 
   // Write config file
   const configPath = path.join(configDir, CONFIG_FILE)
-  const yamlContent = `# MiniEnv Configuration
-# https://github.com/forattini-dev/minienv
+  const yamlContent = `# Vaulter Configuration
+# https://github.com/forattini-dev/vaulter
 
 version: "1"
 
@@ -359,13 +359,13 @@ backend:
   # url: s3://\${AWS_ACCESS_KEY_ID}:\${AWS_SECRET_ACCESS_KEY}@bucket/envs?region=us-east-1
 
   # Or use a single env var for the whole URL
-  # url: \${MINIENV_BACKEND_URL}
+  # url: \${VAULTER_BACKEND_URL}
 
   # MinIO / S3-compatible
   # url: http://\${MINIO_ACCESS_KEY}:\${MINIO_SECRET_KEY}@localhost:9000/envs
 
   # Local filesystem (development)
-  url: file://${process.env.HOME}/.minienv/store
+  url: file://${process.env.HOME}/.vaulter/store
 
   # In-memory (testing)
   # url: memory://test
@@ -373,9 +373,9 @@ backend:
 # Encryption settings
 encryption:
   key_source:
-    - env: MINIENV_KEY        # 1. Try environment variable first
-    - file: .minienv/.key     # 2. Then local file (gitignored)
-    # - s3: s3://secure-bucket/keys/minienv.key  # 3. Remote key
+    - env: VAULTER_KEY        # 1. Try environment variable first
+    - file: .vaulter/.key     # 2. Then local file (gitignored)
+    # - s3: s3://secure-bucket/keys/vaulter.key  # 3. Remote key
 
 # Available environments
 environments:
@@ -403,7 +403,7 @@ security:
       - "*_PASSWORD"
       - "DATABASE_URL"
 
-# TIP: For credentials, create .minienv/config.local.yaml (gitignored)
+# TIP: For credentials, create .vaulter/config.local.yaml (gitignored)
 # and put sensitive overrides there:
 #
 #   backend:

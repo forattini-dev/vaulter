@@ -1,5 +1,5 @@
 /**
- * MiniEnv - Type Definitions
+ * Vaulter - Type Definitions
  */
 
 // ============================================================================
@@ -127,7 +127,7 @@ export interface SecurityConfig {
   }
 }
 
-export interface MiniEnvConfig {
+export interface VaulterConfig {
   version: '1'
   project: string
   service?: string
@@ -183,7 +183,7 @@ export interface CommandContext {
   project: string
   service?: string
   environment: Environment
-  config: MiniEnvConfig
+  config: VaulterConfig
   verbose: boolean
   dryRun: boolean
   jsonOutput: boolean
@@ -194,7 +194,7 @@ export interface CommandContext {
 // Client Types
 // ============================================================================
 
-export interface MiniEnvClientOptions {
+export interface VaulterClientOptions {
   /** Single connection string */
   connectionString?: string
   /** Multiple connection strings with fallback (tries in order) */
@@ -202,7 +202,7 @@ export interface MiniEnvClientOptions {
   /** Encryption passphrase */
   passphrase?: string
   /** Full config object */
-  config?: MiniEnvConfig
+  config?: VaulterConfig
   /** Enable verbose logging */
   verbose?: boolean
 }

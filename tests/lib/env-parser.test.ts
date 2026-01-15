@@ -295,7 +295,7 @@ FOO=\${EXISTING:-default_value}
     let tempFile: string
 
     beforeEach(() => {
-      tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'minienv-test-'))
+      tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vaulter-test-'))
       tempFile = path.join(tempDir, '.env')
     })
 

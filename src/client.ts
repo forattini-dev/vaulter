@@ -1,5 +1,5 @@
 /**
- * MiniEnv Client - s3db.js wrapper for environment variable storage
+ * Vaulter Client - s3db.js wrapper for environment variable storage
  */
 
 import { S3db } from 's3db.js'
@@ -8,21 +8,21 @@ import type {
   EnvVarInput,
   Environment,
   ListOptions,
-  MiniEnvClientOptions,
+  VaulterClientOptions,
   SyncResult
 } from './types.js'
 
 // Default connection string for local development (FileSystem backend)
-const DEFAULT_CONNECTION_STRING = `file://${process.env.HOME || '/tmp'}/.minienv/store`
-const DEFAULT_PASSPHRASE = 'minienv-default-dev-key'
+const DEFAULT_CONNECTION_STRING = `file://${process.env.HOME || '/tmp'}/.vaulter/store`
+const DEFAULT_PASSPHRASE = 'vaulter-default-dev-key'
 
 /**
- * MiniEnv Client
+ * Vaulter Client
  *
  * Provides a high-level API for managing environment variables
  * using s3db.js as the storage backend.
  */
-export class MiniEnvClient {
+export class VaulterClient {
   private db: S3db | null = null
   private resource: any = null
   private connectionStrings: string[]
@@ -31,7 +31,7 @@ export class MiniEnvClient {
   private initialized = false
   private verbose: boolean
 
-  constructor(options: MiniEnvClientOptions = {}) {
+  constructor(options: VaulterClientOptions = {}) {
     // Support single connectionString or array of connectionStrings
     if (options.connectionStrings && options.connectionStrings.length > 0) {
       this.connectionStrings = options.connectionStrings
@@ -56,7 +56,7 @@ export class MiniEnvClient {
     for (const connectionString of this.connectionStrings) {
       try {
         if (this.verbose) {
-          console.error(`[minienv] Trying backend: ${this.maskCredentials(connectionString)}`)
+          console.error(`[vaulter] Trying backend: ${this.maskCredentials(connectionString)}`)
         }
 
         this.db = new S3db({
@@ -108,7 +108,7 @@ export class MiniEnvClient {
         this.initialized = true
 
         if (this.verbose) {
-          console.error(`[minienv] Connected to: ${this.maskCredentials(connectionString)}`)
+          console.error(`[vaulter] Connected to: ${this.maskCredentials(connectionString)}`)
         }
 
         return // Exit on first successful connection
@@ -117,7 +117,7 @@ export class MiniEnvClient {
         errors.push({ url: connectionString, error: err as Error })
 
         if (this.verbose) {
-          console.error(`[minienv] Failed to connect to ${this.maskCredentials(connectionString)}: ${(err as Error).message}`)
+          console.error(`[vaulter] Failed to connect to ${this.maskCredentials(connectionString)}: ${(err as Error).message}`)
         }
 
         // Clean up failed connection
@@ -150,7 +150,7 @@ export class MiniEnvClient {
    */
   private ensureConnected(): void {
     if (!this.initialized || !this.resource) {
-      throw new Error('MiniEnvClient not initialized. Call connect() first.')
+      throw new Error('VaulterClient not initialized. Call connect() first.')
     }
   }
 
@@ -426,9 +426,9 @@ export class MiniEnvClient {
 }
 
 // Factory function for creating clients
-export function createClient(options?: MiniEnvClientOptions): MiniEnvClient {
-  return new MiniEnvClient(options)
+export function createClient(options?: VaulterClientOptions): VaulterClient {
+  return new VaulterClient(options)
 }
 
 // Default export
-export default MiniEnvClient
+export default VaulterClient

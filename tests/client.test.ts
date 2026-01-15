@@ -33,9 +33,9 @@ vi.mock('s3db.js', () => {
   }
 })
 
-import { MiniEnvClient, createClient } from '../src/client.js'
+import { VaulterClient, createClient } from '../src/client.js'
 
-describe('MiniEnvClient', () => {
+describe('VaulterClient', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     // Reset mock implementations
@@ -62,30 +62,30 @@ describe('MiniEnvClient', () => {
 
   describe('constructor', () => {
     it('should create client with single connectionString', () => {
-      const c = new MiniEnvClient({
+      const c = new VaulterClient({
         connectionString: 'memory://bucket1'
       })
       expect(c.getConnectionStrings()).toEqual(['memory://bucket1'])
     })
 
     it('should create client with multiple connectionStrings', () => {
-      const c = new MiniEnvClient({
+      const c = new VaulterClient({
         connectionStrings: ['memory://bucket1', 'memory://bucket2']
       })
       expect(c.getConnectionStrings()).toEqual(['memory://bucket1', 'memory://bucket2'])
     })
 
     it('should use default connectionString when none provided', () => {
-      const c = new MiniEnvClient()
+      const c = new VaulterClient()
       const strings = c.getConnectionStrings()
       expect(strings.length).toBe(1)
-      expect(strings[0]).toContain('.minienv/store')
+      expect(strings[0]).toContain('.vaulter/store')
     })
   })
 
   describe('connect/disconnect', () => {
     it('should connect successfully', async () => {
-      const c = new MiniEnvClient({
+      const c = new VaulterClient({
         connectionString: 'memory://test'
       })
       await c.connect()
@@ -94,7 +94,7 @@ describe('MiniEnvClient', () => {
     })
 
     it('should not reconnect if already connected', async () => {
-      const c = new MiniEnvClient({
+      const c = new VaulterClient({
         connectionString: 'memory://test'
       })
       await c.connect()
@@ -103,7 +103,7 @@ describe('MiniEnvClient', () => {
     })
 
     it('should disconnect properly', async () => {
-      const c = new MiniEnvClient({
+      const c = new VaulterClient({
         connectionString: 'memory://test'
       })
       await c.connect()
@@ -116,7 +116,7 @@ describe('MiniEnvClient', () => {
     it('should throw when all backends fail', async () => {
       mockDb.connect.mockRejectedValue(new Error('Connection failed'))
 
-      const c = new MiniEnvClient({
+      const c = new VaulterClient({
         connectionStrings: [
           'invalid://not-a-real-protocol',
           'also-invalid://nope'
@@ -135,7 +135,7 @@ describe('MiniEnvClient', () => {
         // Second call succeeds
       })
 
-      const c = new MiniEnvClient({
+      const c = new VaulterClient({
         connectionStrings: [
           'invalid://will-fail',
           'memory://will-succeed'
@@ -148,7 +148,7 @@ describe('MiniEnvClient', () => {
     })
 
     it('should store active connection string', async () => {
-      const c = new MiniEnvClient({
+      const c = new VaulterClient({
         connectionString: 'memory://my-bucket'
       })
       await c.connect()
@@ -157,10 +157,10 @@ describe('MiniEnvClient', () => {
   })
 
   describe('set', () => {
-    let client: MiniEnvClient
+    let client: VaulterClient
 
     beforeEach(async () => {
-      client = new MiniEnvClient({
+      client = new VaulterClient({
         connectionString: 'memory://test-bucket'
       })
       await client.connect()
@@ -253,7 +253,7 @@ describe('MiniEnvClient', () => {
     })
 
     it('should throw when not connected', async () => {
-      const c = new MiniEnvClient({ connectionString: 'memory://test' })
+      const c = new VaulterClient({ connectionString: 'memory://test' })
       await expect(c.set({
         key: 'KEY',
         value: 'value',
@@ -264,10 +264,10 @@ describe('MiniEnvClient', () => {
   })
 
   describe('get', () => {
-    let client: MiniEnvClient
+    let client: VaulterClient
 
     beforeEach(async () => {
-      client = new MiniEnvClient({
+      client = new VaulterClient({
         connectionString: 'memory://test-bucket'
       })
       await client.connect()
@@ -317,10 +317,10 @@ describe('MiniEnvClient', () => {
   })
 
   describe('delete', () => {
-    let client: MiniEnvClient
+    let client: VaulterClient
 
     beforeEach(async () => {
-      client = new MiniEnvClient({
+      client = new VaulterClient({
         connectionString: 'memory://test-bucket'
       })
       await client.connect()
@@ -350,10 +350,10 @@ describe('MiniEnvClient', () => {
   })
 
   describe('list', () => {
-    let client: MiniEnvClient
+    let client: VaulterClient
 
     beforeEach(async () => {
-      client = new MiniEnvClient({
+      client = new VaulterClient({
         connectionString: 'memory://test-bucket'
       })
       await client.connect()
@@ -424,10 +424,10 @@ describe('MiniEnvClient', () => {
   })
 
   describe('export', () => {
-    let client: MiniEnvClient
+    let client: VaulterClient
 
     beforeEach(async () => {
-      client = new MiniEnvClient({
+      client = new VaulterClient({
         connectionString: 'memory://test-bucket'
       })
       await client.connect()
@@ -457,10 +457,10 @@ describe('MiniEnvClient', () => {
   })
 
   describe('sync', () => {
-    let client: MiniEnvClient
+    let client: VaulterClient
 
     beforeEach(async () => {
-      client = new MiniEnvClient({
+      client = new VaulterClient({
         connectionString: 'memory://test-bucket'
       })
       await client.connect()
@@ -521,10 +521,10 @@ describe('MiniEnvClient', () => {
   })
 
   describe('insertMany', () => {
-    let client: MiniEnvClient
+    let client: VaulterClient
 
     beforeEach(async () => {
-      client = new MiniEnvClient({
+      client = new VaulterClient({
         connectionString: 'memory://test-bucket'
       })
       await client.connect()
@@ -545,10 +545,10 @@ describe('MiniEnvClient', () => {
   })
 
   describe('deleteAll', () => {
-    let client: MiniEnvClient
+    let client: VaulterClient
 
     beforeEach(async () => {
-      client = new MiniEnvClient({
+      client = new VaulterClient({
         connectionString: 'memory://test-bucket'
       })
       await client.connect()
@@ -577,7 +577,7 @@ describe('MiniEnvClient', () => {
         }
       })
 
-      const c = new MiniEnvClient({
+      const c = new VaulterClient({
         connectionStrings: [
           's3://key:secret@bucket',
           'memory://test'
@@ -601,15 +601,15 @@ describe('MiniEnvClient', () => {
 })
 
 describe('createClient', () => {
-  it('should create a MiniEnvClient instance', () => {
+  it('should create a VaulterClient instance', () => {
     const client = createClient({
       connectionString: 'memory://test'
     })
-    expect(client).toBeInstanceOf(MiniEnvClient)
+    expect(client).toBeInstanceOf(VaulterClient)
   })
 
   it('should create client with default options', () => {
     const client = createClient()
-    expect(client).toBeInstanceOf(MiniEnvClient)
+    expect(client).toBeInstanceOf(VaulterClient)
   })
 })

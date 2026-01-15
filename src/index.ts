@@ -1,12 +1,12 @@
 /**
- * MiniEnv - Multi-backend environment variable and secrets manager
+ * Vaulter - Multi-backend environment variable and secrets manager
  *
  * Main library exports for programmatic usage
  */
 
 // Client
-export { MiniEnvClient, createClient } from './client.js'
-export type { MiniEnvClientOptions, ListOptions, SyncResult } from './types.js'
+export { VaulterClient, createClient } from './client.js'
+export type { VaulterClientOptions, ListOptions, SyncResult } from './types.js'
 
 // Types
 export type {
@@ -14,7 +14,7 @@ export type {
   EnvVar,
   EnvVarInput,
   EnvVarMetadata,
-  MiniEnvConfig,
+  VaulterConfig,
   ExportFormat
 } from './types.js'
 
@@ -31,13 +31,13 @@ export {
 } from './lib/config-loader.js'
 
 // Backend URL resolver
-import type { MiniEnvConfig } from './types.js'
+import type { VaulterConfig } from './types.js'
 
 /**
  * Resolve backend URLs from config
  * Supports both single `url` and multiple `urls` with fallback
  */
-export function resolveBackendUrls(config: MiniEnvConfig): string[] {
+export function resolveBackendUrls(config: VaulterConfig): string[] {
   if (!config.backend) {
     return []
   }

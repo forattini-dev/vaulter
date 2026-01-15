@@ -22,7 +22,7 @@ describe('config-loader', () => {
   let originalEnv: NodeJS.ProcessEnv
 
   beforeEach(() => {
-    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'minienv-config-test-'))
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vaulter-config-test-'))
     originalEnv = { ...process.env }
   })
 
@@ -32,29 +32,29 @@ describe('config-loader', () => {
   })
 
   describe('findConfigDir', () => {
-    it('should find .minienv directory in current directory', () => {
-      const minienvDir = path.join(tempDir, '.minienv')
-      fs.mkdirSync(minienvDir)
-      fs.writeFileSync(path.join(minienvDir, 'config.yaml'), 'version: "1"')
+    it('should find .vaulter directory in current directory', () => {
+      const vaulterDir = path.join(tempDir, '.vaulter')
+      fs.mkdirSync(vaulterDir)
+      fs.writeFileSync(path.join(vaulterDir, 'config.yaml'), 'version: "1"')
 
       const result = findConfigDir(tempDir)
-      expect(result).toBe(minienvDir)
+      expect(result).toBe(vaulterDir)
     })
 
-    it('should find .minienv directory in parent directory', () => {
+    it('should find .vaulter directory in parent directory', () => {
       const parentDir = tempDir
       const childDir = path.join(tempDir, 'subdir')
       fs.mkdirSync(childDir)
 
-      const minienvDir = path.join(parentDir, '.minienv')
-      fs.mkdirSync(minienvDir)
-      fs.writeFileSync(path.join(minienvDir, 'config.yaml'), 'version: "1"')
+      const vaulterDir = path.join(parentDir, '.vaulter')
+      fs.mkdirSync(vaulterDir)
+      fs.writeFileSync(path.join(vaulterDir, 'config.yaml'), 'version: "1"')
 
       const result = findConfigDir(childDir)
-      expect(result).toBe(minienvDir)
+      expect(result).toBe(vaulterDir)
     })
 
-    it('should return null when no .minienv directory found', () => {
+    it('should return null when no .vaulter directory found', () => {
       const result = findConfigDir(tempDir)
       expect(result).toBeNull()
     })
@@ -68,9 +68,9 @@ describe('config-loader', () => {
       }
 
       // Create config at root
-      const minienvDir = path.join(tempDir, '.minienv')
-      fs.mkdirSync(minienvDir)
-      fs.writeFileSync(path.join(minienvDir, 'config.yaml'), 'version: "1"')
+      const vaulterDir = path.join(tempDir, '.vaulter')
+      fs.mkdirSync(vaulterDir)
+      fs.writeFileSync(path.join(vaulterDir, 'config.yaml'), 'version: "1"')
 
       // Should not find it from very deep directory
       const result = findConfigDir(deepDir)
@@ -87,9 +87,9 @@ describe('config-loader', () => {
     })
 
     it('should load config from file', () => {
-      const minienvDir = path.join(tempDir, '.minienv')
-      fs.mkdirSync(minienvDir)
-      fs.writeFileSync(path.join(minienvDir, 'config.yaml'), `
+      const vaulterDir = path.join(tempDir, '.vaulter')
+      fs.mkdirSync(vaulterDir)
+      fs.writeFileSync(path.join(vaulterDir, 'config.yaml'), `
 version: "1"
 project: test-project
 backend:
@@ -102,15 +102,15 @@ backend:
     })
 
     it('should merge config.local.yaml over config.yaml', () => {
-      const minienvDir = path.join(tempDir, '.minienv')
-      fs.mkdirSync(minienvDir)
-      fs.writeFileSync(path.join(minienvDir, 'config.yaml'), `
+      const vaulterDir = path.join(tempDir, '.vaulter')
+      fs.mkdirSync(vaulterDir)
+      fs.writeFileSync(path.join(vaulterDir, 'config.yaml'), `
 version: "1"
 project: test-project
 backend:
   url: s3://bucket/path
 `)
-      fs.writeFileSync(path.join(minienvDir, 'config.local.yaml'), `
+      fs.writeFileSync(path.join(vaulterDir, 'config.local.yaml'), `
 backend:
   url: memory://local-override
 `)
@@ -124,9 +124,9 @@ backend:
       process.env.TEST_BUCKET = 'my-bucket'
       process.env.TEST_REGION = 'us-west-2'
 
-      const minienvDir = path.join(tempDir, '.minienv')
-      fs.mkdirSync(minienvDir)
-      fs.writeFileSync(path.join(minienvDir, 'config.yaml'), `
+      const vaulterDir = path.join(tempDir, '.vaulter')
+      fs.mkdirSync(vaulterDir)
+      fs.writeFileSync(path.join(vaulterDir, 'config.yaml'), `
 version: "1"
 project: test-project
 backend:
@@ -140,9 +140,9 @@ backend:
     it('should handle ${VAR:-default} syntax', () => {
       delete process.env.UNDEFINED_VAR
 
-      const minienvDir = path.join(tempDir, '.minienv')
-      fs.mkdirSync(minienvDir)
-      fs.writeFileSync(path.join(minienvDir, 'config.yaml'), `
+      const vaulterDir = path.join(tempDir, '.vaulter')
+      fs.mkdirSync(vaulterDir)
+      fs.writeFileSync(path.join(vaulterDir, 'config.yaml'), `
 version: "1"
 project: test-project
 backend:
@@ -156,9 +156,9 @@ backend:
     it('should handle $VAR syntax', () => {
       process.env.MY_PROJECT = 'env-project'
 
-      const minienvDir = path.join(tempDir, '.minienv')
-      fs.mkdirSync(minienvDir)
-      fs.writeFileSync(path.join(minienvDir, 'config.yaml'), `
+      const vaulterDir = path.join(tempDir, '.vaulter')
+      fs.mkdirSync(vaulterDir)
+      fs.writeFileSync(path.join(vaulterDir, 'config.yaml'), `
 version: "1"
 project: $MY_PROJECT
 `)
@@ -168,9 +168,9 @@ project: $MY_PROJECT
     })
 
     it('should deep merge objects', () => {
-      const minienvDir = path.join(tempDir, '.minienv')
-      fs.mkdirSync(minienvDir)
-      fs.writeFileSync(path.join(minienvDir, 'config.yaml'), `
+      const vaulterDir = path.join(tempDir, '.vaulter')
+      fs.mkdirSync(vaulterDir)
+      fs.writeFileSync(path.join(vaulterDir, 'config.yaml'), `
 version: "1"
 project: test-project
 security:
@@ -187,7 +187,7 @@ security:
       it('should extend from parent config', () => {
         // Parent config
         const parentDir = path.join(tempDir, 'parent')
-        const parentMinienv = path.join(parentDir, '.minienv')
+        const parentMinienv = path.join(parentDir, '.vaulter')
         fs.mkdirSync(parentMinienv, { recursive: true })
         fs.writeFileSync(path.join(parentMinienv, 'config.yaml'), `
 version: "1"
@@ -198,10 +198,10 @@ backend:
 
         // Child config
         const childDir = path.join(tempDir, 'parent', 'child')
-        const childMinienv = path.join(childDir, '.minienv')
+        const childMinienv = path.join(childDir, '.vaulter')
         fs.mkdirSync(childMinienv, { recursive: true })
         fs.writeFileSync(path.join(childMinienv, 'config.yaml'), `
-extends: ../../.minienv/config.yaml
+extends: ../../.vaulter/config.yaml
 service: child-service
 `)
 
@@ -214,7 +214,7 @@ service: child-service
       it('should override parent values', () => {
         // Parent config
         const parentDir = path.join(tempDir, 'parent')
-        const parentMinienv = path.join(parentDir, '.minienv')
+        const parentMinienv = path.join(parentDir, '.vaulter')
         fs.mkdirSync(parentMinienv, { recursive: true })
         fs.writeFileSync(path.join(parentMinienv, 'config.yaml'), `
 version: "1"
@@ -224,10 +224,10 @@ default_environment: prd
 
         // Child config
         const childDir = path.join(tempDir, 'parent', 'child')
-        const childMinienv = path.join(childDir, '.minienv')
+        const childMinienv = path.join(childDir, '.vaulter')
         fs.mkdirSync(childMinienv, { recursive: true })
         fs.writeFileSync(path.join(childMinienv, 'config.yaml'), `
-extends: ../../.minienv/config.yaml
+extends: ../../.vaulter/config.yaml
 default_environment: dev
 `)
 
@@ -238,20 +238,20 @@ default_environment: dev
       it('should detect circular inheritance', () => {
         // Config A extends B
         const dirA = path.join(tempDir, 'a')
-        const minienvA = path.join(dirA, '.minienv')
-        fs.mkdirSync(minienvA, { recursive: true })
+        const vaulterA = path.join(dirA, '.vaulter')
+        fs.mkdirSync(vaulterA, { recursive: true })
 
         // Config B extends A
         const dirB = path.join(tempDir, 'b')
-        const minienvB = path.join(dirB, '.minienv')
-        fs.mkdirSync(minienvB, { recursive: true })
+        const vaulterB = path.join(dirB, '.vaulter')
+        fs.mkdirSync(vaulterB, { recursive: true })
 
-        fs.writeFileSync(path.join(minienvA, 'config.yaml'), `
-extends: ../../b/.minienv/config.yaml
+        fs.writeFileSync(path.join(vaulterA, 'config.yaml'), `
+extends: ../../b/.vaulter/config.yaml
 project: a
 `)
-        fs.writeFileSync(path.join(minienvB, 'config.yaml'), `
-extends: ../../a/.minienv/config.yaml
+        fs.writeFileSync(path.join(vaulterB, 'config.yaml'), `
+extends: ../../a/.vaulter/config.yaml
 project: b
 `)
 
@@ -275,9 +275,9 @@ project: b
 
   describe('configExists', () => {
     it('should return true when config exists', () => {
-      const minienvDir = path.join(tempDir, '.minienv')
-      fs.mkdirSync(minienvDir)
-      fs.writeFileSync(path.join(minienvDir, 'config.yaml'), 'version: "1"')
+      const vaulterDir = path.join(tempDir, '.vaulter')
+      fs.mkdirSync(vaulterDir)
+      fs.writeFileSync(path.join(vaulterDir, 'config.yaml'), 'version: "1"')
 
       expect(configExists(tempDir)).toBe(true)
     })
@@ -289,13 +289,13 @@ project: b
 
   describe('getEnvFilePath', () => {
     it('should return correct path for environment file', () => {
-      const configDir = path.join(tempDir, '.minienv')
+      const configDir = path.join(tempDir, '.vaulter')
       const result = getEnvFilePath(configDir, 'dev')
       expect(result).toBe(path.join(configDir, 'environments', 'dev.env'))
     })
 
     it('should work for different environments', () => {
-      const configDir = path.join(tempDir, '.minienv')
+      const configDir = path.join(tempDir, '.vaulter')
       expect(getEnvFilePath(configDir, 'prd')).toContain('prd.env')
       expect(getEnvFilePath(configDir, 'stg')).toContain('stg.env')
     })
@@ -353,8 +353,8 @@ project: b
       expect(key).toBe('fallback-key')
     })
 
-    it('should fallback to MINIENV_KEY environment variable', async () => {
-      process.env.MINIENV_KEY = 'minienv-fallback-key'
+    it('should fallback to VAULTER_KEY environment variable', async () => {
+      process.env.VAULTER_KEY = 'vaulter-fallback-key'
 
       const config = {
         ...DEFAULT_CONFIG,
@@ -364,11 +364,11 @@ project: b
       }
 
       const key = await loadEncryptionKey(config)
-      expect(key).toBe('minienv-fallback-key')
+      expect(key).toBe('vaulter-fallback-key')
     })
 
     it('should return null when no key found', async () => {
-      delete process.env.MINIENV_KEY
+      delete process.env.VAULTER_KEY
 
       const config = {
         ...DEFAULT_CONFIG,
@@ -382,7 +382,7 @@ project: b
     })
 
     it('should handle missing key_source', async () => {
-      delete process.env.MINIENV_KEY
+      delete process.env.VAULTER_KEY
 
       const config = { ...DEFAULT_CONFIG }
 
@@ -393,7 +393,7 @@ project: b
 
   describe('createDefaultConfig', () => {
     it('should create config directory structure', () => {
-      const configDir = path.join(tempDir, '.minienv')
+      const configDir = path.join(tempDir, '.vaulter')
       createDefaultConfig(configDir, 'test-project')
 
       expect(fs.existsSync(configDir)).toBe(true)
@@ -402,7 +402,7 @@ project: b
     })
 
     it('should write project name to config', () => {
-      const configDir = path.join(tempDir, '.minienv')
+      const configDir = path.join(tempDir, '.vaulter')
       createDefaultConfig(configDir, 'my-awesome-project')
 
       const content = fs.readFileSync(path.join(configDir, 'config.yaml'), 'utf-8')
@@ -410,7 +410,7 @@ project: b
     })
 
     it('should handle existing directory', () => {
-      const configDir = path.join(tempDir, '.minienv')
+      const configDir = path.join(tempDir, '.vaulter')
       fs.mkdirSync(configDir, { recursive: true })
 
       // Should not throw

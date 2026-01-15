@@ -1,21 +1,21 @@
 /**
- * MiniEnv MCP Tools
+ * Vaulter MCP Tools
  *
  * Tool definitions and handlers for the MCP server
  */
 
 import type { Tool } from '@modelcontextprotocol/sdk/types.js'
-import { MiniEnvClient } from '../client.js'
+import { VaulterClient } from '../client.js'
 import { loadConfig, loadEncryptionKey, findConfigDir, getEnvFilePath } from '../lib/config-loader.js'
 import { parseEnvFile } from '../lib/env-parser.js'
-import type { Environment, MiniEnvConfig } from '../types.js'
+import type { Environment, VaulterConfig } from '../types.js'
 import fs from 'node:fs'
 
 /**
  * Get current config and client
  */
-async function getClientAndConfig(): Promise<{ client: MiniEnvClient; config: MiniEnvConfig | null }> {
-  let config: MiniEnvConfig | null = null
+async function getClientAndConfig(): Promise<{ client: VaulterClient; config: VaulterConfig | null }> {
+  let config: VaulterConfig | null = null
   try {
     config = loadConfig()
   } catch {
@@ -25,7 +25,7 @@ async function getClientAndConfig(): Promise<{ client: MiniEnvClient; config: Mi
   const connectionString = config?.backend?.url
   const passphrase = config ? await loadEncryptionKey(config) : undefined
 
-  const client = new MiniEnvClient({
+  const client = new VaulterClient({
     connectionString: connectionString || undefined,
     passphrase: passphrase || undefined
   })
@@ -39,7 +39,7 @@ async function getClientAndConfig(): Promise<{ client: MiniEnvClient; config: Mi
 export function registerTools(): Tool[] {
   return [
     {
-      name: 'minienv_get',
+      name: 'vaulter_get',
       description: 'Get the value of an environment variable',
       inputSchema: {
         type: 'object',
@@ -67,7 +67,7 @@ export function registerTools(): Tool[] {
       }
     },
     {
-      name: 'minienv_set',
+      name: 'vaulter_set',
       description: 'Set an environment variable value',
       inputSchema: {
         type: 'object',
@@ -99,7 +99,7 @@ export function registerTools(): Tool[] {
       }
     },
     {
-      name: 'minienv_delete',
+      name: 'vaulter_delete',
       description: 'Delete an environment variable',
       inputSchema: {
         type: 'object',
@@ -127,7 +127,7 @@ export function registerTools(): Tool[] {
       }
     },
     {
-      name: 'minienv_list',
+      name: 'vaulter_list',
       description: 'List all environment variables for a project/environment',
       inputSchema: {
         type: 'object',
@@ -155,7 +155,7 @@ export function registerTools(): Tool[] {
       }
     },
     {
-      name: 'minienv_export',
+      name: 'vaulter_export',
       description: 'Export environment variables in shell format',
       inputSchema: {
         type: 'object',
@@ -184,7 +184,7 @@ export function registerTools(): Tool[] {
       }
     },
     {
-      name: 'minienv_sync',
+      name: 'vaulter_sync',
       description: 'Sync local .env file with backend storage',
       inputSchema: {
         type: 'object',
@@ -230,7 +230,7 @@ export async function handleToolCall(
     return {
       content: [{
         type: 'text',
-        text: 'Error: Project not specified. Either set project in args or run from a directory with .minienv/config.yaml'
+        text: 'Error: Project not specified. Either set project in args or run from a directory with .vaulter/config.yaml'
       }]
     }
   }
@@ -239,7 +239,7 @@ export async function handleToolCall(
     await client.connect()
 
     switch (name) {
-      case 'minienv_get': {
+      case 'vaulter_get': {
         const key = args.key as string
         const envVar = await client.get(key, project, environment, service)
         return {
@@ -250,7 +250,7 @@ export async function handleToolCall(
         }
       }
 
-      case 'minienv_set': {
+      case 'vaulter_set': {
         const key = args.key as string
         const value = args.value as string
         await client.set({
@@ -269,7 +269,7 @@ export async function handleToolCall(
         }
       }
 
-      case 'minienv_delete': {
+      case 'vaulter_delete': {
         const key = args.key as string
         const deleted = await client.delete(key, project, environment, service)
         return {
@@ -280,7 +280,7 @@ export async function handleToolCall(
         }
       }
 
-      case 'minienv_list': {
+      case 'vaulter_list': {
         const showValues = args.showValues as boolean || false
         const vars = await client.list({ project, environment, service })
 
@@ -305,7 +305,7 @@ export async function handleToolCall(
         }
       }
 
-      case 'minienv_export': {
+      case 'vaulter_export': {
         const format = (args.format as string) || 'shell'
         const vars = await client.export(project, environment, service)
 
@@ -339,7 +339,7 @@ export async function handleToolCall(
         }
       }
 
-      case 'minienv_sync': {
+      case 'vaulter_sync': {
         const dryRun = args.dryRun as boolean || false
 
         // Read local .env file
@@ -348,7 +348,7 @@ export async function handleToolCall(
           return {
             content: [{
               type: 'text',
-              text: 'Error: No .minienv directory found'
+              text: 'Error: No .vaulter directory found'
             }]
           }
         }
