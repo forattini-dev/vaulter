@@ -1,19 +1,19 @@
 /**
- * MiniEnv CLI - Push Command
+ * Vaulter CLI - Push Command
  *
  * Push local .env file to backend (one-way sync, local wins)
  */
 
 import fs from 'node:fs'
 import path from 'node:path'
-import type { CLIArgs, MiniEnvConfig, Environment } from '../../types.js'
+import type { CLIArgs, VaulterConfig, Environment } from '../../types.js'
 import { createClientFromConfig } from '../lib/create-client.js'
 import { findConfigDir, getEnvFilePath } from '../../lib/config-loader.js'
 import { parseEnvFile, hasStdinData, parseEnvFromStdin } from '../../lib/env-parser.js'
 
 interface PushContext {
   args: CLIArgs
-  config: MiniEnvConfig | null
+  config: VaulterConfig | null
   project: string
   service?: string
   environment: Environment
@@ -37,7 +37,7 @@ export async function runPush(context: PushContext): Promise<void> {
 
   if (!project) {
     console.error('Error: Project not specified and no config found')
-    console.error('Run "minienv init" or specify --project')
+    console.error('Run "vaulter init" or specify --project')
     process.exit(1)
   }
 
@@ -65,7 +65,7 @@ export async function runPush(context: PushContext): Promise<void> {
     if (filePath) {
       envFilePath = path.resolve(filePath)
     } else {
-      // Default to .minienv/environments/<env>.env
+      // Default to .vaulter/environments/<env>.env
       const configDir = findConfigDir()
       if (!configDir) {
         console.error('Error: No config directory found and no file specified')

@@ -1,15 +1,15 @@
 /**
- * MiniEnv CLI - Get Command
+ * Vaulter CLI - Get Command
  *
  * Get a single environment variable
  */
 
-import type { CLIArgs, MiniEnvConfig, Environment } from '../../types.js'
+import type { CLIArgs, VaulterConfig, Environment } from '../../types.js'
 import { createClientFromConfig } from '../lib/create-client.js'
 
 interface GetContext {
   args: CLIArgs
-  config: MiniEnvConfig | null
+  config: VaulterConfig | null
   project: string
   service?: string
   environment: Environment
@@ -28,13 +28,13 @@ export async function runGet(context: GetContext): Promise<void> {
 
   if (!key) {
     console.error('Error: Key name is required')
-    console.error('Usage: minienv get <key> [-e <env>]')
+    console.error('Usage: vaulter get <key> [-e <env>]')
     process.exit(1)
   }
 
   if (!project) {
     console.error('Error: Project not specified and no config found')
-    console.error('Run "minienv init" or specify --project')
+    console.error('Run "vaulter init" or specify --project')
     process.exit(1)
   }
 

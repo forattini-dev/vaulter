@@ -1,22 +1,22 @@
 /**
- * MiniEnv MCP Resources
+ * Vaulter MCP Resources
  *
  * Resource definitions and handlers for the MCP server
  * Resources expose environment variables as readable content
  */
 
 import type { Resource } from '@modelcontextprotocol/sdk/types.js'
-import { MiniEnvClient } from '../client.js'
+import { VaulterClient } from '../client.js'
 import { loadConfig, loadEncryptionKey } from '../lib/config-loader.js'
-import type { Environment, MiniEnvConfig } from '../types.js'
+import type { Environment, VaulterConfig } from '../types.js'
 
 const ENVIRONMENTS: Environment[] = ['dev', 'stg', 'prd', 'sbx', 'dr']
 
 /**
  * Get current config and client
  */
-async function getClientAndConfig(): Promise<{ client: MiniEnvClient; config: MiniEnvConfig | null }> {
-  let config: MiniEnvConfig | null = null
+async function getClientAndConfig(): Promise<{ client: VaulterClient; config: VaulterConfig | null }> {
+  let config: VaulterConfig | null = null
   try {
     config = loadConfig()
   } catch {
@@ -26,7 +26,7 @@ async function getClientAndConfig(): Promise<{ client: MiniEnvClient; config: Mi
   const connectionString = config?.backend?.url
   const passphrase = config ? await loadEncryptionKey(config) : undefined
 
-  const client = new MiniEnvClient({
+  const client = new VaulterClient({
     connectionString: connectionString || undefined,
     passphrase: passphrase || undefined
   })
@@ -35,12 +35,12 @@ async function getClientAndConfig(): Promise<{ client: MiniEnvClient; config: Mi
 }
 
 /**
- * Parse a minienv:// URI
- * Format: minienv://project/environment
- * Example: minienv://my-app/dev
+ * Parse a vaulter:// URI
+ * Format: vaulter://project/environment
+ * Example: vaulter://my-app/dev
  */
 function parseResourceUri(uri: string): { project: string; environment: Environment; service?: string } | null {
-  const match = uri.match(/^minienv:\/\/([^/]+)\/([^/]+)(?:\/([^/]+))?$/)
+  const match = uri.match(/^vaulter:\/\/([^/]+)\/([^/]+)(?:\/([^/]+))?$/)
   if (!match) return null
 
   const [, project, env, service] = match
@@ -72,8 +72,8 @@ export async function listResources(): Promise<Resource[]> {
 
   for (const env of environments) {
     const uri = service
-      ? `minienv://${project}/${env}/${service}`
-      : `minienv://${project}/${env}`
+      ? `vaulter://${project}/${env}/${service}`
+      : `vaulter://${project}/${env}`
 
     resources.push({
       uri,
@@ -93,7 +93,7 @@ export async function handleResourceRead(uri: string): Promise<{ contents: Array
   const parsed = parseResourceUri(uri)
 
   if (!parsed) {
-    throw new Error(`Invalid resource URI: ${uri}. Expected format: minienv://project/environment[/service]`)
+    throw new Error(`Invalid resource URI: ${uri}. Expected format: vaulter://project/environment[/service]`)
   }
 
   const { project, environment, service } = parsed

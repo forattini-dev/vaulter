@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🔐 minienv
+# 🔐 vaulter
 
 ### Multi-Backend Environment & Secrets Manager
 
@@ -11,32 +11,32 @@
 ## Quick Start
 
 ```bash
-npm install -g minienv
+npm install -g vaulter
 ```
 
 ```bash
 # Initialize project
-minienv init
+vaulter init
 
 # Set some secrets
-minienv set DATABASE_URL "postgres://localhost/mydb" -e dev
-minienv set API_KEY "sk-secret-key" -e dev
+vaulter set DATABASE_URL "postgres://localhost/mydb" -e dev
+vaulter set API_KEY "sk-secret-key" -e dev
 
 # Export to shell
-eval $(minienv export -e dev)
+eval $(vaulter export -e dev)
 
 # Deploy to Kubernetes
-minienv k8s:secret -e prd | kubectl apply -f -
+vaulter k8s:secret -e prd | kubectl apply -f -
 ```
 
 ---
 
 <div align="center">
 
-[![npm version](https://img.shields.io/npm/v/minienv.svg?style=flat-square&color=F5A623)](https://www.npmjs.com/package/minienv)
+[![npm version](https://img.shields.io/npm/v/vaulter.svg?style=flat-square&color=F5A623)](https://www.npmjs.com/package/vaulter)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0+-3178C6?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Node.js](https://img.shields.io/badge/Node.js-22+-339933?style=flat-square&logo=node.js&logoColor=white)](https://nodejs.org/)
-[![License](https://img.shields.io/npm/l/minienv.svg?style=flat-square&color=007AFF)](https://github.com/forattini-dev/minienv/blob/main/LICENSE)
+[![License](https://img.shields.io/npm/l/vaulter.svg?style=flat-square&color=007AFF)](https://github.com/forattini-dev/vaulter/blob/main/LICENSE)
 
 Store secrets anywhere: AWS S3, MinIO, R2, Spaces, B2, or local filesystem.
 <br>
@@ -61,32 +61,32 @@ MCP server for Claude AI. Zero config for dev, production-ready.
 | **Monorepo** | Service discovery, batch operations, config inheritance |
 | **MCP Server** | Claude AI integration via Model Context Protocol |
 | **Unix Pipes** | Full stdin/stdout support for scripting |
-| **Dotenv** | Drop-in compatible: `import 'minienv/load'` |
+| **Dotenv** | Drop-in compatible: `import 'vaulter/load'` |
 
 ## Highlights
 
 ### Multi-Backend with Fallback
 
-Configure multiple backends - minienv tries each until one succeeds:
+Configure multiple backends - vaulter tries each until one succeeds:
 
 ```yaml
 backend:
   urls:
     - s3://bucket/envs?region=us-east-1     # Primary (CI/CD)
-    - file:///home/user/.minienv-store       # Fallback (local dev)
+    - file:///home/user/.vaulter-store       # Fallback (local dev)
 ```
 
 ### Native Integrations
 
 ```bash
 # Kubernetes - deploy secrets directly
-minienv k8s:secret -e prd | kubectl apply -f -
+vaulter k8s:secret -e prd | kubectl apply -f -
 
 # Helm - generate values file
-minienv helm:values -e prd | helm upgrade myapp ./chart -f -
+vaulter helm:values -e prd | helm upgrade myapp ./chart -f -
 
 # Terraform - export as tfvars
-minienv tf:vars -e prd > terraform.tfvars
+vaulter tf:vars -e prd > terraform.tfvars
 ```
 
 ### Unix Pipes
@@ -95,10 +95,10 @@ minienv tf:vars -e prd > terraform.tfvars
 # Import from Vault
 vault kv get -format=json secret/app | \
   jq -r '.data.data | to_entries | .[] | "\(.key)=\(.value)"' | \
-  minienv sync -e prd
+  vaulter sync -e prd
 
 # Export to kubectl
-minienv export -e prd --format=env | \
+vaulter export -e prd --format=env | \
   kubectl create secret generic myapp --from-env-file=/dev/stdin
 ```
 
@@ -106,15 +106,15 @@ minienv export -e prd --format=env | \
 
 ```bash
 # Start MCP server
-minienv mcp
+vaulter mcp
 ```
 
 ```json
 {
   "mcpServers": {
-    "minienv": {
+    "vaulter": {
       "command": "npx",
-      "args": ["minienv", "mcp"]
+      "args": ["vaulter", "mcp"]
     }
   }
 }
@@ -126,10 +126,10 @@ Drop-in replacement for dotenv - works with your existing setup:
 
 ```typescript
 // Auto-load .env into process.env
-import 'minienv/load'
+import 'vaulter/load'
 
 // Or programmatically with options
-import { loader } from 'minienv'
+import { loader } from 'vaulter'
 loader({ path: '.env.local', override: true })
 ```
 
@@ -139,38 +139,38 @@ loader({ path: '.env.local', override: true })
 
 | Command | Description | Example |
 |:--------|:------------|:--------|
-| `init` | Initialize project | `minienv init` |
-| `get <key>` | Get a variable | `minienv get DATABASE_URL -e prd` |
-| `set <key> <value>` | Set a variable | `minienv set API_KEY "sk-..." -e prd` |
-| `delete <key>` | Delete a variable | `minienv delete OLD_KEY -e dev` |
-| `list` | List all variables | `minienv list -e prd` |
-| `export` | Export for shell | `eval $(minienv export -e dev)` |
+| `init` | Initialize project | `vaulter init` |
+| `get <key>` | Get a variable | `vaulter get DATABASE_URL -e prd` |
+| `set <key> <value>` | Set a variable | `vaulter set API_KEY "sk-..." -e prd` |
+| `delete <key>` | Delete a variable | `vaulter delete OLD_KEY -e dev` |
+| `list` | List all variables | `vaulter list -e prd` |
+| `export` | Export for shell | `eval $(vaulter export -e dev)` |
 
 ### Sync
 
 | Command | Description | Example |
 |:--------|:------------|:--------|
-| `sync` | Merge local .env and backend | `minienv sync -f .env.local -e dev` |
-| `pull` | Download to .env | `minienv pull -e prd -o .env.prd` |
-| `push` | Upload from .env | `minienv push -f .env.local -e dev` |
+| `sync` | Merge local .env and backend | `vaulter sync -f .env.local -e dev` |
+| `pull` | Download to .env | `vaulter pull -e prd -o .env.prd` |
+| `push` | Upload from .env | `vaulter push -f .env.local -e dev` |
 
 ### Integrations
 
 | Command | Description | Example |
 |:--------|:------------|:--------|
-| `k8s:secret` | Kubernetes Secret | `minienv k8s:secret -e prd \| kubectl apply -f -` |
-| `k8s:configmap` | Kubernetes ConfigMap | `minienv k8s:configmap -e prd` |
-| `helm:values` | Helm values.yaml | `minienv helm:values -e prd` |
-| `tf:vars` | Terraform .tfvars | `minienv tf:vars -e prd > terraform.tfvars` |
-| `tf:json` | Terraform JSON | `minienv tf:json -e prd` |
+| `k8s:secret` | Kubernetes Secret | `vaulter k8s:secret -e prd \| kubectl apply -f -` |
+| `k8s:configmap` | Kubernetes ConfigMap | `vaulter k8s:configmap -e prd` |
+| `helm:values` | Helm values.yaml | `vaulter helm:values -e prd` |
+| `tf:vars` | Terraform .tfvars | `vaulter tf:vars -e prd > terraform.tfvars` |
+| `tf:json` | Terraform JSON | `vaulter tf:json -e prd` |
 
 ### Utilities
 
 | Command | Description | Example |
 |:--------|:------------|:--------|
-| `key generate` | Generate encryption key | `minienv key generate` |
-| `services` | List monorepo services | `minienv services` |
-| `mcp` | Start MCP server | `minienv mcp` |
+| `key generate` | Generate encryption key | `vaulter key generate` |
+| `services` | List monorepo services | `vaulter services` |
+| `mcp` | Start MCP server | `vaulter mcp` |
 
 ## Global Options
 
@@ -192,7 +192,7 @@ loader({ path: '.env.local', override: true })
 ### Basic Config
 
 ```yaml
-# .minienv/config.yaml
+# .vaulter/config.yaml
 version: "1"
 
 project: my-project
@@ -205,13 +205,13 @@ backend:
   # Or multiple with fallback
   urls:
     - s3://bucket/envs?region=us-east-1
-    - file:///home/user/.minienv-store
+    - file:///home/user/.vaulter-store
 
 encryption:
   key_source:
-    - env: MINIENV_KEY           # 1. Environment variable
-    - file: .minienv/.key        # 2. Local file
-    - s3: s3://keys/minienv.key  # 3. Remote S3
+    - env: VAULTER_KEY           # 1. Environment variable
+    - file: .vaulter/.key        # 2. Local file
+    - s3: s3://keys/vaulter.key  # 3. Remote S3
 
 environments:
   - dev
@@ -257,7 +257,7 @@ Config values support `${VAR}`, `${VAR:-default}`, and `$VAR`:
 backend:
   url: s3://${AWS_ACCESS_KEY_ID}:${AWS_SECRET_ACCESS_KEY}@bucket/envs
   # Or
-  url: ${MINIENV_BACKEND_URL}
+  url: ${VAULTER_BACKEND_URL}
 ```
 
 ### Local Override (config.local.yaml)
@@ -265,7 +265,7 @@ backend:
 For credentials that should **never** be committed:
 
 ```yaml
-# .minienv/config.local.yaml (gitignored)
+# .vaulter/config.local.yaml (gitignored)
 backend:
   url: s3://real-key:real-secret@bucket/envs?region=us-east-1
 ```
@@ -292,11 +292,11 @@ All secrets are encrypted with **AES-256-GCM** before storage.
 
 ```bash
 # 1. Environment variable (CI/CD)
-export MINIENV_KEY="base64-encoded-32-byte-key"
-minienv export -e prd
+export VAULTER_KEY="base64-encoded-32-byte-key"
+vaulter export -e prd
 
 # 2. Local file (development)
-minienv key generate -o .minienv/.key
+vaulter key generate -o .vaulter/.key
 
 # 3. Remote S3 (production)
 # Configured in config.yaml
@@ -305,7 +305,7 @@ minienv key generate -o .minienv/.key
 You can also pass a key directly:
 
 ```bash
-minienv list -e prd --key .minienv/.key
+vaulter list -e prd --key .vaulter/.key
 ```
 
 ### Security Settings
@@ -326,39 +326,39 @@ security:
 
 ```
 my-monorepo/
-├── .minienv/
+├── .vaulter/
 │   ├── config.yaml          # Root config
 │   └── environments/
 ├── services/
 │   ├── api/
-│   │   └── .minienv/
-│   │       ├── config.yaml  # extends: ../../../.minienv/config.yaml
+│   │   └── .vaulter/
+│   │       ├── config.yaml  # extends: ../../../.vaulter/config.yaml
 │   │       └── environments/
 │   └── worker/
-│       └── .minienv/
+│       └── .vaulter/
 ```
 
 ```bash
 # List services
-minienv services
+vaulter services
 
 # Sync all services
-minienv sync -e dev --all
+vaulter sync -e dev --all
 
 # Sync specific services
-minienv sync -e dev -s api,worker
+vaulter sync -e dev -s api,worker
 ```
 
 ## MCP Tools
 
 | Tool | Description |
 |:-----|:------------|
-| `minienv_get` | Get a single variable |
-| `minienv_set` | Set a variable |
-| `minienv_delete` | Delete a variable |
-| `minienv_list` | List all variables |
-| `minienv_export` | Export in various formats |
-| `minienv_sync` | Sync with .env file |
+| `vaulter_get` | Get a single variable |
+| `vaulter_set` | Set a variable |
+| `vaulter_delete` | Delete a variable |
+| `vaulter_list` | List all variables |
+| `vaulter_export` | Export in various formats |
+| `vaulter_sync` | Sync with .env file |
 
 ## CI/CD
 
@@ -372,11 +372,11 @@ jobs:
       - uses: actions/checkout@v4
       - name: Deploy secrets
         env:
-          MINIENV_KEY: ${{ secrets.MINIENV_KEY }}
+          VAULTER_KEY: ${{ secrets.VAULTER_KEY }}
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         run: |
-          npx minienv k8s:secret -e prd | kubectl apply -f -
+          npx vaulter k8s:secret -e prd | kubectl apply -f -
 ```
 
 ### GitLab CI
@@ -384,9 +384,9 @@ jobs:
 ```yaml
 deploy:
   script:
-    - npx minienv k8s:secret -e prd | kubectl apply -f -
+    - npx vaulter k8s:secret -e prd | kubectl apply -f -
   variables:
-    MINIENV_KEY: $MINIENV_KEY
+    VAULTER_KEY: $VAULTER_KEY
 ```
 
 ## Security Best Practices
@@ -394,7 +394,7 @@ deploy:
 | Practice | How |
 |:---------|:----|
 | Never commit credentials | Use `config.local.yaml` or env vars |
-| Never commit encryption keys | Add `.minienv/.key` to `.gitignore` |
+| Never commit encryption keys | Add `.vaulter/.key` to `.gitignore` |
 | Use env var expansion | `${AWS_ACCESS_KEY_ID}` instead of hardcoding |
 | Use AWS credential chain | No credentials in URL, use IAM roles |
 | Separate keys per environment | Different keys for dev/stg/prd |
@@ -403,8 +403,8 @@ deploy:
 ### Files to .gitignore
 
 ```gitignore
-.minienv/.key
-.minienv/config.local.yaml
+.vaulter/.key
+.vaulter/config.local.yaml
 **/config.local.yaml
 .env
 .env.*
@@ -413,10 +413,10 @@ deploy:
 ## API Usage
 
 ```typescript
-import { MiniEnvClient, loadConfig } from 'minienv'
+import { VaulterClient, loadConfig } from 'vaulter'
 
 const config = loadConfig()
-const client = new MiniEnvClient({ config })
+const client = new VaulterClient({ config })
 
 await client.connect()
 
@@ -445,7 +445,7 @@ await client.disconnect()
 
 ## Comparison
 
-| Feature | minienv | dotenv | doppler | vault |
+| Feature | vaulter | dotenv | doppler | vault |
 |:--------|:-------:|:------:|:-------:|:-----:|
 | Multi-backend | ✅ | ❌ | ❌ | ❌ |
 | Encryption | AES-256-GCM | ❌ | ✅ | ✅ |
@@ -467,15 +467,15 @@ await client.disconnect()
 
 ## Pre-built Binaries
 
-Download from [Releases](https://github.com/forattini-dev/minienv/releases):
+Download from [Releases](https://github.com/forattini-dev/vaulter/releases):
 
 | Platform | Binary |
 |:---------|:-------|
-| Linux x64 | `minienv-linux` |
-| Linux ARM64 | `minienv-linux-arm64` |
-| macOS x64 | `minienv-macos` |
-| macOS ARM64 | `minienv-macos-arm64` |
-| Windows | `minienv-win.exe` |
+| Linux x64 | `vaulter-linux` |
+| Linux ARM64 | `vaulter-linux-arm64` |
+| macOS x64 | `vaulter-macos` |
+| macOS ARM64 | `vaulter-macos-arm64` |
+| Windows | `vaulter-win.exe` |
 
 ## License
 
@@ -485,6 +485,6 @@ MIT © [Forattini](https://github.com/forattini-dev)
 
 <div align="center">
 
-**[Documentation](#configuration)** · **[Issues](https://github.com/forattini-dev/minienv/issues)** · **[Releases](https://github.com/forattini-dev/minienv/releases)**
+**[Documentation](#configuration)** · **[Issues](https://github.com/forattini-dev/vaulter/issues)** · **[Releases](https://github.com/forattini-dev/vaulter/releases)**
 
 </div>

@@ -1,16 +1,16 @@
 /**
- * MiniEnv CLI - Export Command
+ * Vaulter CLI - Export Command
  *
  * Export variables for shell evaluation or other formats
  */
 
-import type { CLIArgs, MiniEnvConfig, Environment, ExportFormat } from '../../types.js'
+import type { CLIArgs, VaulterConfig, Environment, ExportFormat } from '../../types.js'
 import { createClientFromConfig } from '../lib/create-client.js'
 import { serializeEnv } from '../../lib/env-parser.js'
 
 interface ExportContext {
   args: CLIArgs
-  config: MiniEnvConfig | null
+  config: VaulterConfig | null
   project: string
   service?: string
   environment: Environment
@@ -93,7 +93,7 @@ export async function runExport(context: ExportContext): Promise<void> {
 
   if (!project) {
     console.error('Error: Project not specified and no config found')
-    console.error('Run "minienv init" or specify --project')
+    console.error('Run "vaulter init" or specify --project')
     process.exit(1)
   }
 

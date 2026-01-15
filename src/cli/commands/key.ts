@@ -1,5 +1,5 @@
 /**
- * MiniEnv CLI - Key Management Commands
+ * Vaulter CLI - Key Management Commands
  *
  * Generate and manage encryption keys
  */
@@ -7,12 +7,12 @@
 import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
-import type { CLIArgs, MiniEnvConfig } from '../../types.js'
+import type { CLIArgs, VaulterConfig } from '../../types.js'
 import { findConfigDir } from '../../lib/config-loader.js'
 
 interface KeyContext {
   args: CLIArgs
-  config: MiniEnvConfig | null
+  config: VaulterConfig | null
   verbose: boolean
   dryRun: boolean
   jsonOutput: boolean
@@ -54,9 +54,9 @@ export async function runKey(context: KeyContext): Promise<void> {
       console.error('Available subcommands: generate, show, rotate')
       console.error('')
       console.error('Examples:')
-      console.error('  minienv key generate              # Generate new key to stdout')
-      console.error('  minienv key generate -o .key      # Generate key to file')
-      console.error('  minienv key show                  # Show current key source')
+      console.error('  vaulter key generate              # Generate new key to stdout')
+      console.error('  vaulter key generate -o .key      # Generate key to file')
+      console.error('  vaulter key show                  # Show current key source')
       process.exit(1)
   }
 }
@@ -127,8 +127,8 @@ async function runKeyGenerate(context: KeyContext): Promise<void> {
       console.log('  Store this key securely - it cannot be recovered!')
       console.log('')
       console.log('To use this key:')
-      console.log(`  1. Set environment variable: export MINIENV_KEY=$(cat ${absPath})`)
-      console.log(`  2. Or configure in .minienv/config.yaml:`)
+      console.log(`  1. Set environment variable: export VAULTER_KEY=$(cat ${absPath})`)
+      console.log(`  2. Or configure in .vaulter/config.yaml:`)
       console.log(`     encryption:`)
       console.log(`       key_source:`)
       console.log(`         - file: ${outputPath}`)
@@ -154,8 +154,8 @@ async function runKeyShow(context: KeyContext): Promise<void> {
   const { config, jsonOutput } = context
 
   if (!config) {
-    console.error('Error: No minienv configuration found')
-    console.error('Run "minienv init" first')
+    console.error('Error: No vaulter configuration found')
+    console.error('Run "vaulter init" first')
     process.exit(1)
   }
 
@@ -186,12 +186,12 @@ async function runKeyShow(context: KeyContext): Promise<void> {
     }
   }
 
-  // Also check MINIENV_KEY env var
-  if (!sources.some(s => s.type === 'env' && s.source === 'MINIENV_KEY')) {
+  // Also check VAULTER_KEY env var
+  if (!sources.some(s => s.type === 'env' && s.source === 'VAULTER_KEY')) {
     sources.push({
       type: 'env',
-      source: 'MINIENV_KEY',
-      available: !!process.env.MINIENV_KEY
+      source: 'VAULTER_KEY',
+      available: !!process.env.VAULTER_KEY
     })
   }
 
@@ -219,7 +219,7 @@ async function runKeyShow(context: KeyContext): Promise<void> {
     } else {
       console.log('')
       console.log('Warning: No encryption key available')
-      console.log('Run "minienv key generate -o .minienv/.key" to create one')
+      console.log('Run "vaulter key generate -o .vaulter/.key" to create one')
     }
   }
 }
@@ -231,8 +231,8 @@ async function runKeyRotate(context: KeyContext): Promise<void> {
   const { config, dryRun, jsonOutput } = context
 
   if (!config) {
-    console.error('Error: No minienv configuration found')
-    console.error('Run "minienv init" first')
+    console.error('Error: No vaulter configuration found')
+    console.error('Run "vaulter init" first')
     process.exit(1)
   }
 
@@ -252,16 +252,16 @@ async function runKeyRotate(context: KeyContext): Promise<void> {
     console.log('Key rotation steps:')
     console.log('')
     console.log('1. Generate a new key:')
-    console.log('   minienv key generate -o .minienv/.key.new')
+    console.log('   vaulter key generate -o .vaulter/.key.new')
     console.log('')
     console.log('2. Export current values (with old key):')
-    console.log('   minienv export -e <env> > vars.env')
+    console.log('   vaulter export -e <env> > vars.env')
     console.log('')
     console.log('3. Update to new key:')
-    console.log('   mv .minienv/.key.new .minienv/.key')
+    console.log('   mv .vaulter/.key.new .vaulter/.key')
     console.log('')
     console.log('4. Re-import values (with new key):')
-    console.log('   cat vars.env | minienv sync -e <env>')
+    console.log('   cat vars.env | vaulter sync -e <env>')
     console.log('')
     console.log('5. Clean up:')
     console.log('   rm vars.env')

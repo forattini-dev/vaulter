@@ -2,11 +2,11 @@
  * Secret detection utilities based on glob patterns.
  */
 
-import type { MiniEnvConfig } from '../types.js'
+import type { VaulterConfig } from '../types.js'
 import { DEFAULT_SECRET_PATTERNS } from '../types.js'
 import { compileGlobPatterns } from './pattern-matcher.js'
 
-export function getSecretPatterns(config?: MiniEnvConfig | null): string[] {
+export function getSecretPatterns(config?: VaulterConfig | null): string[] {
   const patterns = config?.security?.auto_encrypt?.patterns
   if (patterns && patterns.length > 0) {
     return patterns

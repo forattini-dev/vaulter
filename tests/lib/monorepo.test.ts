@@ -21,7 +21,7 @@ describe('monorepo', () => {
   let originalCwd: string
 
   beforeEach(() => {
-    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'minienv-monorepo-test-'))
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vaulter-monorepo-test-'))
     originalCwd = process.cwd()
   })
 
@@ -31,7 +31,7 @@ describe('monorepo', () => {
   })
 
   function createServiceConfig(servicePath: string, config: object = {}) {
-    const configDir = path.join(servicePath, '.minienv')
+    const configDir = path.join(servicePath, '.vaulter')
     fs.mkdirSync(configDir, { recursive: true })
 
     const fullConfig = {
@@ -121,12 +121,12 @@ describe('monorepo', () => {
       const services = discoverServices(tempDir)
 
       expect(services[0].path).toBe(svcDir)
-      expect(services[0].configDir).toBe(path.join(svcDir, '.minienv'))
+      expect(services[0].configDir).toBe(path.join(svcDir, '.vaulter'))
     })
 
     it('should handle directories with empty/malformed YAML (uses defaults)', () => {
       const svcDir = path.join(tempDir, 'malformed-svc')
-      const configDir = path.join(svcDir, '.minienv')
+      const configDir = path.join(svcDir, '.vaulter')
       fs.mkdirSync(configDir, { recursive: true })
       // Write YAML that parses as null (not truly "invalid" syntax)
       fs.writeFileSync(path.join(configDir, 'config.yaml'), '---\n')

@@ -1,22 +1,22 @@
 /**
- * Shared helper for creating MiniEnvClient with fallback support
+ * Shared helper for creating VaulterClient with fallback support
  */
 
 import fs from 'node:fs'
 import path from 'node:path'
-import type { CLIArgs, MiniEnvConfig } from '../../types.js'
-import { MiniEnvClient } from '../../client.js'
+import type { CLIArgs, VaulterConfig } from '../../types.js'
+import { VaulterClient } from '../../client.js'
 import { loadEncryptionKey } from '../../lib/config-loader.js'
 import { resolveBackendUrls } from '../../index.js'
 
 export interface CreateClientOptions {
   args: CLIArgs
-  config: MiniEnvConfig | null
+  config: VaulterConfig | null
   verbose?: boolean
 }
 
 /**
- * Create a MiniEnvClient with proper fallback support
+ * Create a VaulterClient with proper fallback support
  *
  * Priority:
  * 1. CLI --backend flag (single URL, no fallback)
@@ -24,7 +24,7 @@ export interface CreateClientOptions {
  * 3. Config backend.url (single URL)
  * 4. Default filesystem backend
  */
-export async function createClientFromConfig(options: CreateClientOptions): Promise<MiniEnvClient> {
+export async function createClientFromConfig(options: CreateClientOptions): Promise<VaulterClient> {
   const { args, config, verbose = false } = options
 
   // CLI backend override takes precedence (no fallback)
@@ -60,15 +60,15 @@ export async function createClientFromConfig(options: CreateClientOptions): Prom
   const hasRemoteBackend = connectionStrings.some(url => !isLocalBackend(url))
   if (!passphrase && hasRemoteBackend) {
     if (config?.security?.paranoid) {
-      throw new Error('No encryption key found. Set MINIENV_KEY or use --key.')
+      throw new Error('No encryption key found. Set VAULTER_KEY or use --key.')
     }
     console.error(
       'Warning: No encryption key found. Falling back to the default dev key. ' +
-      'Set MINIENV_KEY or use --key to avoid insecure encryption.'
+      'Set VAULTER_KEY or use --key to avoid insecure encryption.'
     )
   }
 
-  return new MiniEnvClient({
+  return new VaulterClient({
     connectionStrings: connectionStrings.length > 0 ? connectionStrings : undefined,
     passphrase: passphrase || undefined,
     verbose

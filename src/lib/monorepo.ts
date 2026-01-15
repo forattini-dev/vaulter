@@ -7,9 +7,9 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { loadConfig, findConfigDir } from './config-loader.js'
-import type { MiniEnvConfig } from '../types.js'
+import type { VaulterConfig } from '../types.js'
 
-const CONFIG_DIR = '.minienv'
+const CONFIG_DIR = '.vaulter'
 const CONFIG_FILE = 'config.yaml'
 const MAX_DEPTH = 5
 
@@ -17,12 +17,12 @@ export interface ServiceInfo {
   name: string
   path: string
   configDir: string
-  config: MiniEnvConfig
+  config: VaulterConfig
 }
 
 /**
  * Find all services in a monorepo
- * Searches for .minienv directories in subdirectories
+ * Searches for .vaulter directories in subdirectories
  */
 export function discoverServices(rootDir: string = process.cwd()): ServiceInfo[] {
   const services: ServiceInfo[] = []
@@ -46,7 +46,7 @@ export function discoverServices(rootDir: string = process.cwd()): ServiceInfo[]
 
         const subDir = path.join(absoluteDir, entry.name)
 
-        // Check if this directory has a .minienv config
+        // Check if this directory has a .vaulter config
         const configDir = path.join(subDir, CONFIG_DIR)
         const configFile = path.join(configDir, CONFIG_FILE)
 
@@ -148,7 +148,7 @@ export function findMonorepoRoot(startDir: string = process.cwd()): string | nul
   let currentDir = path.resolve(startDir)
   let rootConfigDir: string | null = null
 
-  // Walk up to find the topmost .minienv directory
+  // Walk up to find the topmost .vaulter directory
   while (true) {
     const configDir = path.join(currentDir, CONFIG_DIR)
     const configFile = path.join(configDir, CONFIG_FILE)

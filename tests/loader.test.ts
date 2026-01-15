@@ -14,7 +14,7 @@ describe('loader', () => {
   let originalEnv: NodeJS.ProcessEnv
 
   beforeEach(() => {
-    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'minienv-loader-test-'))
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vaulter-loader-test-'))
     originalCwd = process.cwd()
     originalEnv = { ...process.env }
     process.chdir(tempDir)

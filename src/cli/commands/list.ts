@@ -1,15 +1,15 @@
 /**
- * MiniEnv CLI - List Command
+ * Vaulter CLI - List Command
  *
  * List all environment variables
  */
 
-import type { CLIArgs, MiniEnvConfig, Environment, EnvVar } from '../../types.js'
+import type { CLIArgs, VaulterConfig, Environment, EnvVar } from '../../types.js'
 import { createClientFromConfig } from '../lib/create-client.js'
 
 interface ListContext {
   args: CLIArgs
-  config: MiniEnvConfig | null
+  config: VaulterConfig | null
   project: string
   service?: string
   environment: Environment
@@ -68,7 +68,7 @@ export async function runList(context: ListContext): Promise<void> {
 
   if (!project) {
     console.error('Error: Project not specified and no config found')
-    console.error('Run "minienv init" or specify --project')
+    console.error('Run "vaulter init" or specify --project')
     process.exit(1)
   }
 

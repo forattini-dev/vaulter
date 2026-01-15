@@ -1,5 +1,5 @@
 /**
- * ESBuild configuration for minienv CLI and MCP server bundling
+ * ESBuild configuration for vaulter CLI and MCP server bundling
  *
  * Creates single-file bundles that can be compiled to native binaries
  */
@@ -46,7 +46,7 @@ const commonOptions = {
 const cliConfig = {
   ...commonOptions,
   entryPoints: ['./src/cli/index.ts'],
-  outfile: './dist/bin/minienv.cjs'
+  outfile: './dist/bin/vaulter.cjs'
 }
 
 async function build() {
@@ -56,8 +56,8 @@ async function build() {
     console.log('Watching for changes...')
   } else {
     await esbuild.build(cliConfig)
-    console.log(`✓ Built minienv v${pkg.version}`)
-    console.log('  → dist/bin/minienv.cjs (CLI + MCP)')
+    console.log(`✓ Built vaulter v${pkg.version}`)
+    console.log('  → dist/bin/vaulter.cjs (CLI + MCP)')
   }
 }
 

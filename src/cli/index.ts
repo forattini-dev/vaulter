@@ -1,5 +1,5 @@
 /**
- * MiniEnv CLI
+ * Vaulter CLI
  *
  * Multi-backend environment variable and secrets manager
  */
@@ -12,7 +12,7 @@ import type { CLIArgs, Environment } from '../types.js'
 import { loadConfig, getProjectName } from '../lib/config-loader.js'
 
 // Version is injected at build time or read from package.json
-const VERSION = process.env.MINIENV_VERSION || '0.1.0'
+const VERSION = process.env.VAULTER_VERSION || '0.1.0'
 
 // CLI commands
 import { runInit } from './commands/init.js'
@@ -64,13 +64,13 @@ function parseArgs(): CLIArgs {
  */
 function showHelp(): void {
   console.log(`
-minienv - Multi-backend environment variable and secrets manager
+vaulter - Multi-backend environment variable and secrets manager
 
 Usage:
-  minienv <command> [options]
+  vaulter <command> [options]
 
 Commands:
-  init                  Initialize a new .minienv configuration
+  init                  Initialize a new .vaulter configuration
   get <key>             Get a single environment variable
   set <key> <value>     Set an environment variable
   delete <key>          Delete an environment variable
@@ -107,33 +107,33 @@ Global Options:
 
 Examples:
   # Initialize project
-  minienv init
+  vaulter init
 
   # Get a variable
-  minienv get DATABASE_URL -e prd
+  vaulter get DATABASE_URL -e prd
 
   # Set a variable
-  minienv set API_KEY "sk-..." -e prd
+  vaulter set API_KEY "sk-..." -e prd
 
   # Export for shell
-  eval $(minienv export -e dev)
+  eval $(vaulter export -e dev)
 
   # Sync local .env
-  minienv sync -f .env.local -e dev
+  vaulter sync -f .env.local -e dev
 
   # Sync all services in monorepo
-  minienv sync -e dev --all
+  vaulter sync -e dev --all
 
   # Sync specific services
-  minienv sync -e dev -s svc-auth,svc-api
+  vaulter sync -e dev -s svc-auth,svc-api
 
   # List services in monorepo
-  minienv services
+  vaulter services
 
   # Generate K8s secret
-  minienv k8s:secret -e prd | kubectl apply -f -
+  vaulter k8s:secret -e prd | kubectl apply -f -
 
-Documentation: https://github.com/tetis-io/minienv
+Documentation: https://github.com/tetis-io/vaulter
 `)
 }
 
@@ -141,7 +141,7 @@ Documentation: https://github.com/tetis-io/minienv
  * Show version
  */
 function showVersion(): void {
-  console.log(`minienv v${VERSION}`)
+  console.log(`vaulter v${VERSION}`)
 }
 
 /**
@@ -276,7 +276,7 @@ async function main(): Promise<void> {
 
       default:
         console.error(`Unknown command: ${command}`)
-        console.error('Run "minienv --help" for usage information')
+        console.error('Run "vaulter --help" for usage information')
         process.exit(1)
     }
   } catch (err) {

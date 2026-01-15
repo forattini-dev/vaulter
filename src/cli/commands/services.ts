@@ -1,16 +1,16 @@
 /**
- * MiniEnv CLI - Services Command
+ * Vaulter CLI - Services Command
  *
  * List and manage services in a monorepo
  */
 
 import path from 'node:path'
-import type { CLIArgs, MiniEnvConfig } from '../../types.js'
+import type { CLIArgs, VaulterConfig } from '../../types.js'
 import { discoverServices, findMonorepoRoot, formatServiceList } from '../../lib/monorepo.js'
 
 interface ServicesContext {
   args: CLIArgs
-  config: MiniEnvConfig | null
+  config: VaulterConfig | null
   verbose: boolean
   jsonOutput: boolean
 }
@@ -35,9 +35,9 @@ export async function runServices(context: ServicesContext): Promise<void> {
       console.error('Available subcommands: list')
       console.error('')
       console.error('Examples:')
-      console.error('  minienv services                  # List all services')
-      console.error('  minienv services list             # Same as above')
-      console.error('  minienv services list --json      # JSON output')
+      console.error('  vaulter services                  # List all services')
+      console.error('  vaulter services list             # Same as above')
+      console.error('  vaulter services list --json      # JSON output')
       process.exit(1)
   }
 }
@@ -55,11 +55,11 @@ async function runServicesList(context: ServicesContext): Promise<void> {
     if (jsonOutput) {
       console.log(JSON.stringify({
         error: 'not_in_monorepo',
-        message: 'Not inside a minienv project'
+        message: 'Not inside a vaulter project'
       }))
     } else {
-      console.error('Not inside a minienv project')
-      console.error('Run "minienv init" first')
+      console.error('Not inside a vaulter project')
+      console.error('Run "vaulter init" first')
     }
     process.exit(1)
   }
@@ -83,7 +83,7 @@ async function runServicesList(context: ServicesContext): Promise<void> {
     if (services.length === 0) {
       console.log('No services found')
       console.log('')
-      console.log('This might be a single-project setup (no nested .minienv directories)')
+      console.log('This might be a single-project setup (no nested .vaulter directories)')
     } else {
       console.log(`Found ${services.length} service(s) in monorepo:`)
       console.log('')
