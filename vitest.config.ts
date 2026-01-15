@@ -8,13 +8,17 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],
+      include: ['src/**/*.ts'],
       exclude: [
         'node_modules/**',
         'dist/**',
         'releases/**',
         '**/*.d.ts',
         'vitest.config.ts',
-        'esbuild.config.js'
+        'esbuild.config.js',
+        'src/cli/**',
+        'src/mcp/**',
+        'src/load.ts'
       ]
     },
     testTimeout: 10000

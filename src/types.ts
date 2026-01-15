@@ -225,6 +225,9 @@ export interface SyncResult {
     localValue: string
     remoteValue: string
   }>
+  localAdded?: string[]
+  localUpdated?: string[]
+  localDeleted?: string[]
 }
 
 // ============================================================================

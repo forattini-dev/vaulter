@@ -35,7 +35,7 @@ minienv k8s:secret -e prd | kubectl apply -f -
 
 [![npm version](https://img.shields.io/npm/v/minienv.svg?style=flat-square&color=F5A623)](https://www.npmjs.com/package/minienv)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0+-3178C6?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![Node.js](https://img.shields.io/badge/Node.js-18+-339933?style=flat-square&logo=node.js&logoColor=white)](https://nodejs.org/)
+[![Node.js](https://img.shields.io/badge/Node.js-22+-339933?style=flat-square&logo=node.js&logoColor=white)](https://nodejs.org/)
 [![License](https://img.shields.io/npm/l/minienv.svg?style=flat-square&color=007AFF)](https://github.com/forattini-dev/minienv/blob/main/LICENSE)
 
 Store secrets anywhere: AWS S3, MinIO, R2, Spaces, B2, or local filesystem.
@@ -150,7 +150,7 @@ loader({ path: '.env.local', override: true })
 
 | Command | Description | Example |
 |:--------|:------------|:--------|
-| `sync` | Bidirectional sync | `minienv sync -f .env.local -e dev` |
+| `sync` | Merge local .env and backend | `minienv sync -f .env.local -e dev` |
 | `pull` | Download to .env | `minienv pull -e prd -o .env.prd` |
 | `push` | Upload from .env | `minienv push -f .env.local -e dev` |
 
@@ -179,6 +179,7 @@ loader({ path: '.env.local', override: true })
 -s, --service <name>    Service name (monorepos)
 -e, --env <env>         Environment: dev, stg, prd, sbx, dr
 -b, --backend <url>     Backend URL override
+-k, --key <path|value>  Encryption key file path or raw key
 -v, --verbose           Verbose output
 --all                   All services (monorepo batch)
 --dry-run               Preview without applying
@@ -218,6 +219,34 @@ environments:
   - prd
 
 default_environment: dev
+```
+
+### Sync Settings
+
+Sync merges local and remote variables. Conflicts are resolved by `sync.conflict`.
+
+```yaml
+sync:
+  conflict: local   # local | remote | prompt | error
+  ignore:
+    - "PUBLIC_*"
+  required:
+    dev:
+      - DATABASE_URL
+```
+
+Notes:
+- `prompt` and `error` will stop the sync if conflicts are detected.
+- When reading from stdin, sync only updates the backend (local file is not changed).
+
+### Hooks
+
+```yaml
+hooks:
+  pre_sync: "echo pre sync"
+  post_sync: "echo post sync"
+  pre_pull: "echo pre pull"
+  post_pull: "echo post pull"
 ```
 
 ### Environment Variable Expansion
@@ -272,6 +301,26 @@ minienv key generate -o .minienv/.key
 # 3. Remote S3 (production)
 # Configured in config.yaml
 ```
+
+You can also pass a key directly:
+
+```bash
+minienv list -e prd --key .minienv/.key
+```
+
+### Security Settings
+
+```yaml
+security:
+  paranoid: true  # Fail if no encryption key is found
+  auto_encrypt:
+    patterns:
+      - "*_KEY"
+      - "*_SECRET"
+      - "DATABASE_URL"
+```
+
+`auto_encrypt.patterns` is used to classify secrets for integrations (K8s/Helm).
 
 ## Monorepo Support
 

@@ -8,6 +8,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import type { CLIArgs, MiniEnvConfig, Environment } from '../../types.js'
 import { createClientFromConfig } from '../lib/create-client.js'
+import { runHook } from '../lib/hooks.js'
 import { findConfigDir, getEnvFilePath } from '../../lib/config-loader.js'
 import { serializeEnv } from '../../lib/env-parser.js'
 
@@ -55,6 +56,10 @@ export async function runPull(context: PullContext): Promise<void> {
     } else {
       console.error('Output: stdout')
     }
+  }
+
+  if (!dryRun) {
+    runHook(config?.hooks?.pre_pull, 'pre_pull', verbose)
   }
 
   const client = await createClientFromConfig({ args, config, verbose })
@@ -134,6 +139,8 @@ export async function runPull(context: PullContext): Promise<void> {
       } else {
         console.log(`✓ Pulled ${varCount} variables to ${envFilePath}`)
       }
+
+      runHook(config?.hooks?.post_pull, 'post_pull', verbose)
     } else {
       // Output to stdout
       if (jsonOutput) {
@@ -147,6 +154,8 @@ export async function runPull(context: PullContext): Promise<void> {
       } else {
         console.log(envContent)
       }
+
+      runHook(config?.hooks?.post_pull, 'post_pull', verbose)
     }
   } finally {
     await client.disconnect()

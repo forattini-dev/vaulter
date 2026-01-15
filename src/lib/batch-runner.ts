@@ -4,6 +4,7 @@
  * Execute operations across multiple services in a monorepo
  */
 
+import pLimit from 'p-limit'
 import type { ServiceInfo } from './monorepo.js'
 import type { Environment } from '../types.js'
 
@@ -52,13 +53,9 @@ export async function runBatch<T>(
   let successful = 0
   let failed = 0
 
-  // Simple sequential execution for now (concurrency = 1)
-  // TODO: Add parallel execution with p-limit
-  for (let i = 0; i < services.length; i++) {
-    const service = services[i]
-
+  const runOperation = async (service: ServiceInfo, index: number): Promise<void> => {
     if (onProgress) {
-      onProgress(i, services.length, service)
+      onProgress(index, services.length, service)
     }
 
     const startTime = Date.now()
@@ -86,11 +83,33 @@ export async function runBatch<T>(
       })
 
       failed++
+    }
+  }
 
-      if (stopOnError) {
+  if (concurrency <= 1) {
+    for (let i = 0; i < services.length; i++) {
+      await runOperation(services[i], i)
+      if (stopOnError && failed > 0) {
         break
       }
     }
+  } else {
+    const limit = pLimit(concurrency)
+    let hasError = false
+
+    await Promise.all(
+      services.map((service, index) =>
+        limit(async () => {
+          if (stopOnError && hasError) {
+            return
+          }
+          await runOperation(service, index)
+          if (stopOnError && failed > 0) {
+            hasError = true
+          }
+        })
+      )
+    )
   }
 
   return {

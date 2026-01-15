@@ -9,7 +9,7 @@ import './preload.js'
 
 import minimist from 'minimist'
 import type { CLIArgs, Environment } from '../types.js'
-import { loadConfig, findConfigDir, getProjectName } from '../lib/config-loader.js'
+import { loadConfig, getProjectName } from '../lib/config-loader.js'
 
 // Version is injected at build time or read from package.json
 const VERSION = process.env.MINIENV_VERSION || '0.1.0'
@@ -76,7 +76,7 @@ Commands:
   delete <key>          Delete an environment variable
   list                  List all environment variables
   export                Export variables for shell evaluation
-  sync                  Sync local .env file with backend
+  sync                  Merge local .env file with backend
   pull                  Pull variables from backend to local .env
   push                  Push local .env to backend
   key generate          Generate a new encryption key
@@ -96,7 +96,7 @@ Global Options:
   -s, --service <name>  Service name (for monorepos, supports comma-separated)
   -e, --env <env>       Environment (dev/stg/prd/sbx/dr)
   -b, --backend <url>   Backend URL override
-  -k, --key <path>      Encryption key path
+  -k, --key <path>      Encryption key path or raw key
   -v, --verbose         Enable verbose output
   --all                 Apply to all services in monorepo
   --dry-run             Show what would be done without making changes

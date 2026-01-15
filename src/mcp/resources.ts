@@ -87,14 +87,6 @@ export async function listResources(): Promise<Resource[]> {
 }
 
 /**
- * Register resource templates
- */
-export function registerResources(): Resource[] {
-  // Dynamic resources are listed via listResources
-  return []
-}
-
-/**
  * Read a resource by URI
  */
 export async function handleResourceRead(uri: string): Promise<{ contents: Array<{ uri: string; mimeType: string; text: string }> }> {

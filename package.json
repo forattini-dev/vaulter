@@ -94,13 +94,10 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.25.2",
-    "bcrypt": "^6.0.0",
     "dotenv": "^17.2.3",
     "minimist": "^1.2.8",
     "p-limit": "^6.2.0",
     "s3db.js": "^19.2.4",
-    "tuiuiu.js": "^1.0.50",
-    "ws": "^8.19.0",
     "yaml": "^2.7.1"
   },
   "devDependencies": {
