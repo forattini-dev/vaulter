@@ -8,11 +8,11 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import type { CLIArgs, MiniEnvConfig, Environment, SyncResult } from '../../types.js'
-import { MiniEnvClient } from '../../client.js'
-import { loadEncryptionKey, findConfigDir, getEnvFilePath } from '../../lib/config-loader.js'
-import { parseEnvFile, parseEnvString, serializeEnv, hasStdinData, parseEnvFromStdin } from '../../lib/env-parser.js'
+import { createClientFromConfig } from '../lib/create-client.js'
+import { findConfigDir, getEnvFilePath } from '../../lib/config-loader.js'
+import { parseEnvFile, hasStdinData, parseEnvFromStdin } from '../../lib/env-parser.js'
 import { discoverServices, filterServices, findMonorepoRoot, formatServiceList, type ServiceInfo } from '../../lib/monorepo.js'
-import { runBatch, formatBatchResult, formatBatchResultJson, type BatchResult } from '../../lib/batch-runner.js'
+import { runBatch, formatBatchResult, formatBatchResultJson } from '../../lib/batch-runner.js'
 
 interface SyncContext {
   args: CLIArgs
@@ -86,14 +86,7 @@ async function syncSingleService(
     console.error(`Found ${Object.keys(localVars).length} local variables`)
   }
 
-  // Build connection string
-  const connectionString = args.backend || args.b || effectiveConfig?.backend?.url
-  const passphrase = effectiveConfig ? await loadEncryptionKey(effectiveConfig) : undefined
-
-  const client = new MiniEnvClient({
-    connectionString: connectionString || undefined,
-    passphrase: passphrase || undefined
-  })
+  const client = await createClientFromConfig({ args, config: effectiveConfig, verbose })
 
   try {
     await client.connect()

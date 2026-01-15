@@ -5,8 +5,7 @@
  */
 
 import type { CLIArgs, MiniEnvConfig, Environment } from '../../../types.js'
-import { MiniEnvClient } from '../../../client.js'
-import { loadEncryptionKey } from '../../../lib/config-loader.js'
+import { createClientFromConfig } from '../../lib/create-client.js'
 
 interface K8sContext {
   args: CLIArgs
@@ -59,14 +58,7 @@ export async function runK8sSecret(context: K8sContext): Promise<void> {
     console.error(`Generating K8s Secret: ${namespace}/${secretName}`)
   }
 
-  // Build connection string
-  const connectionString = args.backend || args.b || config?.backend?.url
-  const passphrase = config ? await loadEncryptionKey(config) : undefined
-
-  const client = new MiniEnvClient({
-    connectionString: connectionString || undefined,
-    passphrase: passphrase || undefined
-  })
+  const client = await createClientFromConfig({ args, config, verbose })
 
   try {
     await client.connect()
@@ -129,14 +121,7 @@ export async function runK8sConfigMap(context: K8sContext): Promise<void> {
     console.error(`Generating K8s ConfigMap: ${namespace}/${configMapName}`)
   }
 
-  // Build connection string
-  const connectionString = args.backend || args.b || config?.backend?.url
-  const passphrase = config ? await loadEncryptionKey(config) : undefined
-
-  const client = new MiniEnvClient({
-    connectionString: connectionString || undefined,
-    passphrase: passphrase || undefined
-  })
+  const client = await createClientFromConfig({ args, config, verbose })
 
   try {
     await client.connect()

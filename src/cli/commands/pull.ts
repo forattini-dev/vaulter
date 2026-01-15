@@ -7,8 +7,8 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import type { CLIArgs, MiniEnvConfig, Environment } from '../../types.js'
-import { MiniEnvClient } from '../../client.js'
-import { loadEncryptionKey, findConfigDir, getEnvFilePath } from '../../lib/config-loader.js'
+import { createClientFromConfig } from '../lib/create-client.js'
+import { findConfigDir, getEnvFilePath } from '../../lib/config-loader.js'
 import { serializeEnv } from '../../lib/env-parser.js'
 
 interface PullContext {
@@ -57,14 +57,7 @@ export async function runPull(context: PullContext): Promise<void> {
     }
   }
 
-  // Build connection string
-  const connectionString = args.backend || args.b || config?.backend?.url
-  const passphrase = config ? await loadEncryptionKey(config) : undefined
-
-  const client = new MiniEnvClient({
-    connectionString: connectionString || undefined,
-    passphrase: passphrase || undefined
-  })
+  const client = await createClientFromConfig({ args, config, verbose })
 
   try {
     await client.connect()

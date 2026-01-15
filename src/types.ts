@@ -57,7 +57,10 @@ export interface EnvVarInput {
 // ============================================================================
 
 export interface BackendConfig {
-  url: string
+  /** Single backend URL */
+  url?: string
+  /** Multiple backend URLs with fallback (tries in order) */
+  urls?: string[]
 }
 
 export interface KeySourceEnv {
@@ -192,9 +195,16 @@ export interface CommandContext {
 // ============================================================================
 
 export interface MiniEnvClientOptions {
+  /** Single connection string */
   connectionString?: string
+  /** Multiple connection strings with fallback (tries in order) */
+  connectionStrings?: string[]
+  /** Encryption passphrase */
   passphrase?: string
+  /** Full config object */
   config?: MiniEnvConfig
+  /** Enable verbose logging */
+  verbose?: boolean
 }
 
 export interface ListOptions {

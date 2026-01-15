@@ -25,66 +25,124 @@ const DEFAULT_PASSPHRASE = 'minienv-default-dev-key'
 export class MiniEnvClient {
   private db: S3db | null = null
   private resource: any = null
-  private connectionString: string
+  private connectionStrings: string[]
+  private activeConnectionString: string | null = null
   private passphrase: string
   private initialized = false
+  private verbose: boolean
 
   constructor(options: MiniEnvClientOptions = {}) {
-    this.connectionString = options.connectionString || DEFAULT_CONNECTION_STRING
+    // Support single connectionString or array of connectionStrings
+    if (options.connectionStrings && options.connectionStrings.length > 0) {
+      this.connectionStrings = options.connectionStrings
+    } else if (options.connectionString) {
+      this.connectionStrings = [options.connectionString]
+    } else {
+      this.connectionStrings = [DEFAULT_CONNECTION_STRING]
+    }
     this.passphrase = options.passphrase || DEFAULT_PASSPHRASE
+    this.verbose = options.verbose || false
   }
 
   /**
    * Initialize the client and connect to the storage backend
+   * Tries each URL in order until one succeeds (fallback support)
    */
   async connect(): Promise<void> {
     if (this.initialized) return
 
-    this.db = new S3db({
-      connectionString: this.connectionString,
-      passphrase: this.passphrase
-    })
+    const errors: Array<{ url: string; error: Error }> = []
 
-    await this.db.connect()
-
-    // Create or get the environment-variables resource
-    this.resource = await this.db.createResource({
-      name: 'environment-variables',
-
-      attributes: {
-        key: 'string|required',
-        value: 'secret|required', // Auto-encrypted with AES-256-GCM
-        project: 'string|required',
-        service: 'string|optional',
-        environment: 'enum:dev,stg,prd,sbx,dr|required',
-        tags: 'array|items:string|optional',
-        metadata: {
-          description: 'string|optional',
-          owner: 'string|optional',
-          rotateAfter: 'date|optional',
-          source: 'enum:manual,sync,import|optional'
+    for (const connectionString of this.connectionStrings) {
+      try {
+        if (this.verbose) {
+          console.error(`[minienv] Trying backend: ${this.maskCredentials(connectionString)}`)
         }
-      },
 
-      // Partitions for O(1) queries
-      partitions: {
-        byProject: {
-          fields: { project: 'string' }
-        },
-        byProjectEnv: {
-          fields: { project: 'string', environment: 'string' }
-        },
-        byProjectServiceEnv: {
-          fields: { project: 'string', service: 'string', environment: 'string' }
+        this.db = new S3db({
+          connectionString,
+          passphrase: this.passphrase
+        })
+
+        await this.db.connect()
+
+        // Create or get the environment-variables resource
+        this.resource = await this.db.createResource({
+          name: 'environment-variables',
+
+          attributes: {
+            key: 'string|required',
+            value: 'secret|required', // Auto-encrypted with AES-256-GCM
+            project: 'string|required',
+            service: 'string|optional',
+            environment: 'enum:dev,stg,prd,sbx,dr|required',
+            tags: 'array|items:string|optional',
+            metadata: {
+              description: 'string|optional',
+              owner: 'string|optional',
+              rotateAfter: 'date|optional',
+              source: 'enum:manual,sync,import|optional'
+            }
+          },
+
+          // Partitions for O(1) queries
+          partitions: {
+            byProject: {
+              fields: { project: 'string' }
+            },
+            byProjectEnv: {
+              fields: { project: 'string', environment: 'string' }
+            },
+            byProjectServiceEnv: {
+              fields: { project: 'string', service: 'string', environment: 'string' }
+            }
+          },
+
+          behavior: 'body-overflow', // Handle large values
+          timestamps: true,
+          asyncPartitions: true // Faster writes
+        })
+
+        // Success! Store the active connection string
+        this.activeConnectionString = connectionString
+        this.initialized = true
+
+        if (this.verbose) {
+          console.error(`[minienv] Connected to: ${this.maskCredentials(connectionString)}`)
         }
-      },
 
-      behavior: 'body-overflow', // Handle large values
-      timestamps: true,
-      asyncPartitions: true // Faster writes
-    })
+        return // Exit on first successful connection
 
-    this.initialized = true
+      } catch (err) {
+        errors.push({ url: connectionString, error: err as Error })
+
+        if (this.verbose) {
+          console.error(`[minienv] Failed to connect to ${this.maskCredentials(connectionString)}: ${(err as Error).message}`)
+        }
+
+        // Clean up failed connection
+        if (this.db) {
+          try {
+            await this.db.disconnect()
+          } catch {
+            // Ignore disconnect errors
+          }
+          this.db = null
+        }
+      }
+    }
+
+    // All backends failed
+    const errorMessages = errors.map(e => `  - ${this.maskCredentials(e.url)}: ${e.error.message}`).join('\n')
+    throw new Error(`Failed to connect to any backend:\n${errorMessages}`)
+  }
+
+  /**
+   * Mask credentials in connection string for logging
+   */
+  private maskCredentials(url: string): string {
+    // Mask password in URLs like s3://key:secret@bucket or http://user:pass@host
+    return url.replace(/:([^:@/]+)@/, ':***@')
   }
 
   /**
@@ -348,10 +406,17 @@ export class MiniEnvClient {
   }
 
   /**
-   * Get the connection string
+   * Get the active connection string (the one that succeeded)
    */
   getConnectionString(): string {
-    return this.connectionString
+    return this.activeConnectionString || this.connectionStrings[0]
+  }
+
+  /**
+   * Get all configured connection strings
+   */
+  getConnectionStrings(): string[] {
+    return this.connectionStrings
   }
 }
 
