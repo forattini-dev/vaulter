@@ -352,6 +352,9 @@ backend:
   # AWS S3 (uses AWS credential chain - no creds in URL)
   # url: s3://bucket/envs?region=us-east-1
 
+  # AWS S3 with specific profile (from ~/.aws/credentials)
+  # url: s3://bucket/envs?region=us-east-1&profile=\${AWS_PROFILE:-default}
+
   # S3 with explicit credentials from env vars
   # url: s3://\${AWS_ACCESS_KEY_ID}:\${AWS_SECRET_ACCESS_KEY}@bucket/envs?region=us-east-1
 

@@ -131,6 +131,9 @@ backend:
   # AWS S3 (uses AWS credential chain - recommended)
   url: s3://my-bucket/envs?region=us-east-1
 
+  # AWS S3 with specific profile
+  # url: s3://bucket/envs?region=us-east-1&profile=${AWS_PROFILE:-default}
+
   # S3 with explicit credentials from env vars
   # url: s3://${AWS_ACCESS_KEY_ID}:${AWS_SECRET_ACCESS_KEY}@bucket/envs
 
@@ -192,6 +195,12 @@ minienv supports multiple storage backends via connection URLs:
 ```bash
 # Uses AWS credential chain (recommended)
 s3://bucket-name/path?region=us-east-1
+
+# With specific AWS profile
+s3://bucket-name/path?region=us-east-1&profile=myprofile
+
+# Or set AWS_PROFILE environment variable
+AWS_PROFILE=myprofile minienv list -e prd
 
 # With explicit credentials (use env vars!)
 s3://${AWS_ACCESS_KEY_ID}:${AWS_SECRET_ACCESS_KEY}@bucket/path?region=us-east-1
