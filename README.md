@@ -61,6 +61,7 @@ MCP server for Claude AI. Zero config for dev, production-ready.
 | **Monorepo** | Service discovery, batch operations, config inheritance |
 | **MCP Server** | Claude AI integration via Model Context Protocol |
 | **Unix Pipes** | Full stdin/stdout support for scripting |
+| **Dotenv** | Drop-in compatible: `import 'minienv/load'` |
 
 ## Highlights
 
@@ -117,6 +118,19 @@ minienv mcp
     }
   }
 }
+```
+
+### Dotenv Compatible
+
+Drop-in replacement for dotenv - works with your existing setup:
+
+```typescript
+// Auto-load .env into process.env
+import 'minienv/load'
+
+// Or programmatically with options
+import { loader } from 'minienv'
+loader({ path: '.env.local', override: true })
 ```
 
 ## Commands
