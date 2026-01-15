@@ -125,25 +125,28 @@ project: my-project
 service: api  # optional, for monorepos
 
 backend:
-  # AWS S3
+  # SECURITY: Use environment variables for credentials!
+  # Supports: ${VAR}, ${VAR:-default}, $VAR
+
+  # AWS S3 (uses AWS credential chain - recommended)
   url: s3://my-bucket/envs?region=us-east-1
 
-  # MinIO
-  # url: http://minioadmin:minioadmin@localhost:9000/envs
+  # S3 with explicit credentials from env vars
+  # url: s3://${AWS_ACCESS_KEY_ID}:${AWS_SECRET_ACCESS_KEY}@bucket/envs
 
-  # Cloudflare R2
-  # url: https://KEY:SECRET@ACCOUNT.r2.cloudflarestorage.com/envs
+  # Or use a single env var for the whole URL
+  # url: ${MINIENV_BACKEND_URL}
+
+  # MinIO with env vars
+  # url: http://${MINIO_ACCESS_KEY}:${MINIO_SECRET_KEY}@localhost:9000/envs
 
   # Local filesystem (development)
   # url: file:///home/user/.minienv-store
 
-  # In-memory (testing)
-  # url: memory://test
-
 encryption:
   key_source:
     - env: MINIENV_KEY           # 1. Environment variable
-    - file: .minienv/.key        # 2. Local file
+    - file: .minienv/.key        # 2. Local file (gitignored)
     - s3: s3://keys/minienv.key  # 3. Remote S3
 
 environments:
@@ -159,32 +162,60 @@ default_environment: dev
 # extends: ../../.minienv/config.yaml
 ```
 
+### Local Config Override (config.local.yaml)
+
+For credentials that should **never be committed**, create `.minienv/config.local.yaml`:
+
+```yaml
+# .minienv/config.local.yaml (gitignored)
+backend:
+  url: s3://my-real-key:my-real-secret@bucket/envs?region=us-east-1
+```
+
+This file is automatically merged with `config.yaml` and should be in your `.gitignore`.
+
+### Environment Variable Expansion
+
+All config values support environment variable expansion:
+
+| Syntax | Description | Example |
+|--------|-------------|---------|
+| `${VAR}` | Expand variable | `${AWS_ACCESS_KEY_ID}` |
+| `${VAR:-default}` | With default value | `${REGION:-us-east-1}` |
+| `$VAR` | Simple expansion | `$HOME/.minienv` |
+
 ## Backend URLs
 
 minienv supports multiple storage backends via connection URLs:
 
 ### AWS S3
-```
+```bash
+# Uses AWS credential chain (recommended)
 s3://bucket-name/path?region=us-east-1
-s3://ACCESS_KEY:SECRET_KEY@bucket-name/path?region=us-east-1
+
+# With explicit credentials (use env vars!)
+s3://${AWS_ACCESS_KEY_ID}:${AWS_SECRET_ACCESS_KEY}@bucket/path?region=us-east-1
 ```
 
 ### MinIO / S3-Compatible
-```
-http://ACCESS_KEY:SECRET_KEY@localhost:9000/bucket
-https://ACCESS_KEY:SECRET_KEY@minio.example.com/bucket
+```bash
+# Use env vars for credentials
+http://${MINIO_ACCESS_KEY}:${MINIO_SECRET_KEY}@localhost:9000/bucket
+https://${MINIO_ACCESS_KEY}:${MINIO_SECRET_KEY}@minio.example.com/bucket
 ```
 
 ### Cloudflare R2
-```
-https://ACCESS_KEY:SECRET_KEY@ACCOUNT_ID.r2.cloudflarestorage.com/bucket
+```bash
+https://${R2_ACCESS_KEY}:${R2_SECRET_KEY}@${R2_ACCOUNT_ID}.r2.cloudflarestorage.com/bucket
 ```
 
 ### Local Development
-```
+```bash
 file:///path/to/storage    # FileSystem backend
 memory://bucket-name       # In-memory (testing)
 ```
+
+> **Security Note:** Never hardcode credentials in config files. Use environment variables or `config.local.yaml` (gitignored).
 
 ## Encryption
 
@@ -410,11 +441,24 @@ const vars = await client.list({
 
 ## Security Best Practices
 
-1. **Never commit encryption keys** - Add `.minienv/.key` to `.gitignore`
-2. **Use environment variables in CI/CD** - Set `MINIENV_KEY` as a secret
-3. **Rotate keys periodically** - Use `minienv key generate` and re-encrypt
-4. **Separate keys per environment** - Use different keys for dev/stg/prd
-5. **Restrict S3 bucket access** - Use IAM policies to limit who can read secrets
+1. **Never commit credentials** - Use `config.local.yaml` (gitignored) or environment variables
+2. **Never commit encryption keys** - Add `.minienv/.key` to `.gitignore`
+3. **Use env var expansion** - Reference `${AWS_ACCESS_KEY_ID}` instead of hardcoding
+4. **Use environment variables in CI/CD** - Set `MINIENV_KEY` and backend credentials as secrets
+5. **For AWS, use credential chain** - No credentials in URL, use IAM roles or `~/.aws/credentials`
+6. **Rotate keys periodically** - Use `minienv key generate` and re-encrypt
+7. **Separate keys per environment** - Use different keys for dev/stg/prd
+8. **Restrict S3 bucket access** - Use IAM policies to limit who can read secrets
+
+### Files to .gitignore
+
+```gitignore
+.minienv/.key
+.minienv/config.local.yaml
+**/config.local.yaml
+.env
+.env.*
+```
 
 ## Comparison
 
