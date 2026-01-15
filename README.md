@@ -1,392 +1,112 @@
-# minienv
+<div align="center">
 
-> Multi-backend environment variable and secrets manager with AES-256-GCM encryption
+# 🔐 minienv
 
-[![npm version](https://img.shields.io/npm/v/minienv.svg)](https://www.npmjs.com/package/minienv)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+### Multi-Backend Environment & Secrets Manager
 
-**minienv** is a powerful CLI tool for managing environment variables and secrets across multiple storage backends. It provides seamless encryption, multi-environment support, and native integrations with Kubernetes, Helm, and Terraform.
+**One CLI to manage all your environment variables.**
 
-## Features
-
-- **Multi-Backend Storage** - AWS S3, MinIO, Cloudflare R2, DigitalOcean Spaces, Backblaze B2, FileSystem, Memory
-- **AES-256-GCM Encryption** - All secrets encrypted at rest with industry-standard encryption
-- **Multi-Environment** - Built-in support for dev, stg, prd, sbx, dr environments
-- **Native Integrations** - Generate Kubernetes Secrets, Helm values, Terraform tfvars
-- **Monorepo Support** - Service discovery and batch operations across multiple services
-- **Unix-Friendly** - Full stdin/stdout support for piping
-- **MCP Server** - Claude AI integration via Model Context Protocol
-
-## Installation
-
-```bash
-# Using npm
-npm install -g minienv
-
-# Using pnpm
-pnpm add -g minienv
-
-# Or run directly with npx
-npx minienv --help
-```
-
-### Pre-built Binaries
-
-Download pre-built binaries from [Releases](https://github.com/forattini-dev/minienv/releases):
-
-- `minienv-linux` (x64)
-- `minienv-linux-arm64`
-- `minienv-macos` (x64)
-- `minienv-macos-arm64`
-- `minienv-win.exe`
+</div>
 
 ## Quick Start
 
 ```bash
-# 1. Initialize a new project
+npm install -g minienv
+```
+
+```bash
+# Initialize project
 minienv init
 
-# 2. Set some variables
+# Set some secrets
 minienv set DATABASE_URL "postgres://localhost/mydb" -e dev
 minienv set API_KEY "sk-secret-key" -e dev
 
-# 3. List variables
-minienv list -e dev
-
-# 4. Export to shell
+# Export to shell
 eval $(minienv export -e dev)
 
-# 5. Use in your app
-echo $DATABASE_URL
+# Deploy to Kubernetes
+minienv k8s:secret -e prd | kubectl apply -f -
 ```
 
-## Commands
+---
 
-### Core Commands
+<div align="center">
 
-| Command | Description | Example |
-|---------|-------------|---------|
-| `init` | Initialize .minienv configuration | `minienv init` |
-| `get <key>` | Get a single variable | `minienv get DATABASE_URL -e prd` |
-| `set <key> <value>` | Set a variable | `minienv set API_KEY "sk-..." -e prd` |
-| `delete <key>` | Delete a variable | `minienv delete OLD_KEY -e dev` |
-| `list` | List all variables | `minienv list -e prd` |
-| `export` | Export for shell evaluation | `eval $(minienv export -e dev)` |
+[![npm version](https://img.shields.io/npm/v/minienv.svg?style=flat-square&color=F5A623)](https://www.npmjs.com/package/minienv)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.0+-3178C6?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![Node.js](https://img.shields.io/badge/Node.js-18+-339933?style=flat-square&logo=node.js&logoColor=white)](https://nodejs.org/)
+[![License](https://img.shields.io/npm/l/minienv.svg?style=flat-square&color=007AFF)](https://github.com/forattini-dev/minienv/blob/main/LICENSE)
 
-### Sync Commands
+Store secrets anywhere: AWS S3, MinIO, R2, Spaces, B2, or local filesystem.
+<br>
+AES-256-GCM encryption. Native K8s, Helm & Terraform integration.
+<br>
+MCP server for Claude AI. Zero config for dev, production-ready.
 
-| Command | Description | Example |
-|---------|-------------|---------|
-| `sync` | Bidirectional sync with .env file | `minienv sync -f .env.local -e dev` |
-| `pull` | Download from backend to .env | `minienv pull -e prd -o .env.prd` |
-| `push` | Upload .env to backend | `minienv push -f .env.local -e dev` |
+[📖 Documentation](#configuration) · [🔧 CLI](#commands) · [🚀 Highlights](#highlights)
 
-### Integration Commands
+</div>
 
-| Command | Description | Example |
-|---------|-------------|---------|
-| `k8s:secret` | Generate Kubernetes Secret YAML | `minienv k8s:secret -e prd \| kubectl apply -f -` |
-| `k8s:configmap` | Generate Kubernetes ConfigMap | `minienv k8s:configmap -e prd` |
-| `helm:values` | Generate Helm values.yaml | `minienv helm:values -e prd` |
-| `tf:vars` | Generate Terraform .tfvars | `minienv tf:vars -e prd > terraform.tfvars` |
-| `tf:json` | Generate Terraform JSON | `minienv tf:json -e prd` |
+---
 
-### Utility Commands
+## What's Inside
 
-| Command | Description | Example |
-|---------|-------------|---------|
-| `key generate` | Generate encryption key | `minienv key generate` |
-| `services` | List services in monorepo | `minienv services` |
-| `mcp` | Start MCP server for Claude | `minienv mcp` |
+| Category | Features |
+|:---------|:---------|
+| **Backends** | AWS S3, MinIO, Cloudflare R2, DigitalOcean Spaces, Backblaze B2, FileSystem, Memory |
+| **Encryption** | AES-256-GCM via s3db.js, field-level encryption, key rotation |
+| **Environments** | dev, stg, prd, sbx, dr (fully customizable) |
+| **Integrations** | Kubernetes Secret/ConfigMap, Helm values.yaml, Terraform tfvars |
+| **Monorepo** | Service discovery, batch operations, config inheritance |
+| **MCP Server** | Claude AI integration via Model Context Protocol |
+| **Unix Pipes** | Full stdin/stdout support for scripting |
 
-## Global Options
+## Highlights
 
-```
--p, --project <name>    Project name (default: from config)
--s, --service <name>    Service name (for monorepos)
--e, --env <env>         Environment: dev, stg, prd, sbx, dr
--b, --backend <url>     Backend URL override
--k, --key <path>        Encryption key path
--v, --verbose           Enable verbose output
---all                   Apply to all services (monorepo)
---dry-run               Preview changes without applying
---json                  Output in JSON format
---no-color              Disable colored output
-```
+### Multi-Backend with Fallback
 
-## Configuration
-
-minienv uses a `.minienv/config.yaml` file for project configuration:
-
-```yaml
-version: "1"
-
-project: my-project
-service: api  # optional, for monorepos
-
-backend:
-  # SECURITY: Use environment variables for credentials!
-  # Supports: ${VAR}, ${VAR:-default}, $VAR
-
-  # Single backend URL
-  url: s3://my-bucket/envs?region=us-east-1
-
-  # Or multiple URLs with fallback (tries in order until one succeeds)
-  # urls:
-  #   - s3://my-bucket/envs?region=us-east-1     # Primary (CI/CD)
-  #   - file:///home/user/.minienv-store         # Fallback (local dev)
-
-  # AWS S3 (uses AWS credential chain - recommended)
-  # url: s3://my-bucket/envs?region=us-east-1
-
-  # AWS S3 with specific profile
-  # url: s3://bucket/envs?region=us-east-1&profile=${AWS_PROFILE:-default}
-
-  # S3 with explicit credentials from env vars
-  # url: s3://${AWS_ACCESS_KEY_ID}:${AWS_SECRET_ACCESS_KEY}@bucket/envs
-
-  # Or use a single env var for the whole URL
-  # url: ${MINIENV_BACKEND_URL}
-
-  # MinIO with env vars
-  # url: http://${MINIO_ACCESS_KEY}:${MINIO_SECRET_KEY}@localhost:9000/envs
-
-  # Local filesystem (development)
-  # url: file:///home/user/.minienv-store
-
-encryption:
-  key_source:
-    - env: MINIENV_KEY           # 1. Environment variable
-    - file: .minienv/.key        # 2. Local file (gitignored)
-    - s3: s3://keys/minienv.key  # 3. Remote S3
-
-environments:
-  - dev
-  - stg
-  - prd
-  - sbx
-  - dr
-
-default_environment: dev
-
-# For monorepos - inherit from parent config
-# extends: ../../.minienv/config.yaml
-```
-
-### Local Config Override (config.local.yaml)
-
-For credentials that should **never be committed**, create `.minienv/config.local.yaml`:
-
-```yaml
-# .minienv/config.local.yaml (gitignored)
-backend:
-  url: s3://my-real-key:my-real-secret@bucket/envs?region=us-east-1
-```
-
-This file is automatically merged with `config.yaml` and should be in your `.gitignore`.
-
-### Environment Variable Expansion
-
-All config values support environment variable expansion:
-
-| Syntax | Description | Example |
-|--------|-------------|---------|
-| `${VAR}` | Expand variable | `${AWS_ACCESS_KEY_ID}` |
-| `${VAR:-default}` | With default value | `${REGION:-us-east-1}` |
-| `$VAR` | Simple expansion | `$HOME/.minienv` |
-
-## Backend URLs
-
-minienv supports multiple storage backends via connection URLs:
-
-### AWS S3
-```bash
-# Uses AWS credential chain (recommended)
-s3://bucket-name/path?region=us-east-1
-
-# With specific AWS profile
-s3://bucket-name/path?region=us-east-1&profile=myprofile
-
-# Or set AWS_PROFILE environment variable
-AWS_PROFILE=myprofile minienv list -e prd
-
-# With explicit credentials (use env vars!)
-s3://${AWS_ACCESS_KEY_ID}:${AWS_SECRET_ACCESS_KEY}@bucket/path?region=us-east-1
-```
-
-### MinIO / S3-Compatible
-```bash
-# Use env vars for credentials
-http://${MINIO_ACCESS_KEY}:${MINIO_SECRET_KEY}@localhost:9000/bucket
-https://${MINIO_ACCESS_KEY}:${MINIO_SECRET_KEY}@minio.example.com/bucket
-```
-
-### Cloudflare R2
-```bash
-https://${R2_ACCESS_KEY}:${R2_SECRET_KEY}@${R2_ACCOUNT_ID}.r2.cloudflarestorage.com/bucket
-```
-
-### Local Development
-```bash
-file:///path/to/storage    # FileSystem backend
-memory://bucket-name       # In-memory (testing)
-```
-
-### Multi-Backend Fallback
-
-Configure multiple backends for automatic failover. minienv tries each URL in order until one succeeds:
+Configure multiple backends - minienv tries each until one succeeds:
 
 ```yaml
 backend:
   urls:
-    - s3://my-bucket/envs?region=us-east-1     # Primary (CI/CD with IAM roles)
-    - file:///home/user/.minienv-store         # Fallback (local development)
+    - s3://bucket/envs?region=us-east-1     # Primary (CI/CD)
+    - file:///home/user/.minienv-store       # Fallback (local dev)
 ```
 
-This is useful for:
-- **Local development**: Use local filesystem when AWS credentials aren't available
-- **CI/CD**: Primary S3 backend with local fallback for tests
-- **High availability**: Multiple S3 regions for redundancy
-
-In verbose mode (`-v`), minienv logs which backend it connected to:
-```bash
-minienv list -e dev -v
-# Trying backend: s3://my-bucket/envs?region=us-east-1
-# Failed, trying next: file:///home/user/.minienv-store
-# Connected to: file:///home/user/.minienv-store
-```
-
-> **Security Note:** Never hardcode credentials in config files. Use environment variables or `config.local.yaml` (gitignored).
-
-## Encryption
-
-All secrets are encrypted using AES-256-GCM before storage. Keys can be loaded from multiple sources:
-
-### 1. Environment Variable (recommended for CI/CD)
-```bash
-export MINIENV_KEY="base64-encoded-32-byte-key"
-minienv export -e prd
-```
-
-### 2. Local File (development)
-```bash
-# Generate a new key
-minienv key generate -o .minienv/.key
-
-# Add to .gitignore
-echo ".minienv/.key" >> .gitignore
-```
-
-### 3. Remote S3 (production)
-```yaml
-# config.yaml
-encryption:
-  key_source:
-    - s3: s3://secure-keys-bucket/minienv/master.key
-```
-
-## Integrations
-
-### Kubernetes
+### Native Integrations
 
 ```bash
-# Deploy secrets directly to cluster
-minienv k8s:secret -e prd -n my-namespace | kubectl apply -f -
+# Kubernetes - deploy secrets directly
+minienv k8s:secret -e prd | kubectl apply -f -
 
-# Generate ConfigMap for non-sensitive values
-minienv k8s:configmap -e prd | kubectl apply -f -
-```
+# Helm - generate values file
+minienv helm:values -e prd | helm upgrade myapp ./chart -f -
 
-### Helm
-
-```bash
-# Generate values file
-minienv helm:values -e prd > values.prd.yaml
-
-# Use in helm install
-helm install my-app ./chart -f values.prd.yaml
-
-# Or pipe directly
-minienv helm:values -e prd | helm upgrade my-app ./chart -f -
-```
-
-### Terraform
-
-```bash
-# Generate tfvars file
+# Terraform - export as tfvars
 minienv tf:vars -e prd > terraform.tfvars
-terraform plan
-
-# Or JSON format
-minienv tf:json -e prd > terraform.tfvars.json
 ```
 
-## Monorepo Support
-
-minienv supports monorepos with multiple services, each with their own environment variables:
-
-```
-my-monorepo/
-├── .minienv/
-│   ├── config.yaml          # Root config
-│   └── environments/
-│       └── dev.env          # Shared variables
-├── services/
-│   ├── api/
-│   │   └── .minienv/
-│   │       ├── config.yaml  # extends: ../../../.minienv/config.yaml
-│   │       └── environments/
-│   │           └── dev.env
-│   └── worker/
-│       └── .minienv/
-│           └── ...
-```
-
-### Batch Operations
+### Unix Pipes
 
 ```bash
-# List all services
-minienv services
-
-# Sync all services at once
-minienv sync -e dev --all
-
-# Sync specific services
-minienv sync -e dev -s api,worker
-
-# Export from specific service
-minienv export -e prd -s api
-```
-
-## Unix Pipes
-
-minienv is designed for Unix pipelines:
-
-```bash
-# Import from another tool
+# Import from Vault
 vault kv get -format=json secret/app | \
   jq -r '.data.data | to_entries | .[] | "\(.key)=\(.value)"' | \
   minienv sync -e prd
 
 # Export to kubectl
-minienv k8s:secret -e prd | kubectl apply -f -
-
-# Chain with other commands
-minienv export -e dev | grep "^DATABASE" | sort
+minienv export -e prd --format=env | \
+  kubectl create secret generic myapp --from-env-file=/dev/stdin
 ```
 
-## MCP Server (Claude Integration)
-
-minienv includes an MCP (Model Context Protocol) server for Claude AI integration:
+### MCP Server for Claude
 
 ```bash
 # Start MCP server
 minienv mcp
 ```
-
-### Claude Desktop Configuration
-
-Add to your Claude Desktop config (`~/.config/claude/claude_desktop_config.json`):
 
 ```json
 {
@@ -399,27 +119,185 @@ Add to your Claude Desktop config (`~/.config/claude/claude_desktop_config.json`
 }
 ```
 
-### Available MCP Tools
+## Commands
+
+### Core
+
+| Command | Description | Example |
+|:--------|:------------|:--------|
+| `init` | Initialize project | `minienv init` |
+| `get <key>` | Get a variable | `minienv get DATABASE_URL -e prd` |
+| `set <key> <value>` | Set a variable | `minienv set API_KEY "sk-..." -e prd` |
+| `delete <key>` | Delete a variable | `minienv delete OLD_KEY -e dev` |
+| `list` | List all variables | `minienv list -e prd` |
+| `export` | Export for shell | `eval $(minienv export -e dev)` |
+
+### Sync
+
+| Command | Description | Example |
+|:--------|:------------|:--------|
+| `sync` | Bidirectional sync | `minienv sync -f .env.local -e dev` |
+| `pull` | Download to .env | `minienv pull -e prd -o .env.prd` |
+| `push` | Upload from .env | `minienv push -f .env.local -e dev` |
+
+### Integrations
+
+| Command | Description | Example |
+|:--------|:------------|:--------|
+| `k8s:secret` | Kubernetes Secret | `minienv k8s:secret -e prd \| kubectl apply -f -` |
+| `k8s:configmap` | Kubernetes ConfigMap | `minienv k8s:configmap -e prd` |
+| `helm:values` | Helm values.yaml | `minienv helm:values -e prd` |
+| `tf:vars` | Terraform .tfvars | `minienv tf:vars -e prd > terraform.tfvars` |
+| `tf:json` | Terraform JSON | `minienv tf:json -e prd` |
+
+### Utilities
+
+| Command | Description | Example |
+|:--------|:------------|:--------|
+| `key generate` | Generate encryption key | `minienv key generate` |
+| `services` | List monorepo services | `minienv services` |
+| `mcp` | Start MCP server | `minienv mcp` |
+
+## Global Options
+
+```
+-p, --project <name>    Project name
+-s, --service <name>    Service name (monorepos)
+-e, --env <env>         Environment: dev, stg, prd, sbx, dr
+-b, --backend <url>     Backend URL override
+-v, --verbose           Verbose output
+--all                   All services (monorepo batch)
+--dry-run               Preview without applying
+--json                  JSON output
+--force                 Skip confirmations
+```
+
+## Configuration
+
+### Basic Config
+
+```yaml
+# .minienv/config.yaml
+version: "1"
+
+project: my-project
+service: api  # optional
+
+backend:
+  # Single URL
+  url: s3://bucket/envs?region=us-east-1
+
+  # Or multiple with fallback
+  urls:
+    - s3://bucket/envs?region=us-east-1
+    - file:///home/user/.minienv-store
+
+encryption:
+  key_source:
+    - env: MINIENV_KEY           # 1. Environment variable
+    - file: .minienv/.key        # 2. Local file
+    - s3: s3://keys/minienv.key  # 3. Remote S3
+
+environments:
+  - dev
+  - stg
+  - prd
+
+default_environment: dev
+```
+
+### Environment Variable Expansion
+
+Config values support `${VAR}`, `${VAR:-default}`, and `$VAR`:
+
+```yaml
+backend:
+  url: s3://${AWS_ACCESS_KEY_ID}:${AWS_SECRET_ACCESS_KEY}@bucket/envs
+  # Or
+  url: ${MINIENV_BACKEND_URL}
+```
+
+### Local Override (config.local.yaml)
+
+For credentials that should **never** be committed:
+
+```yaml
+# .minienv/config.local.yaml (gitignored)
+backend:
+  url: s3://real-key:real-secret@bucket/envs?region=us-east-1
+```
+
+## Backend URLs
+
+| Provider | URL Format |
+|:---------|:-----------|
+| **AWS S3** | `s3://bucket/path?region=us-east-1` |
+| **AWS S3 + Profile** | `s3://bucket/path?region=us-east-1&profile=myprofile` |
+| **AWS S3 + Credentials** | `s3://${KEY}:${SECRET}@bucket/path` |
+| **MinIO** | `http://${KEY}:${SECRET}@localhost:9000/bucket` |
+| **Cloudflare R2** | `https://${KEY}:${SECRET}@${ACCOUNT}.r2.cloudflarestorage.com/bucket` |
+| **DigitalOcean Spaces** | `https://${KEY}:${SECRET}@nyc3.digitaloceanspaces.com/bucket` |
+| **Backblaze B2** | `https://${KEY}:${SECRET}@s3.us-west-002.backblazeb2.com/bucket` |
+| **FileSystem** | `file:///path/to/storage` |
+| **Memory** | `memory://bucket-name` |
+
+## Encryption
+
+All secrets are encrypted with **AES-256-GCM** before storage.
+
+### Key Sources
+
+```bash
+# 1. Environment variable (CI/CD)
+export MINIENV_KEY="base64-encoded-32-byte-key"
+minienv export -e prd
+
+# 2. Local file (development)
+minienv key generate -o .minienv/.key
+
+# 3. Remote S3 (production)
+# Configured in config.yaml
+```
+
+## Monorepo Support
+
+```
+my-monorepo/
+├── .minienv/
+│   ├── config.yaml          # Root config
+│   └── environments/
+├── services/
+│   ├── api/
+│   │   └── .minienv/
+│   │       ├── config.yaml  # extends: ../../../.minienv/config.yaml
+│   │       └── environments/
+│   └── worker/
+│       └── .minienv/
+```
+
+```bash
+# List services
+minienv services
+
+# Sync all services
+minienv sync -e dev --all
+
+# Sync specific services
+minienv sync -e dev -s api,worker
+```
+
+## MCP Tools
 
 | Tool | Description |
-|------|-------------|
-| `minienv_get` | Get a single environment variable |
-| `minienv_set` | Set an environment variable |
-| `minienv_delete` | Delete an environment variable |
-| `minienv_list` | List all variables for a project/environment |
-| `minienv_export` | Export variables in various formats |
-| `minienv_sync` | Sync variables with a .env file |
+|:-----|:------------|
+| `minienv_get` | Get a single variable |
+| `minienv_set` | Set a variable |
+| `minienv_delete` | Delete a variable |
+| `minienv_list` | List all variables |
+| `minienv_export` | Export in various formats |
+| `minienv_sync` | Sync with .env file |
 
-### MCP Resources
-
-Access environment variables as resources:
-
-```
-minienv://project/environment
-minienv://project/environment/service
-```
-
-## CI/CD Examples
+## CI/CD
 
 ### GitHub Actions
 
@@ -429,8 +307,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Deploy secrets to Kubernetes
+      - name: Deploy secrets
         env:
           MINIENV_KEY: ${{ secrets.MINIENV_KEY }}
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -449,47 +326,16 @@ deploy:
     MINIENV_KEY: $MINIENV_KEY
 ```
 
-## API Usage
-
-minienv can also be used as a library:
-
-```typescript
-import { createClient, loadConfig } from 'minienv'
-
-const config = loadConfig()
-const client = await createClient(config)
-
-// Get a variable
-const value = await client.get('DATABASE_URL', {
-  project: 'my-project',
-  environment: 'prd'
-})
-
-// Set a variable
-await client.set({
-  key: 'API_KEY',
-  value: 'sk-secret',
-  project: 'my-project',
-  environment: 'prd'
-})
-
-// List all variables
-const vars = await client.list({
-  project: 'my-project',
-  environment: 'prd'
-})
-```
-
 ## Security Best Practices
 
-1. **Never commit credentials** - Use `config.local.yaml` (gitignored) or environment variables
-2. **Never commit encryption keys** - Add `.minienv/.key` to `.gitignore`
-3. **Use env var expansion** - Reference `${AWS_ACCESS_KEY_ID}` instead of hardcoding
-4. **Use environment variables in CI/CD** - Set `MINIENV_KEY` and backend credentials as secrets
-5. **For AWS, use credential chain** - No credentials in URL, use IAM roles or `~/.aws/credentials`
-6. **Rotate keys periodically** - Use `minienv key generate` and re-encrypt
-7. **Separate keys per environment** - Use different keys for dev/stg/prd
-8. **Restrict S3 bucket access** - Use IAM policies to limit who can read secrets
+| Practice | How |
+|:---------|:----|
+| Never commit credentials | Use `config.local.yaml` or env vars |
+| Never commit encryption keys | Add `.minienv/.key` to `.gitignore` |
+| Use env var expansion | `${AWS_ACCESS_KEY_ID}` instead of hardcoding |
+| Use AWS credential chain | No credentials in URL, use IAM roles |
+| Separate keys per environment | Different keys for dev/stg/prd |
+| Restrict S3 bucket access | IAM policies to limit readers |
 
 ### Files to .gitignore
 
@@ -501,26 +347,81 @@ const vars = await client.list({
 .env.*
 ```
 
+## API Usage
+
+```typescript
+import { MiniEnvClient, loadConfig } from 'minienv'
+
+const config = loadConfig()
+const client = new MiniEnvClient({ config })
+
+await client.connect()
+
+// Get
+const value = await client.get('DATABASE_URL', 'my-project', 'prd')
+
+// Set
+await client.set({
+  key: 'API_KEY',
+  value: 'sk-secret',
+  project: 'my-project',
+  environment: 'prd'
+})
+
+// List
+const vars = await client.list({
+  project: 'my-project',
+  environment: 'prd'
+})
+
+// Export
+const envVars = await client.export('my-project', 'prd')
+
+await client.disconnect()
+```
+
 ## Comparison
 
 | Feature | minienv | dotenv | doppler | vault |
-|---------|---------|--------|---------|-------|
-| Multi-backend | Yes | No | No | No |
-| Encryption at rest | AES-256-GCM | No | Yes | Yes |
-| K8s integration | Native | No | Plugin | Plugin |
-| Self-hosted | Yes | N/A | No | Yes |
-| Monorepo support | Native | No | Limited | No |
-| MCP/AI integration | Yes | No | No | No |
+|:--------|:-------:|:------:|:-------:|:-----:|
+| Multi-backend | ✅ | ❌ | ❌ | ❌ |
+| Encryption | AES-256-GCM | ❌ | ✅ | ✅ |
+| K8s integration | Native | ❌ | Plugin | Plugin |
+| Self-hosted | ✅ | N/A | ❌ | ✅ |
+| Monorepo | Native | ❌ | Limited | ❌ |
+| MCP/AI | ✅ | ❌ | ❌ | ❌ |
 | Complexity | Low | Low | Medium | High |
 
-## Contributing
+## Numbers
 
-Contributions are welcome! Please read our [Contributing Guide](CONTRIBUTING.md) for details.
+| Metric | Value |
+|:-------|:------|
+| Backends | 7 (S3, MinIO, R2, Spaces, B2, FileSystem, Memory) |
+| Environments | 5 (dev, stg, prd, sbx, dr) |
+| Export Formats | 5 (shell, json, yaml, env, tfvars) |
+| MCP Tools | 6 |
+| Integrations | 5 (K8s Secret, K8s ConfigMap, Helm, Terraform, tfvars) |
+
+## Pre-built Binaries
+
+Download from [Releases](https://github.com/forattini-dev/minienv/releases):
+
+| Platform | Binary |
+|:---------|:-------|
+| Linux x64 | `minienv-linux` |
+| Linux ARM64 | `minienv-linux-arm64` |
+| macOS x64 | `minienv-macos` |
+| macOS ARM64 | `minienv-macos-arm64` |
+| Windows | `minienv-win.exe` |
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) for details.
+MIT © [Forattini](https://github.com/forattini-dev)
 
 ---
 
-Made with love by [Forattini](https://github.com/forattini-dev)
+<div align="center">
+
+**[Documentation](#configuration)** · **[Issues](https://github.com/forattini-dev/minienv/issues)** · **[Releases](https://github.com/forattini-dev/minienv/releases)**
+
+</div>
