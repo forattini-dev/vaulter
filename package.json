@@ -25,7 +25,10 @@
     "terragrunt",
     "cli",
     "dotenv",
-    "monorepo"
+    "monorepo",
+    "mcp",
+    "claude",
+    "ai"
   ],
   "author": "Forattini <contact@forattini.dev>",
   "license": "MIT",
@@ -66,7 +69,10 @@
     "clean": "rm -rf dist releases",
     "lint": "echo \"No linting configured for this project.\" && exit 0",
     "prepublishOnly": "pnpm build",
-    "cli": "tsx src/cli/index.ts"
+    "cli": "tsx src/cli/index.ts",
+    "release": "pnpm version patch && git push && git push --tags",
+    "release:minor": "pnpm version minor && git push && git push --tags",
+    "release:major": "pnpm version major && git push && git push --tags"
   },
   "engines": {
     "node": ">=22"
