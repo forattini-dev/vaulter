@@ -40,7 +40,9 @@ import { runHelmValues } from './commands/integrations/helm.js'
 import { runTfVars, runTfJson } from './commands/integrations/terraform.js'
 import { runKey } from './commands/key.js'
 import { runServices } from './commands/services.js'
-import { startServer as startMcpServer } from '../mcp/server.js'
+
+// MCP is loaded dynamically (not available in standalone binaries)
+const IS_STANDALONE = process.env.VAULTER_STANDALONE === 'true'
 
 /**
  * CLI Schema definition
@@ -436,8 +438,14 @@ async function main(): Promise<void> {
         break
 
       case 'mcp':
-        // MCP server doesn't need config context, it runs standalone
-        await startMcpServer()
+        // MCP server - dynamically loaded (not available in standalone binaries)
+        if (IS_STANDALONE) {
+          console.error('Error: MCP server is not available in standalone binaries')
+          console.error('Install via npm/pnpm to use MCP: pnpm add -g vaulter')
+          process.exit(1)
+        }
+        const { startServer } = await import('../mcp/server.js')
+        await startServer()
         break
 
       case 'config':
