@@ -294,13 +294,14 @@ export class AuditLogger {
    * Cleanup old audit entries based on retention policy
    * Returns the number of entries deleted
    * Note: Works even when audit.enabled is false (only writing is disabled)
+   * @param overrideRetentionDays - Optional override for retention period (CLI --retention flag)
    */
-  async cleanup(): Promise<number> {
+  async cleanup(overrideRetentionDays?: number): Promise<number> {
     if (!this.initialized || !this.resource) {
       throw new Error('AuditLogger not initialized. Call connect() first.')
     }
 
-    const retentionDays = this.config.retention_days || DEFAULT_RETENTION_DAYS
+    const retentionDays = overrideRetentionDays ?? this.config.retention_days ?? DEFAULT_RETENTION_DAYS
     const cutoffDate = new Date()
     cutoffDate.setDate(cutoffDate.getDate() - retentionDays)
 

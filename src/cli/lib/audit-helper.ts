@@ -4,7 +4,7 @@
  * Shared utilities for audit logging in CLI commands
  */
 
-import type { VaulterConfig, AuditEntryInput, AuditSource } from '../../types.js'
+import type { VaulterConfig, AuditSource } from '../../types.js'
 import { AuditLogger } from '../../lib/audit.js'
 import { resolveBackendUrls, loadEncryptionKey } from '../../index.js'
 

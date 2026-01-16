@@ -882,7 +882,6 @@ async function runKeyRotate(context: KeyContext): Promise<void> {
   const algorithm = config?.encryption?.asymmetric?.algorithm || 'rsa-4096'
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
 
-  let newKeyPath: string
   let oldKeyBackupPath: string
 
   if (isAsymmetric) {
@@ -895,7 +894,6 @@ async function runKeyRotate(context: KeyContext): Promise<void> {
     }
 
     oldKeyBackupPath = path.join(keysDir, `${keyName}-backup-${timestamp}`)
-    newKeyPath = privateKeyPath
 
     if (!dryRun) {
       // Backup old keys
@@ -918,7 +916,6 @@ async function runKeyRotate(context: KeyContext): Promise<void> {
     const keyFilePath = resolveKeyPath(keyName, project, false)
 
     oldKeyBackupPath = path.join(keysDir, `${keyName}-backup-${timestamp}.key`)
-    newKeyPath = keyFilePath
 
     if (!dryRun) {
       // Backup old key if exists

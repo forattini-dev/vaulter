@@ -332,6 +332,7 @@ export interface CLIArgs {
   clear?: boolean
   // Audit command flags
   retention?: number
+  pattern?: string  // Key pattern filter (renamed from --key to avoid global conflict)
   user?: string
   operation?: string
   since?: string

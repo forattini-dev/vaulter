@@ -372,7 +372,7 @@ const cliSchema: CLISchema = {
               type: 'string',
               description: 'Filter by operation (set, delete, sync, push, rotate)'
             },
-            key: {
+            pattern: {
               type: 'string',
               description: 'Filter by key pattern (supports * and ? wildcards)'
             },
@@ -519,6 +519,7 @@ function toCliArgs(result: CommandParseResult): CLIArgs {
     clear: opts.clear as boolean | undefined,
     // Audit command options
     retention: opts.retention as number | undefined,
+    pattern: opts.pattern as string | undefined,
     user: opts.user as string | undefined,
     operation: opts.operation as string | undefined,
     since: opts.since as string | undefined,

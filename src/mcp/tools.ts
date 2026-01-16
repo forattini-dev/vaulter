@@ -2,7 +2,7 @@
  * Vaulter MCP Tools
  *
  * Comprehensive tool definitions and handlers for the MCP server
- * Provides 19 tools for environment, secrets, and key management
+ * Provides 21 tools for environment, secrets, and key management
  */
 
 import type { Tool } from '@modelcontextprotocol/sdk/types.js'
@@ -171,14 +171,14 @@ export function registerTools(): Tool[] {
     },
     {
       name: 'vaulter_export',
-      description: 'Export all environment variables in various formats (shell, env, json, yaml, tfvars)',
+      description: 'Export all environment variables in various formats (shell, env, json, yaml, tfvars, docker-args)',
       inputSchema: {
         type: 'object',
         properties: {
           environment: { type: 'string', description: 'Environment name', default: 'dev' },
           project: { type: 'string', description: 'Project name' },
           service: { type: 'string', description: 'Service name' },
-          format: { type: 'string', description: 'Output format', enum: ['shell', 'env', 'json', 'yaml', 'tfvars'], default: 'shell' }
+          format: { type: 'string', description: 'Output format', enum: ['shell', 'env', 'json', 'yaml', 'tfvars', 'docker-args'], default: 'shell' }
         }
       }
     },
@@ -660,6 +660,11 @@ async function handleExportCall(
       output = Object.entries(vars)
         .map(([k, v]) => `${k.toLowerCase()} = "${v.replace(/"/g, '\\"')}"`)
         .join('\n')
+      break
+    case 'docker-args':
+      output = Object.entries(vars)
+        .map(([k, v]) => `-e ${k}="${v.replace(/"/g, '\\"')}"`)
+        .join(' ')
       break
     case 'shell':
     default:

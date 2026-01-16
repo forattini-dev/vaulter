@@ -89,7 +89,7 @@ export async function runAuditList(context: AuditContext): Promise<void> {
       service,
       user: args.user,
       operation: args.operation,
-      key: args.key,
+      key: args.pattern,  // --pattern maps to key filter in query
       source: args.source,
       since: args.since ? new Date(args.since) : undefined,
       until: args.until ? new Date(args.until) : undefined,
@@ -279,7 +279,7 @@ export async function runAuditCleanup(context: AuditContext): Promise<void> {
 
     const deleted = await ui.withSpinner(
       `Cleaning up entries older than ${retentionDays} days...`,
-      () => logger.cleanup(),
+      () => logger.cleanup(retentionDays),
       { successText: 'Done' }
     )
 
