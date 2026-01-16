@@ -20,6 +20,12 @@ releases/
 *.swp
 *.swo
 
+# AI Assistant configs
+.agent/
+.claude/
+.gemini/
+openspec/
+
 # OS
 .DS_Store
 Thumbs.db

@@ -1,6 +1,6 @@
 /**
  * Tests for s3-key-loader.ts
- * Focuses on URL parsing which is the core logic
+ * Focuses on URL parsing (S3 fetch requires integration test with real SDK)
  */
 
 import { describe, it, expect } from 'vitest'
@@ -170,7 +170,7 @@ describe('s3-key-loader', () => {
     })
   })
 
-  // Note: fetchKeyFromS3 and loadKeyFromS3 are integration tests
-  // that require actual AWS SDK interaction. These would need
-  // integration test setup with LocalStack or real AWS credentials.
+  // Note: fetchKeyFromS3 and loadKeyFromS3 tests require real AWS SDK
+  // These are integration tests that would need LocalStack or minio
+  // The parseS3Url tests above cover the URL parsing logic comprehensively
 })

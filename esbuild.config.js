@@ -20,7 +20,7 @@ const commonOptions = {
   sourcemap: false,
   minify: true,
   define: {
-    'process.env.MINIENV_VERSION': JSON.stringify(pkg.version)
+    'process.env.VAULTER_VERSION': JSON.stringify(pkg.version)
   },
   banner: {
     js: '#!/usr/bin/env node'
@@ -33,10 +33,7 @@ const commonOptions = {
   // These have dynamic imports or native bindings that break bundling
   external: [
     's3db.js',
-    'bcrypt',
-    'ws',
     'yaml',
-    'minimist',
     '@modelcontextprotocol/sdk',
     '@aws-sdk/client-s3'
   ]

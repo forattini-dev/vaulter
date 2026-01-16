@@ -38,14 +38,12 @@ export async function runBatch<T>(
   options: {
     concurrency?: number
     stopOnError?: boolean
-    verbose?: boolean
     onProgress?: (completed: number, total: number, current: ServiceInfo) => void
   } = {}
 ): Promise<BatchResult<T>> {
   const {
     concurrency = 1,
     stopOnError = false,
-    verbose = false,
     onProgress
   } = options
 
