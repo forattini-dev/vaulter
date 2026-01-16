@@ -19,6 +19,7 @@ import {
 } from '../lib/config-loader.js'
 import { parseEnvFile, serializeEnv } from '../lib/env-parser.js'
 import { discoverServices } from '../lib/monorepo.js'
+import { scanMonorepo, formatScanResult, type ScanResult } from '../lib/monorepo-detect.js'
 import { getSecretPatterns, splitVarsBySecret } from '../lib/secret-patterns.js'
 import type { Environment, VaulterConfig } from '../types.js'
 import { resolveBackendUrls } from '../index.js'
@@ -220,6 +221,17 @@ export function registerTools(): Tool[] {
 
     // === MONOREPO TOOLS ===
     {
+      name: 'vaulter_scan',
+      description: 'Scan monorepo to discover all packages/apps. Detects NX, Turborepo, Lerna, pnpm workspaces, Yarn workspaces, and Rush. Shows which packages have .env files and which need vaulter initialization.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          path: { type: 'string', description: 'Root directory to scan (default: current directory)' },
+          format: { type: 'string', description: 'Output format', enum: ['text', 'json'], default: 'text' }
+        }
+      }
+    },
+    {
       name: 'vaulter_services',
       description: 'List all services discovered in the monorepo (directories with .vaulter/config.yaml)',
       inputSchema: {
@@ -292,6 +304,10 @@ export async function handleToolCall(
   const service = args.service as string | undefined
 
   // Tools that don't need project
+  if (name === 'vaulter_scan') {
+    return handleScanCall(args)
+  }
+
   if (name === 'vaulter_services') {
     return handleServicesCall(args)
   }
@@ -742,6 +758,57 @@ async function handleSearchCall(
   lines.push(`\nFound ${byKey.size} unique variable(s) across ${environments.length} environment(s)`)
 
   return { content: [{ type: 'text', text: lines.join('\n') }] }
+}
+
+async function handleScanCall(
+  args: Record<string, unknown>
+): Promise<{ content: Array<{ type: 'text'; text: string }> }> {
+  const scanPath = (args.path as string) || process.cwd()
+  const format = (args.format as string) || 'text'
+
+  try {
+    const result = await scanMonorepo(scanPath)
+
+    if (format === 'json') {
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({
+            monorepo: {
+              tool: result.monorepo.tool,
+              root: result.monorepo.root,
+              configFile: result.monorepo.configFile,
+              workspacePatterns: result.monorepo.workspacePatterns
+            },
+            summary: {
+              total: result.packages.length,
+              initialized: result.initialized.length,
+              uninitialized: result.uninitialized.length,
+              withEnvFiles: result.withEnvFiles.length
+            },
+            packages: result.packages.map(p => ({
+              name: p.name,
+              path: p.relativePath,
+              type: p.type,
+              hasVaulterConfig: p.hasVaulterConfig,
+              hasEnvFiles: p.hasEnvFiles,
+              hasDeployDir: p.hasDeployDir
+            }))
+          }, null, 2)
+        }]
+      }
+    }
+
+    // Text format
+    return { content: [{ type: 'text', text: formatScanResult(result) }] }
+  } catch (error) {
+    return {
+      content: [{
+        type: 'text',
+        text: `Error scanning monorepo: ${(error as Error).message}`
+      }]
+    }
+  }
 }
 
 async function handleServicesCall(

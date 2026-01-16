@@ -40,6 +40,7 @@ import { runHelmValues } from './commands/integrations/helm.js'
 import { runTfVars, runTfJson } from './commands/integrations/terraform.js'
 import { runKey } from './commands/key.js'
 import { runServices } from './commands/services.js'
+import { runScan } from './commands/scan.js'
 
 // MCP is loaded dynamically (not available in standalone binaries)
 const IS_STANDALONE = process.env.VAULTER_STANDALONE === 'true'
@@ -50,7 +51,7 @@ const IS_STANDALONE = process.env.VAULTER_STANDALONE === 'true'
 /**
  * Custom separators for vaulter CLI
  *
- * Enables HTTPie-style syntax for setting variables:
+ * Enables special syntax for setting variables:
  *   vaulter set KEY=value              → secret (encrypted, file + backend)
  *   vaulter set KEY:=123               → secret typed (number/boolean)
  *   vaulter set PORT::3000             → config (split: file only | unified: file + backend)
@@ -229,6 +230,13 @@ const cliSchema: CLISchema = {
       aliases: ['svc']
     },
 
+    scan: {
+      description: 'Scan monorepo for packages (NX, Turborepo, Lerna, pnpm, Yarn, Rush)',
+      positional: [
+        { name: 'path', required: false, description: 'Root directory to scan' }
+      ]
+    },
+
     mcp: {
       description: 'Start MCP server for Claude integration'
     },
@@ -268,8 +276,12 @@ function toCliArgs(result: CommandParseResult): CLIArgs {
 
   // Build the _ array: command + positional args + rest
   const args: string[] = [...result.command]
-  if (pos.key) args.push(pos.key as string)
-  if (pos.value) args.push(pos.value as string)
+  // Add all positional values in order
+  for (const value of Object.values(pos)) {
+    if (value !== undefined && value !== null) {
+      args.push(value as string)
+    }
+  }
   args.push(...(result.rest as string[]))
 
   return {
@@ -435,6 +447,10 @@ async function main(): Promise<void> {
       case 'services':
       case 'svc':
         await runServices(context)
+        break
+
+      case 'scan':
+        await runScan(context)
         break
 
       case 'mcp':
