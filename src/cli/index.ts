@@ -9,7 +9,7 @@ import './preload.js'
 
 import { createCLI, type CommandParseResult, type CLISchema } from 'cli-args-parser'
 import type { CLIArgs, VaulterConfig, Environment } from '../types.js'
-import { loadConfig, getProjectName, getDefaultEnvironment } from '../lib/config-loader.js'
+import { loadConfig, getProjectName } from '../lib/config-loader.js'
 import { createRequire } from 'node:module'
 
 // Version is injected at build time or read from package.json
@@ -227,7 +227,85 @@ const cliSchema: CLISchema = {
       description: 'Key management commands',
       commands: {
         generate: {
-          description: 'Generate a new encryption key'
+          description: 'Generate a new encryption key',
+          options: {
+            name: {
+              type: 'string',
+              description: 'Key name (e.g., master, deploy)'
+            },
+            global: {
+              type: 'boolean',
+              default: false,
+              description: 'Use global scope instead of project scope'
+            },
+            asymmetric: {
+              type: 'boolean',
+              default: false,
+              description: 'Generate asymmetric key pair (RSA/EC)'
+            },
+            asym: {
+              type: 'boolean',
+              default: false,
+              description: 'Alias for --asymmetric'
+            },
+            algorithm: {
+              type: 'string',
+              description: 'Algorithm: rsa-4096, rsa-2048, ec-p256, ec-p384'
+            },
+            alg: {
+              type: 'string',
+              description: 'Alias for --algorithm'
+            }
+          }
+        },
+        export: {
+          description: 'Export key to encrypted bundle',
+          options: {
+            name: {
+              type: 'string',
+              description: 'Key name to export'
+            },
+            global: {
+              type: 'boolean',
+              default: false,
+              description: 'Use global scope instead of project scope'
+            }
+          }
+        },
+        import: {
+          description: 'Import key from encrypted bundle',
+          options: {
+            name: {
+              type: 'string',
+              description: 'Key name for imported key (optional, uses name from bundle)'
+            },
+            global: {
+              type: 'boolean',
+              default: false,
+              description: 'Import to global scope instead of project scope'
+            }
+          }
+        },
+        list: {
+          description: 'List all keys',
+          aliases: ['ls']
+        },
+        show: {
+          description: 'Show key info',
+          options: {
+            name: {
+              type: 'string',
+              description: 'Key name to show'
+            },
+            global: {
+              type: 'boolean',
+              default: false,
+              description: 'Use global scope instead of project scope'
+            }
+          }
+        },
+        rotate: {
+          description: 'Rotate encryption key'
         }
       }
     },
@@ -318,7 +396,16 @@ function toCliArgs(result: CommandParseResult): CLIArgs {
     n: opts.namespace as string | undefined,
     format: opts.format as string | undefined,
     // Command-specific options
-    split: opts.split as boolean | undefined
+    split: opts.split as boolean | undefined,
+    // Key command options
+    name: opts.name as string | undefined,
+    global: opts.global as boolean | undefined,
+    asymmetric: opts.asymmetric as boolean | undefined,
+    asym: opts.asym as boolean | undefined,
+    algorithm: opts.algorithm as string | undefined,
+    alg: opts.alg as string | undefined,
+    // List command options
+    'all-envs': opts['all-envs'] as boolean | undefined
   }
 }
 
