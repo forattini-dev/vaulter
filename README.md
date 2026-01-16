@@ -56,6 +56,8 @@ vaulter k8s:secret -e prd | kubectl apply -f -
 - [Why Vaulter?](#why-vaulter)
 - [Security](#security)
 - [Daily Use](#daily-use)
+- [Audit & Compliance](#audit--compliance)
+- [Secret Rotation](#secret-rotation)
 - [CI/CD](#cicd)
 - [Configuration](#configuration)
 - [Integrations](#integrations)
@@ -453,6 +455,22 @@ vaulter k8s:secret -e prd | kubectl apply -f -
 | `tf:vars` | Terraform .tfvars | `vaulter tf:vars -e prd` |
 | `scan` | Scan monorepo | `vaulter scan` |
 
+#### Audit Commands
+
+| Command | Description | Example |
+|:--------|:------------|:--------|
+| `audit list` | List audit entries | `vaulter audit list -e prd` |
+| `audit show` | Show entry details | `vaulter audit show <id>` |
+| `audit stats` | Show statistics | `vaulter audit stats -e prd` |
+| `audit cleanup` | Delete old entries | `vaulter audit cleanup --retention 30` |
+
+#### Rotation Commands
+
+| Command | Description | Example |
+|:--------|:------------|:--------|
+| `rotation list` | Show rotation status | `vaulter rotation list -e prd` |
+| `rotation run` | Run rotation check | `vaulter rotation run -e prd --clear` |
+
 ### Set Command Syntax
 
 ```bash
@@ -515,6 +533,401 @@ vaulter list -e homolog
 vaulter pull -e development
 vaulter k8s:secret -e uat | kubectl apply -f -
 ```
+
+---
+
+## Audit & Compliance
+
+Vaulter includes built-in audit logging to track every change to your secrets. Essential for compliance (SOC2, HIPAA, PCI-DSS) and debugging "who changed what, when".
+
+### Why Audit?
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    Without Audit Logging                        │
+│                                                                 │
+│  Developer: "Who deleted the API_KEY in production?"            │
+│  Team: 🤷 "No idea, check git blame? It's not in the repo..."  │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────┐
+│                     With Vaulter Audit                          │
+│                                                                 │
+│  $ vaulter audit list -e prd --pattern "API_KEY"                │
+│                                                                 │
+│  TIMESTAMP            USER      OP      KEY      ENV   SRC      │
+│  2025-01-15 14:32:01  john      delete  API_KEY  prd   cli      │
+│  2025-01-10 09:15:22  jane      set     API_KEY  prd   sync     │
+│  2025-01-05 11:00:00  deploy    set     API_KEY  prd   ci       │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Configuration
+
+```yaml
+# .vaulter/config.yaml
+audit:
+  enabled: true              # Enable audit logging (default: true)
+  retention_days: 90         # Auto-cleanup entries older than N days
+  mask_values: true          # Mask values in logs (show: sk-1234****5678)
+  include_values: false      # Include actual values (⚠️ security risk)
+```
+
+| Option | Default | Description |
+|:-------|:--------|:------------|
+| `enabled` | `true` | Enable/disable audit logging |
+| `retention_days` | `90` | Auto-cleanup old entries |
+| `mask_values` | `true` | Mask sensitive values in logs |
+| `include_values` | `false` | Store full values (⚠️ use with caution) |
+
+### Commands
+
+#### List Audit Entries
+
+```bash
+# List recent entries (default: 50)
+vaulter audit list -e prd
+
+# Filter by user
+vaulter audit list -e prd --user john
+
+# Filter by operation
+vaulter audit list -e prd --operation delete
+
+# Filter by key pattern (supports wildcards)
+vaulter audit list -e prd --pattern "DATABASE_*"
+
+# Filter by date range
+vaulter audit list -e prd --since "2025-01-01" --until "2025-01-15"
+
+# Filter by source
+vaulter audit list -e prd --source ci
+
+# Show all environments
+vaulter audit list --all-envs
+
+# JSON output for scripting
+vaulter audit list -e prd --json
+
+# Combine filters
+vaulter audit list -e prd --user deploy --operation set --limit 100
+```
+
+**Output:**
+```
+TIMESTAMP            USER          OP        KEY                       ENV   SRC
+2025-01-15 14:32:01  john          delete    API_KEY                   prd   cli
+2025-01-15 14:30:00  jane          set       DATABASE_URL              prd   cli
+2025-01-15 10:00:00  github-ci     push      *                         prd   ci
+2025-01-14 16:45:22  jane          sync      *                         prd   cli
+
+Showing 4 entries
+```
+
+#### Show Entry Details
+
+```bash
+# Get full details of a specific entry
+vaulter audit show <entry-id>
+```
+
+**Output:**
+```
+  ID:          abc123def456
+  Timestamp:   2025-01-15 14:32:01
+  User:        john
+  Operation:   delete
+  Key:         API_KEY
+  Project:     my-project
+  Environment: prd
+  Source:      cli
+  Previous:    sk-1234****5678
+  Metadata:    {"reason": "rotating key"}
+```
+
+#### Audit Statistics
+
+```bash
+# View summary statistics
+vaulter audit stats -e prd
+```
+
+**Output:**
+```
+Audit Statistics for my-project/prd
+════════════════════════════════════════
+Total entries: 1,247
+Date range:    2024-10-15 09:00:00 to 2025-01-15 14:32:01
+
+By Operation:
+  set          892
+  delete       124
+  sync         156
+  push         75
+
+By User:
+  jane                 456
+  john                 321
+  github-ci            470
+
+By Source:
+  cli        645
+  ci         470
+  sync       132
+```
+
+#### Cleanup Old Entries
+
+```bash
+# Cleanup entries older than retention_days (from config)
+vaulter audit cleanup
+
+# Override retention period
+vaulter audit cleanup --retention 30
+
+# Dry-run to see what would be deleted
+vaulter audit cleanup --retention 30 --dry-run
+```
+
+### Automatic Audit Logging
+
+Audit entries are created automatically for all write operations:
+
+| Operation | Logged Info |
+|:----------|:------------|
+| `set` | Key, previous value (masked), new value (masked) |
+| `delete` | Key, previous value (masked) |
+| `sync` | Keys added, updated, deleted |
+| `push` | Keys added, updated, deleted |
+| `deleteAll` | All deleted keys |
+
+### Sources
+
+The `source` field indicates where the operation originated:
+
+| Source | Description |
+|:-------|:------------|
+| `cli` | Manual CLI command |
+| `ci` | CI/CD pipeline |
+| `sync` | Bidirectional sync operation |
+| `api` | Programmatic API call |
+| `mcp` | MCP server (AI assistant) |
+
+### Compliance Tips
+
+```bash
+# Export audit log for compliance review
+vaulter audit list --all-envs --json > audit-report-$(date +%Y%m).json
+
+# Monitor production changes
+vaulter audit list -e prd --since "$(date -d 'yesterday' +%Y-%m-%d)"
+
+# Alert on deletions
+vaulter audit list -e prd --operation delete --json | jq '.entries | length'
+```
+
+---
+
+## Secret Rotation
+
+Regular secret rotation is a security best practice. Vaulter tracks rotation schedules and helps you identify secrets that need attention.
+
+### Why Rotate?
+
+- **Limit exposure**: If a key is compromised, damage is time-limited
+- **Compliance**: Many standards require periodic rotation (PCI-DSS: 90 days)
+- **Access control**: Rotated keys invalidate old access
+- **Audit trail**: Clear history of when credentials changed
+
+### How It Works
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    Rotation Workflow                            │
+│                                                                 │
+│  1. vaulter rotation list        → See what needs rotation      │
+│                                                                 │
+│  KEY            ENV   LAST ROTATED    ROTATE AFTER    STATUS    │
+│  DATABASE_URL   prd   45 days ago     90 days         ✓ OK      │
+│  API_KEY        prd   120 days ago    90 days         ⚠ OVERDUE │
+│  JWT_SECRET     prd   never           90 days         ⚠ OVERDUE │
+│                                                                 │
+│  2. Manually rotate the credential in the external service      │
+│                                                                 │
+│  3. vaulter set API_KEY="new-value" -e prd                      │
+│     → Automatically updates rotatedAt timestamp                 │
+│                                                                 │
+│  4. vaulter rotation run -e prd --clear                         │
+│     → Clears rotateAfter for updated keys (fresh start)         │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Configuration
+
+```yaml
+# .vaulter/config.yaml
+encryption:
+  rotation:
+    enabled: true          # Enable rotation tracking
+    interval_days: 90      # Default rotation interval
+    patterns:              # Keys that should be rotated
+      - "*_KEY"
+      - "*_SECRET"
+      - "*_TOKEN"
+      - "*_PASSWORD"
+      - "DATABASE_URL"
+      - "REDIS_URL"
+```
+
+| Option | Default | Description |
+|:-------|:--------|:------------|
+| `enabled` | `true` | Enable rotation tracking |
+| `interval_days` | `90` | Default rotation period |
+| `patterns` | `["*_KEY", "*_SECRET", ...]` | Keys to track (glob patterns) |
+
+### Commands
+
+#### List Rotation Status
+
+```bash
+# Show rotation status for all secrets
+vaulter rotation list -e prd
+
+# Check all environments
+vaulter rotation list --all-envs
+
+# Filter overdue only
+vaulter rotation list -e prd --overdue
+
+# Custom interval check
+vaulter rotation list -e prd --days 30
+
+# JSON output
+vaulter rotation list -e prd --json
+```
+
+**Output:**
+```
+Rotation Status for my-project/prd (default: 90 days)
+
+KEY               LAST ROTATED         ROTATE AFTER         STATUS
+DATABASE_URL      2024-12-01           2025-03-01           ✓ OK (45 days)
+API_KEY           2024-09-15           2024-12-14           ⚠ OVERDUE (32 days)
+JWT_SECRET        never                —                    ⚠ NEVER ROTATED
+REDIS_URL         2024-11-20           2025-02-18           ✓ OK (34 days)
+
+Summary: 4 secrets, 2 overdue, 1 never rotated
+```
+
+#### Run Rotation Check
+
+```bash
+# Interactive rotation workflow
+vaulter rotation run -e prd
+
+# Clear rotation schedule for already-rotated keys
+vaulter rotation run -e prd --clear
+
+# Set new interval
+vaulter rotation run -e prd --interval 60
+
+# Dry-run
+vaulter rotation run -e prd --dry-run
+```
+
+**Interactive Output:**
+```
+Checking rotation status for my-project/prd...
+
+⚠ Found 2 secrets needing rotation:
+
+  API_KEY (overdue by 32 days)
+    Last rotated: 2024-09-15
+    Rotate after: 2024-12-14
+
+  JWT_SECRET (never rotated)
+    Set a rotation schedule? [Y/n]: y
+    Rotation interval (days) [90]: 90
+    ✓ Scheduled rotation for 2025-04-15
+
+To update a rotated secret:
+  vaulter set API_KEY="new-value" -e prd
+
+After rotating, clear the schedule:
+  vaulter rotation run -e prd --clear
+```
+
+#### Schedule Rotation
+
+When you set a new value, Vaulter automatically tracks when it was last changed:
+
+```bash
+# Set new value (automatically updates rotatedAt)
+vaulter set API_KEY="sk-new-rotated-key" -e prd
+
+# Verify rotation was tracked
+vaulter rotation list -e prd --pattern "API_KEY"
+```
+
+**Output:**
+```
+KEY       LAST ROTATED         ROTATE AFTER    STATUS
+API_KEY   just now             2025-04-15      ✓ OK (90 days)
+```
+
+### Rotation Metadata
+
+Each secret tracks rotation metadata:
+
+| Field | Description |
+|:------|:------------|
+| `rotatedAt` | ISO timestamp of last rotation |
+| `rotateAfter` | ISO timestamp when rotation is due |
+
+View with:
+```bash
+vaulter get API_KEY -e prd --json | jq '.metadata'
+```
+
+### CI/CD Integration
+
+```yaml
+# GitHub Actions - Weekly rotation check
+name: Secret Rotation Check
+on:
+  schedule:
+    - cron: '0 9 * * 1'  # Every Monday at 9am
+
+jobs:
+  check-rotation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check for overdue secrets
+        env:
+          VAULTER_KEY: ${{ secrets.VAULTER_KEY }}
+        run: |
+          OVERDUE=$(npx vaulter rotation list -e prd --json | jq '.overdue')
+          if [ "$OVERDUE" -gt 0 ]; then
+            echo "::warning::$OVERDUE secrets are overdue for rotation!"
+            npx vaulter rotation list -e prd
+            exit 1
+          fi
+          echo "✓ All secrets are within rotation policy"
+```
+
+### Compliance Matrix
+
+| Standard | Requirement | Vaulter Config |
+|:---------|:------------|:---------------|
+| PCI-DSS | 90 days | `interval_days: 90` |
+| SOC2 | Regular rotation | `interval_days: 90` |
+| HIPAA | Periodic | `interval_days: 180` |
+| Internal | Custom | `interval_days: N` |
 
 ---
 
@@ -829,6 +1242,20 @@ encryption:
   key_source:
     - env: VAULTER_KEY
     - file: .vaulter/.key
+  # Secret rotation settings
+  rotation:
+    enabled: true
+    interval_days: 90
+    patterns:
+      - "*_KEY"
+      - "*_SECRET"
+      - "*_TOKEN"
+
+# Audit logging
+audit:
+  enabled: true
+  retention_days: 90
+  mask_values: true
 
 environments:
   - dev
@@ -1032,7 +1459,9 @@ npx @anthropic-ai/mcp-inspector vaulter mcp
 }
 ```
 
-### Available Tools (19)
+### Available Tools (21)
+
+#### Core Operations
 
 | Tool | Description |
 |:-----|:------------|
@@ -1040,33 +1469,51 @@ npx @anthropic-ai/mcp-inspector vaulter mcp
 | `vaulter_set` | Set a variable |
 | `vaulter_delete` | Delete a variable |
 | `vaulter_list` | List variables |
-| `vaulter_export` | Export in various formats |
+| `vaulter_export` | Export in various formats (shell, env, json, yaml, tfvars, docker-args) |
 | `vaulter_sync` | Bidirectional sync |
 | `vaulter_pull` | Download from backend |
 | `vaulter_push` | Upload to backend |
+
+#### Discovery & Analysis
+
+| Tool | Description |
+|:-----|:------------|
 | `vaulter_compare` | Compare environments |
 | `vaulter_search` | Search by pattern |
 | `vaulter_scan` | Scan monorepo |
 | `vaulter_services` | List services |
+| `vaulter_init` | Initialize project |
+
+#### Integrations
+
+| Tool | Description |
+|:-----|:------------|
 | `vaulter_k8s_secret` | Generate K8s Secret |
 | `vaulter_k8s_configmap` | Generate K8s ConfigMap |
-| `vaulter_init` | Initialize project |
+| `vaulter_helm_values` | Generate Helm values.yaml |
+| `vaulter_tf_vars` | Generate Terraform .tfvars |
+
+#### Key Management
+
+| Tool | Description |
+|:-----|:------------|
 | `vaulter_key_generate` | Generate encryption key (symmetric or asymmetric) |
 | `vaulter_key_list` | List all keys (project + global) |
 | `vaulter_key_show` | Show key details |
 | `vaulter_key_export` | Export key to encrypted bundle |
-| `vaulter_key_import` | Import key from encrypted bundle |
 
-### Resources (7)
+### Resources (8)
 
-- `vaulter://config` — Project configuration
-- `vaulter://services` — Monorepo services
-- `vaulter://keys` — List all encryption keys (project + global)
-- `vaulter://keys/<name>` — Specific key details
-- `vaulter://keys/global/<name>` — Global key details
-- `vaulter://project/env` — Environment variables
-- `vaulter://project/env/service` — Service-specific vars
-- `vaulter://compare/env1/env2` — Environment diff
+| URI Pattern | Description |
+|:------------|:------------|
+| `vaulter://config` | Project configuration |
+| `vaulter://services` | Monorepo services |
+| `vaulter://keys` | List all encryption keys |
+| `vaulter://keys/<name>` | Specific key details |
+| `vaulter://keys/global/<name>` | Global key details |
+| `vaulter://project/env` | Environment variables |
+| `vaulter://project/env/service` | Service-specific vars |
+| `vaulter://compare/env1/env2` | Environment diff
 
 ### Prompts (5)
 
