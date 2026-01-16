@@ -1541,10 +1541,11 @@ npx @anthropic-ai/mcp-inspector vaulter mcp
 | `vaulter_key_export` | Export key to encrypted bundle |
 | `vaulter_key_import` | Import key from encrypted bundle |
 
-### Resources (8)
+### Resources (9)
 
 | URI Pattern | Description |
 |:------------|:------------|
+| `vaulter://instructions` | ⚠️ **CRITICAL**: How vaulter stores data (read first!) |
 | `vaulter://config` | Project configuration |
 | `vaulter://services` | Monorepo services |
 | `vaulter://keys` | List all encryption keys |
