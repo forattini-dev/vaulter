@@ -21,8 +21,8 @@ vaulter init
 # Set secrets (encrypted, synced to backend)
 vaulter set DATABASE_URL="postgres://localhost/mydb" API_KEY="sk-secret-key" -e dev
 
-# Set configs (plain text, file only in split mode)
-vaulter set PORT:3000 LOG_LEVEL:debug -e dev
+# Set configs (plain text in split mode, synced in unified mode)
+vaulter set PORT::3000 LOG_LEVEL::debug -e dev
 
 # Export to shell
 eval $(vaulter export -e dev)
@@ -172,7 +172,7 @@ loader({ path: '.env.local', override: true })
 | `init` | Initialize project | `vaulter init` |
 | `get <key>` | Get a variable | `vaulter get DATABASE_URL -e prd` |
 | `set KEY=val ...` | Set secrets (batch) | `vaulter set KEY1=v1 KEY2=v2 -e prd` |
-| `set KEY:val ...` | Set configs (plain) | `vaulter set PORT:3000 HOST:0.0.0.0 -e dev` |
+| `set KEY::val ...` | Set configs (plain) | `vaulter set PORT::3000 HOST::0.0.0.0 -e dev` |
 | `delete <key>` | Delete a variable | `vaulter delete OLD_KEY -e dev` |
 | `list` | List all variables | `vaulter list -e prd` |
 | `export` | Export for shell | `eval $(vaulter export -e dev)` |

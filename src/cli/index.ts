@@ -328,7 +328,7 @@ function buildContext(result: CommandParseResult, config: VaulterConfig | null) 
   const jsonOutput = (opts.json || false) as boolean
   const noColor = (opts['no-color'] || false) as boolean
 
-  // Separator buckets (from KEY=value, KEY:value, @tag:value syntax)
+  // Separator buckets (from KEY=value, KEY::value, @tag:value syntax)
   const secrets = (result as Record<string, unknown>).secrets as Record<string, SeparatorValue> | undefined
   const configs = (result as Record<string, unknown>).configs as Record<string, SeparatorValue> | undefined
   const meta = (result as Record<string, unknown>).meta as Record<string, SeparatorValue> | undefined

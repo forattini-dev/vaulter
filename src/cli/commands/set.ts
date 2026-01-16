@@ -65,7 +65,7 @@ function buildVariablesMaps(context: SetContext): {
     secrets.set(key, String(value))
   }
 
-  // 2. Configs from separator syntax (KEY:value)
+  // 2. Configs from separator syntax (KEY::value)
   for (const [key, value] of Object.entries(configsBucket)) {
     configs.set(key, String(value))
   }
@@ -219,7 +219,7 @@ export async function runSet(context: SetContext): Promise<void> {
       result.configs = {
         count: configs.size,
         keys: [...configs.keys()],
-        destination: splitMode ? 'deploy/configs (file only)' : 'backend'
+        destination: splitMode ? 'deploy/configs (file only)' : 'env file + backend'
       }
     }
 
@@ -240,7 +240,7 @@ export async function runSet(context: SetContext): Promise<void> {
       if (configs.size > 0) {
         console.log(`Dry run - would set ${configs.size} config(s):`)
         for (const key of configs.keys()) {
-          const dest = splitMode ? 'configs file (no backend)' : 'backend'
+          const dest = splitMode ? 'configs file (no backend)' : 'env file + backend'
           console.log(`  ${key} → ${dest}`)
         }
       }
@@ -301,7 +301,7 @@ export async function runSet(context: SetContext): Promise<void> {
     }
   }
 
-  // === HANDLE CONFIGS (file only, no backend) ===
+  // === HANDLE CONFIGS (split: file only | unified: file + backend) ===
   if (configs.size > 0) {
     if (splitMode && configDir) {
       // Split mode: write to configs file only
