@@ -8,8 +8,8 @@
 import './preload.js'
 
 import { createCLI, type CommandParseResult, type CLISchema } from 'cli-args-parser'
-import type { CLIArgs, Environment, VaulterConfig } from '../types.js'
-import { loadConfig, getProjectName } from '../lib/config-loader.js'
+import type { CLIArgs, VaulterConfig, Environment } from '../types.js'
+import { loadConfig, getProjectName, getDefaultEnvironment } from '../lib/config-loader.js'
 import { createRequire } from 'node:module'
 
 // Version is injected at build time or read from package.json
@@ -101,7 +101,7 @@ const cliSchema: CLISchema = {
     env: {
       short: 'e',
       type: 'string',
-      description: 'Environment (dev/stg/prd/sbx/dr)'
+      description: 'Environment name (as defined in config)'
     },
     backend: {
       short: 'b',
@@ -197,7 +197,14 @@ const cliSchema: CLISchema = {
 
     list: {
       description: 'List all environment variables',
-      aliases: ['ls']
+      aliases: ['ls'],
+      options: {
+        'all-envs': {
+          type: 'boolean',
+          default: false,
+          description: 'List variables across all environments'
+        }
+      }
     },
 
     export: {

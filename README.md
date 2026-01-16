@@ -282,6 +282,7 @@ vaulter k8s:secret -e prd | kubectl apply -f -
 | `set KEY::val` | Set configs (plain) | `vaulter set PORT::3000 -e dev` |
 | `delete <key>` | Delete a variable | `vaulter delete OLD_KEY -e dev` |
 | `list` | List all variables | `vaulter list -e prd` |
+| `list --all-envs` | List across all envs | `vaulter list --all-envs` |
 | `export` | Export for shell | `eval $(vaulter export -e dev)` |
 
 #### Sync Commands
@@ -325,11 +326,44 @@ vaulter set PORT::3000 HOST::localhost   # Configs
 ```
 -p, --project <name>    Project name
 -s, --service <name>    Service name (monorepos)
--e, --env <env>         Environment: dev, stg, prd, sbx, dr
+-e, --env <env>         Environment name (as defined in config)
+-b, --backend <url>     Backend URL override
 -k, --key <path|value>  Encryption key
--v, --verbose           Verbose output
---dry-run               Preview without applying
---json                  JSON output
+-f, --file <path>       Input file path
+-o, --output <path>     Output file path
+-n, --namespace <name>  Kubernetes namespace
+    --format <fmt>      Output format (shell/json/yaml/env/tfvars)
+-v, --verbose           Verbose output (shows values)
+    --dry-run           Preview without applying
+    --json              JSON output
+    --force             Skip confirmations
+    --all               Apply to all services in monorepo
+```
+
+### Flexible Environment Names
+
+Vaulter lets you define your own environment names. Use whatever convention fits your workflow:
+
+```yaml
+# Short names (default)
+environments: [dev, stg, prd]
+
+# Full names
+environments: [development, staging, production]
+
+# Custom names
+environments: [local, homolog, qa, uat, prod]
+
+# Brazilian pattern
+environments: [dev, homolog, prd]
+```
+
+All commands use `-e` with your custom names:
+
+```bash
+vaulter list -e homolog
+vaulter pull -e development
+vaulter k8s:secret -e uat | kubectl apply -f -
 ```
 
 ---
@@ -465,7 +499,7 @@ terraform plan -var-file=<(vaulter tf:vars -e prd)
 vaulter helm:values -e prd | helm upgrade myapp ./chart -f -
 
 # Or save to file
-vaulter helm:values -e prd -o values.secrets.yaml
+vaulter helm:values -e prd > values.secrets.yaml
 helm upgrade myapp ./chart -f values.yaml -f values.secrets.yaml
 ```
 
@@ -579,9 +613,15 @@ vaulter k8s:secret -e prd -n my-namespace | kubectl apply -f -
 
 # Deploy ConfigMap
 vaulter k8s:configmap -e prd | kubectl apply -f -
+```
 
-# With custom name
-vaulter k8s:secret -e prd --name my-app-secrets | kubectl apply -f -
+Note: Custom secret/configmap names are configured in `.vaulter/config.yaml`:
+
+```yaml
+integrations:
+  kubernetes:
+    secret_name: my-app-secrets
+    configmap_name: my-app-config
 ```
 
 ### Helm
@@ -591,7 +631,7 @@ vaulter k8s:secret -e prd --name my-app-secrets | kubectl apply -f -
 vaulter helm:values -e prd | helm upgrade myapp ./chart -f -
 
 # Save to file
-vaulter helm:values -e prd -o values.secrets.yaml
+vaulter helm:values -e prd > values.secrets.yaml
 ```
 
 ### Terraform

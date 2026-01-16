@@ -15,19 +15,19 @@ import {
   getEnvFilePathForConfig,
   getSecretsFilePath,
   getConfigsFilePath,
-  isSplitMode
+  isSplitMode,
+  getValidEnvironments
 } from '../lib/config-loader.js'
 import { parseEnvFile, serializeEnv } from '../lib/env-parser.js'
 import { discoverServices } from '../lib/monorepo.js'
-import { scanMonorepo, formatScanResult, type ScanResult } from '../lib/monorepo-detect.js'
+import { scanMonorepo, formatScanResult } from '../lib/monorepo-detect.js'
 import { getSecretPatterns, splitVarsBySecret } from '../lib/secret-patterns.js'
-import type { Environment, VaulterConfig } from '../types.js'
+import type { VaulterConfig, Environment } from '../types.js'
+import { DEFAULT_ENVIRONMENTS } from '../types.js'
 import { resolveBackendUrls } from '../index.js'
 import fs from 'node:fs'
 import path from 'node:path'
 import YAML from 'yaml'
-
-const ENVIRONMENTS: Environment[] = ['dev', 'stg', 'prd', 'sbx', 'dr']
 
 /**
  * Get current config and client
@@ -82,7 +82,7 @@ export function registerTools(): Tool[] {
         type: 'object',
         properties: {
           key: { type: 'string', description: 'Variable name to retrieve' },
-          environment: { type: 'string', description: 'Environment (dev/stg/prd/sbx/dr)', enum: ENVIRONMENTS, default: 'dev' },
+          environment: { type: 'string', description: 'Environment name (as defined in config)', default: 'dev' },
           project: { type: 'string', description: 'Project name (auto-detected from config if omitted)' },
           service: { type: 'string', description: 'Service name for monorepos' }
         },
@@ -97,7 +97,7 @@ export function registerTools(): Tool[] {
         properties: {
           key: { type: 'string', description: 'Variable name' },
           value: { type: 'string', description: 'Value to set' },
-          environment: { type: 'string', description: 'Environment (dev/stg/prd/sbx/dr)', enum: ENVIRONMENTS, default: 'dev' },
+          environment: { type: 'string', description: 'Environment name (as defined in config)', default: 'dev' },
           project: { type: 'string', description: 'Project name' },
           service: { type: 'string', description: 'Service name for monorepos' },
           tags: { type: 'array', items: { type: 'string' }, description: 'Tags for categorization (e.g., ["database", "sensitive"])' }
@@ -112,7 +112,7 @@ export function registerTools(): Tool[] {
         type: 'object',
         properties: {
           key: { type: 'string', description: 'Variable name to delete' },
-          environment: { type: 'string', description: 'Environment', enum: ENVIRONMENTS, default: 'dev' },
+          environment: { type: 'string', description: 'Environment name', default: 'dev' },
           project: { type: 'string', description: 'Project name' },
           service: { type: 'string', description: 'Service name' }
         },
@@ -125,7 +125,7 @@ export function registerTools(): Tool[] {
       inputSchema: {
         type: 'object',
         properties: {
-          environment: { type: 'string', description: 'Environment', enum: ENVIRONMENTS, default: 'dev' },
+          environment: { type: 'string', description: 'Environment name', default: 'dev' },
           project: { type: 'string', description: 'Project name' },
           service: { type: 'string', description: 'Service name' },
           showValues: { type: 'boolean', description: 'Show actual values (default: false for security)', default: false },
@@ -139,7 +139,7 @@ export function registerTools(): Tool[] {
       inputSchema: {
         type: 'object',
         properties: {
-          environment: { type: 'string', description: 'Environment', enum: ENVIRONMENTS, default: 'dev' },
+          environment: { type: 'string', description: 'Environment name', default: 'dev' },
           project: { type: 'string', description: 'Project name' },
           service: { type: 'string', description: 'Service name' },
           format: { type: 'string', description: 'Output format', enum: ['shell', 'env', 'json', 'yaml', 'tfvars'], default: 'shell' }
@@ -154,7 +154,7 @@ export function registerTools(): Tool[] {
       inputSchema: {
         type: 'object',
         properties: {
-          environment: { type: 'string', description: 'Environment', enum: ENVIRONMENTS, default: 'dev' },
+          environment: { type: 'string', description: 'Environment name', default: 'dev' },
           project: { type: 'string', description: 'Project name' },
           service: { type: 'string', description: 'Service name' },
           dryRun: { type: 'boolean', description: 'Preview changes without applying', default: false }
@@ -167,7 +167,7 @@ export function registerTools(): Tool[] {
       inputSchema: {
         type: 'object',
         properties: {
-          environment: { type: 'string', description: 'Environment', enum: ENVIRONMENTS, default: 'dev' },
+          environment: { type: 'string', description: 'Environment name', default: 'dev' },
           project: { type: 'string', description: 'Project name' },
           service: { type: 'string', description: 'Service name' },
           output: { type: 'string', description: 'Output file path (default: auto-detected from config)' }
@@ -180,7 +180,7 @@ export function registerTools(): Tool[] {
       inputSchema: {
         type: 'object',
         properties: {
-          environment: { type: 'string', description: 'Environment', enum: ENVIRONMENTS, default: 'dev' },
+          environment: { type: 'string', description: 'Environment name', default: 'dev' },
           project: { type: 'string', description: 'Project name' },
           service: { type: 'string', description: 'Service name' },
           file: { type: 'string', description: 'Input file path (default: auto-detected from config)' }
@@ -195,8 +195,8 @@ export function registerTools(): Tool[] {
       inputSchema: {
         type: 'object',
         properties: {
-          source: { type: 'string', description: 'Source environment', enum: ENVIRONMENTS, default: 'dev' },
-          target: { type: 'string', description: 'Target environment', enum: ENVIRONMENTS, default: 'prd' },
+          source: { type: 'string', description: 'Source environment name', default: 'dev' },
+          target: { type: 'string', description: 'Target environment name', default: 'prd' },
           project: { type: 'string', description: 'Project name' },
           service: { type: 'string', description: 'Service name' },
           showValues: { type: 'boolean', description: 'Show actual values in diff', default: false }
@@ -213,7 +213,7 @@ export function registerTools(): Tool[] {
           pattern: { type: 'string', description: 'Search pattern (e.g., "DATABASE_*", "*_SECRET", "*redis*")' },
           project: { type: 'string', description: 'Project name' },
           service: { type: 'string', description: 'Service name' },
-          environments: { type: 'array', items: { type: 'string', enum: ENVIRONMENTS }, description: 'Environments to search (default: all)' }
+          environments: { type: 'array', items: { type: 'string' }, description: 'Environments to search (default: from config or dev/stg/prd)' }
         },
         required: ['pattern']
       }
@@ -249,7 +249,7 @@ export function registerTools(): Tool[] {
       inputSchema: {
         type: 'object',
         properties: {
-          environment: { type: 'string', description: 'Environment', enum: ENVIRONMENTS, default: 'dev' },
+          environment: { type: 'string', description: 'Environment name', default: 'dev' },
           project: { type: 'string', description: 'Project name' },
           service: { type: 'string', description: 'Service name' },
           namespace: { type: 'string', description: 'K8s namespace (default: project-environment)' },
@@ -263,7 +263,7 @@ export function registerTools(): Tool[] {
       inputSchema: {
         type: 'object',
         properties: {
-          environment: { type: 'string', description: 'Environment', enum: ENVIRONMENTS, default: 'dev' },
+          environment: { type: 'string', description: 'Environment name', default: 'dev' },
           project: { type: 'string', description: 'Project name' },
           service: { type: 'string', description: 'Service name' },
           namespace: { type: 'string', description: 'K8s namespace' },
@@ -283,7 +283,7 @@ export function registerTools(): Tool[] {
           service: { type: 'string', description: 'Service name (for monorepos)' },
           backend: { type: 'string', description: 'Backend URL (e.g., s3://bucket/path, file:///path)' },
           mode: { type: 'string', description: 'Directory mode', enum: ['unified', 'split'], default: 'unified' },
-          environments: { type: 'array', items: { type: 'string', enum: ENVIRONMENTS }, description: 'Enabled environments', default: ['dev', 'stg', 'prd'] }
+          environments: { type: 'array', items: { type: 'string' }, description: 'Environments to create (any names)', default: ['dev', 'stg', 'prd'] }
         },
         required: ['project']
       }
@@ -357,7 +357,7 @@ export async function handleToolCall(
         return await handleCompareCall(client, project, service, args)
 
       case 'vaulter_search':
-        return await handleSearchCall(client, project, service, args)
+        return await handleSearchCall(client, project, service, args, config)
 
       case 'vaulter_k8s_secret':
         return await handleK8sSecretCall(client, config, project, environment, service, args)
@@ -718,13 +718,15 @@ async function handleSearchCall(
   client: VaulterClient,
   project: string,
   service: string | undefined,
-  args: Record<string, unknown>
+  args: Record<string, unknown>,
+  config: VaulterConfig | null
 ): Promise<{ content: Array<{ type: 'text'; text: string }> }> {
   const pattern = args.pattern as string
-  const environments = (args.environments as Environment[]) || ENVIRONMENTS
+  // Use args.environments, config environments, or default
+  const environments = (args.environments as string[]) || (config ? getValidEnvironments(config) : DEFAULT_ENVIRONMENTS)
 
   const regex = new RegExp('^' + pattern.replace(/\*/g, '.*') + '$', 'i')
-  const results: Array<{ env: Environment; key: string; found: boolean }> = []
+  const results: Array<{ env: string; key: string; found: boolean }> = []
 
   for (const env of environments) {
     try {
@@ -744,7 +746,7 @@ async function handleSearchCall(
   }
 
   // Group by key
-  const byKey = new Map<string, Environment[]>()
+  const byKey = new Map<string, string[]>()
   for (const r of results) {
     const envs = byKey.get(r.key) || []
     envs.push(r.env)

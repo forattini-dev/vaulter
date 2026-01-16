@@ -5,6 +5,7 @@
  * Detects: NX, Turborepo, Lerna, pnpm workspaces, Yarn workspaces, Rush
  */
 
+import path from 'node:path'
 import type { CLIArgs } from '../../types.js'
 import { scanMonorepo, formatScanResult } from '../../lib/monorepo-detect.js'
 import * as ui from '../ui.js'
@@ -66,7 +67,7 @@ export async function runScan(context: ScanContext): Promise<void> {
       if (uninitializedWithEnv.length > 0) {
         ui.log(`   Run "vaulter init" in these directories to start managing their secrets:`)
         for (const pkg of uninitializedWithEnv.slice(0, 5)) {
-          ui.log(`   • cd ${pkg.relativePath} && vaulter init --project=${result.monorepo.root.split('/').pop()} --service=${pkg.name}`)
+          ui.log(`   • cd ${pkg.relativePath} && vaulter init --project=${path.basename(result.monorepo.root)} --service=${pkg.name}`)
         }
         if (uninitializedWithEnv.length > 5) {
           ui.log(`   ... and ${uninitializedWithEnv.length - 5} more`)

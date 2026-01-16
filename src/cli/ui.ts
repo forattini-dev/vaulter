@@ -5,7 +5,7 @@
  * - Pipe: Clean output, no UI elements, data only to stdout
  */
 
-import { Table, renderToString, createSpinner as tuiuiuCreateSpinner, getSpinnerConfig } from 'tuiuiu.js'
+import { Table, renderToString, getSpinnerConfig } from 'tuiuiu.js'
 import type { SpinnerStyle } from 'tuiuiu.js'
 
 // Detect if running in interactive terminal

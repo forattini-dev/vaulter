@@ -6,17 +6,46 @@
 // Environment Types
 // ============================================================================
 
-export type Environment = 'dev' | 'stg' | 'prd' | 'sbx' | 'dr'
+/**
+ * Environment name - user-defined string
+ *
+ * Users can define any environment names they prefer:
+ * - Short: 'dev', 'stg', 'prd', 'sbx', 'dr'
+ * - Full: 'development', 'staging', 'production'
+ * - Custom: 'homolog', 'qa', 'uat', 'preprod'
+ */
+export type Environment = string
 
-export const ENVIRONMENTS: Environment[] = ['dev', 'stg', 'prd', 'sbx', 'dr']
+/** Default environments used when initializing a new project */
+export const DEFAULT_ENVIRONMENTS: string[] = ['dev', 'stg', 'prd']
 
-export const ENVIRONMENT_NAMES: Record<Environment, string> = {
+/** Default environment when none specified */
+export const DEFAULT_ENVIRONMENT = 'dev'
+
+/**
+ * Common environment name mappings (for display/documentation)
+ * Users are not limited to these - any string is valid
+ */
+export const COMMON_ENVIRONMENT_NAMES: Record<string, string> = {
   dev: 'development',
+  development: 'development',
   stg: 'staging',
+  staging: 'staging',
   prd: 'production',
+  prod: 'production',
+  production: 'production',
   sbx: 'sandbox',
-  dr: 'disaster-recovery'
+  sandbox: 'sandbox',
+  dr: 'disaster-recovery',
+  qa: 'quality assurance',
+  uat: 'user acceptance testing',
+  homolog: 'homologation',
+  preprod: 'pre-production'
 }
+
+// Legacy exports for backward compatibility
+/** @deprecated Use DEFAULT_ENVIRONMENTS instead */
+export const ENVIRONMENTS = DEFAULT_ENVIRONMENTS
 
 // ============================================================================
 // Environment Variable Types
@@ -89,7 +118,8 @@ export interface EncryptionConfig {
 export interface SyncConfig {
   conflict?: 'local' | 'remote' | 'error'
   ignore?: string[]
-  required?: Record<Environment, string[]>
+  /** Required variables per environment (keys are environment names) */
+  required?: Record<string, string[]>
 }
 
 export interface KubernetesIntegrationConfig {
@@ -155,8 +185,10 @@ export interface VaulterConfig {
   service?: string
   backend?: BackendConfig
   encryption?: EncryptionConfig
-  environments?: Environment[]
-  default_environment?: Environment
+  /** User-defined environment names (e.g., ['dev', 'stg', 'prd'] or ['development', 'production']) */
+  environments?: string[]
+  /** Default environment when -e flag is not provided */
+  default_environment?: string
   extends?: string
   sync?: SyncConfig
   integrations?: IntegrationsConfig
@@ -234,7 +266,7 @@ export interface VaulterClientOptions {
 export interface ListOptions {
   project?: string
   service?: string
-  environment?: Environment
+  environment?: string
   limit?: number
   offset?: number
 }

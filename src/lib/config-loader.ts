@@ -8,7 +8,8 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { parse as parseYaml } from 'yaml'
-import type { VaulterConfig, Environment } from '../types.js'
+import type { VaulterConfig } from '../types.js'
+import { DEFAULT_ENVIRONMENTS, DEFAULT_ENVIRONMENT } from '../types.js'
 import { loadKeyFromS3 } from './s3-key-loader.js'
 
 const CONFIG_DIR = '.vaulter'
@@ -73,8 +74,8 @@ function expandEnvVarsInObject<T>(obj: T): T {
 export const DEFAULT_CONFIG: VaulterConfig = {
   version: '1',
   project: '',
-  environments: ['dev', 'stg', 'prd', 'sbx', 'dr'],
-  default_environment: 'dev',
+  environments: DEFAULT_ENVIRONMENTS,
+  default_environment: DEFAULT_ENVIRONMENT,
   sync: {
     conflict: 'local'
   },
@@ -93,6 +94,28 @@ export const DEFAULT_CONFIG: VaulterConfig = {
       ]
     }
   }
+}
+
+/**
+ * Get the list of valid environments from config
+ */
+export function getValidEnvironments(config: VaulterConfig): string[] {
+  return config.environments || DEFAULT_ENVIRONMENTS
+}
+
+/**
+ * Validate that an environment is valid for the given config
+ */
+export function isValidEnvironment(config: VaulterConfig, environment: string): boolean {
+  const validEnvs = getValidEnvironments(config)
+  return validEnvs.includes(environment)
+}
+
+/**
+ * Get the default environment from config
+ */
+export function getDefaultEnvironment(config: VaulterConfig): string {
+  return config.default_environment || DEFAULT_ENVIRONMENT
 }
 
 /**
@@ -259,7 +282,7 @@ export function getEnvironmentsDir(configDir: string): string {
 /**
  * Get the path to an environment file (unified mode)
  */
-export function getEnvFilePath(configDir: string, environment: Environment): string {
+export function getEnvFilePath(configDir: string, environment: string): string {
   return path.join(getEnvironmentsDir(configDir), `${environment}.env`)
 }
 
@@ -289,7 +312,7 @@ export function getBaseDir(configDir: string): string {
 export function getSecretsFilePath(
   config: VaulterConfig,
   configDir: string,
-  environment: Environment
+  environment: string
 ): string {
   const baseDir = getBaseDir(configDir)
   const secretsDir = config.directories?.secrets || 'deploy/secrets'
@@ -307,7 +330,7 @@ export function getSecretsFilePath(
 export function getConfigsFilePath(
   config: VaulterConfig,
   configDir: string,
-  environment: Environment
+  environment: string
 ): string {
   const baseDir = getBaseDir(configDir)
   const configsDir = config.directories?.configs || 'deploy/configs'
@@ -327,7 +350,7 @@ export function getConfigsFilePath(
 export function getEnvFilePathForConfig(
   config: VaulterConfig,
   configDir: string,
-  environment: Environment
+  environment: string
 ): string {
   if (isSplitMode(config)) {
     // In split mode, sync/pull/push work with secrets directory

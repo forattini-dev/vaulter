@@ -4,7 +4,7 @@
  * List all environment variables
  */
 
-import type { CLIArgs, VaulterConfig, Environment, EnvVar } from '../../types.js'
+import type { CLIArgs, VaulterConfig, Environment } from '../../types.js'
 import { createClientFromConfig } from '../lib/create-client.js'
 import * as ui from '../ui.js'
 
@@ -48,10 +48,12 @@ export async function runList(context: ListContext): Promise<void> {
       successText: 'Connected'
     })
 
+    // --all-envs lists across all environments (different from --all which is for monorepo services)
+    const allEnvs = (args as unknown as Record<string, unknown>)['all-envs'] as boolean | undefined
     const vars = await client.list({
       project,
       service,
-      environment: args.all ? undefined : environment
+      environment: allEnvs ? undefined : environment
     })
 
     if (jsonOutput) {
@@ -59,7 +61,7 @@ export async function runList(context: ListContext): Promise<void> {
       ui.output(JSON.stringify({
         project,
         service,
-        environment: args.all ? 'all' : environment,
+        environment: allEnvs ? 'all' : environment,
         count: vars.length,
         variables: vars.map(v => ({
           key: v.key,

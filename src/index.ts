@@ -18,7 +18,14 @@ export type {
   ExportFormat
 } from './types.js'
 
-export { ENVIRONMENTS, ENVIRONMENT_NAMES, EXPORT_FORMATS, DEFAULT_SECRET_PATTERNS } from './types.js'
+export {
+  DEFAULT_ENVIRONMENTS,
+  DEFAULT_ENVIRONMENT,
+  COMMON_ENVIRONMENT_NAMES,
+  ENVIRONMENTS, // deprecated, use DEFAULT_ENVIRONMENTS
+  EXPORT_FORMATS,
+  DEFAULT_SECRET_PATTERNS
+} from './types.js'
 
 // Config utilities
 export {
@@ -27,7 +34,10 @@ export {
   getProjectName,
   configExists,
   loadEncryptionKey,
-  createDefaultConfig
+  createDefaultConfig,
+  getValidEnvironments,
+  isValidEnvironment,
+  getDefaultEnvironment
 } from './lib/config-loader.js'
 
 // Backend URL resolver
