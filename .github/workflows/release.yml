@@ -72,24 +72,8 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build bundle
-        run: pnpm build:bundle
-
-      - name: Build binaries
-        run: |
-          mkdir -p releases
-          npx pkg dist/bin/vaulter.cjs \
-            --output releases/vaulter \
-            --targets node20-linux-x64,node20-linux-arm64,node20-macos-x64,node20-macos-arm64,node20-win-x64
-
-      - name: Rename binaries
-        run: |
-          cd releases
-          mv vaulter-linux-x64 vaulter-linux || true
-          mv vaulter-linux-arm64 vaulter-linux-arm64 || true
-          mv vaulter-macos-x64 vaulter-macos || true
-          mv vaulter-macos-arm64 vaulter-macos-arm64 || true
-          mv vaulter-win-x64.exe vaulter-win.exe || true
+      - name: Build standalone binaries
+        run: pnpm build:binaries
 
       - name: Upload binary artifacts
         uses: actions/upload-artifact@v4
@@ -129,11 +113,11 @@ jobs:
           prerelease: false
           generate_release_notes: true
           files: |
-            releases/vaulter-linux
+            releases/vaulter-linux-x64
             releases/vaulter-linux-arm64
-            releases/vaulter-macos
+            releases/vaulter-macos-x64
             releases/vaulter-macos-arm64
-            releases/vaulter-win.exe
+            releases/vaulter-win-x64.exe
             releases/checksums.txt
 
   publish-npm:
