@@ -535,3 +535,34 @@ export interface AuditConfig {
   /** How to detect user identity */
   user_source?: 'git' | 'env' | 'anonymous'
 }
+
+// ============================================================================
+// MCP Server Configuration (for ~/.vaulter/config.yaml global config)
+// ============================================================================
+
+/**
+ * MCP server configuration
+ *
+ * Used in ~/.vaulter/config.yaml as fallback when no project config is found.
+ * Allows MCP to work without --cwd by providing global defaults.
+ */
+export interface McpConfig {
+  /** Default backend URL when no project config is found */
+  default_backend?: string
+  /** Default project name for operations */
+  default_project?: string
+  /** Default environment */
+  default_environment?: string
+  /** Default encryption key source */
+  default_key?: string
+}
+
+/**
+ * Global vaulter configuration (~/.vaulter/config.yaml)
+ *
+ * This is separate from project config - it provides user-level defaults.
+ */
+export interface GlobalVaulterConfig {
+  /** MCP server defaults */
+  mcp?: McpConfig
+}

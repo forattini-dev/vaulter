@@ -26,7 +26,8 @@ import {
   resolveKeyPath,
   resolveKeyPaths,
   keyExists,
-  parseKeyName
+  parseKeyName,
+  loadMcpConfig
 } from '../lib/config-loader.js'
 import { parseEnvFile, serializeEnv } from '../lib/env-parser.js'
 import { discoverServices } from '../lib/monorepo.js'
@@ -84,6 +85,12 @@ export function getMcpOptions(): McpServerOptions {
 /**
  * Get current config and client
  * Supports both symmetric and asymmetric encryption modes
+ *
+ * Priority order for backend:
+ * 1. CLI --backend flag (mcpOptions.backend)
+ * 2. Project config (.vaulter/config.yaml)
+ * 3. Global MCP config (~/.vaulter/config.yaml mcp.default_backend)
+ * 4. Default (file://$HOME/.vaulter/store)
  */
 async function getClientAndConfig(): Promise<{ client: VaulterClient; config: VaulterConfig | null }> {
   let config: VaulterConfig | null = null
@@ -93,15 +100,20 @@ async function getClientAndConfig(): Promise<{ client: VaulterClient; config: Va
     // Config not found is OK
   }
 
+  // Load global MCP config as fallback
+  const mcpConfig = loadMcpConfig()
+
   // CLI --backend flag takes precedence over config file
   const backendOverride = mcpOptions.backend
 
-  // Determine connection strings: CLI --backend > config > default
+  // Determine connection strings: CLI --backend > project config > global MCP config > default
   let connectionStrings: string[]
   if (backendOverride) {
     connectionStrings = [backendOverride]
   } else if (config) {
     connectionStrings = resolveBackendUrls(config)
+  } else if (mcpConfig?.default_backend) {
+    connectionStrings = [mcpConfig.default_backend]
   } else {
     connectionStrings = []
   }

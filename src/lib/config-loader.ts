@@ -9,7 +9,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { parse as parseYaml } from 'yaml'
-import type { VaulterConfig } from '../types.js'
+import type { VaulterConfig, GlobalVaulterConfig, McpConfig } from '../types.js'
 import { DEFAULT_ENVIRONMENTS, DEFAULT_ENVIRONMENT } from '../types.js'
 import { loadKeyFromS3 } from './s3-key-loader.js'
 
@@ -52,6 +52,45 @@ export function getProjectStoreDir(projectName: string): string {
  */
 export function getGlobalKeysDir(): string {
   return path.join(getVaulterHome(), 'global', 'keys')
+}
+
+/**
+ * Get the global config file path
+ * ~/.vaulter/config.yaml
+ */
+export function getGlobalConfigPath(): string {
+  return path.join(getVaulterHome(), CONFIG_FILE)
+}
+
+/**
+ * Load global vaulter configuration from ~/.vaulter/config.yaml
+ *
+ * This provides user-level defaults for MCP and other features.
+ * Returns null if the file doesn't exist.
+ */
+export function loadGlobalConfig(): GlobalVaulterConfig | null {
+  const configPath = getGlobalConfigPath()
+
+  if (!fs.existsSync(configPath)) {
+    return null
+  }
+
+  try {
+    const content = fs.readFileSync(configPath, 'utf-8')
+    return parseYaml(content) as GlobalVaulterConfig
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Load MCP configuration from global config
+ *
+ * Returns the mcp section of ~/.vaulter/config.yaml or null if not found.
+ */
+export function loadMcpConfig(): McpConfig | null {
+  const globalConfig = loadGlobalConfig()
+  return globalConfig?.mcp || null
 }
 
 /**

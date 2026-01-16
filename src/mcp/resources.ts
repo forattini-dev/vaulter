@@ -380,6 +380,67 @@ This means the data was uploaded WRONG (manually), not through vaulter.
 5. **Pull to new machine**: \`npx vaulter pull -e dev\`
 
 Never bypass the CLI. The CLI handles encryption, metadata formatting, and s3db.js protocol.
+
+---
+
+## 🔧 MCP Server Configuration
+
+### Option 1: Use Project Config (Recommended)
+
+Configure MCP with \`--cwd\` to point to your project directory:
+
+\`\`\`json
+{
+  "vaulter": {
+    "command": "npx",
+    "args": ["vaulter", "mcp", "--cwd", "/path/to/your/project"]
+  }
+}
+\`\`\`
+
+The MCP will automatically read \`.vaulter/config.yaml\` from that directory.
+
+### Option 2: Direct Backend Override
+
+\`\`\`json
+{
+  "vaulter": {
+    "command": "npx",
+    "args": ["vaulter", "mcp", "--backend", "s3://your-bucket"]
+  }
+}
+\`\`\`
+
+### Option 3: Global MCP Config (No CLI args needed)
+
+Create \`~/.vaulter/config.yaml\` with MCP defaults:
+
+\`\`\`yaml
+# ~/.vaulter/config.yaml
+mcp:
+  default_backend: s3://your-bucket
+  default_project: your-project
+  default_environment: dev
+\`\`\`
+
+Then configure MCP without any args:
+
+\`\`\`json
+{
+  "vaulter": {
+    "command": "npx",
+    "args": ["vaulter", "mcp"]
+  }
+}
+\`\`\`
+
+### Priority Order
+
+Backend resolution priority (first match wins):
+1. CLI \`--backend\` flag
+2. Project config (\`.vaulter/config.yaml\`)
+3. Global MCP config (\`~/.vaulter/config.yaml\` → \`mcp.default_backend\`)
+4. Default (\`file://$HOME/.vaulter/store\`)
 `
 
   return {
