@@ -74,7 +74,7 @@
     "build": "tsc && node -e \"const fs=require('fs');const f='dist/cli/index.js';if(fs.existsSync(f)){const c=fs.readFileSync(f,'utf8');if(!c.startsWith('#!')){fs.writeFileSync(f,'#!/usr/bin/env node\\n'+c)}}\"",
     "build:bundle": "node esbuild.config.js",
     "build:standalone": "node esbuild.config.js --standalone",
-    "build:binaries": "echo 'Binary builds are WIP - s3db.js dynamic imports not yet compatible with pkg. Use npm package instead: pnpm add -g vaulter' && exit 1",
+    "build:binaries": "pnpm build:standalone && mkdir -p releases && pnpm exec pkg ./dist/bin/vaulter-standalone.cjs --output releases/vaulter --targets node20-linux-x64,node20-linux-arm64,node20-macos-x64,node20-macos-arm64,node20-win-x64",
     "build:all": "pnpm build && pnpm build:bundle",
     "test": "vitest run",
     "test:watch": "vitest watch",
@@ -99,15 +99,15 @@
     "cli-args-parser": "^1.0.2",
     "dotenv": "^17.2.3",
     "p-limit": "^6.2.0",
-    "s3db.js": "^19.2.4",
+    "s3db.js": "^19.3.0",
     "yaml": "^2.7.1"
   },
   "devDependencies": {
     "@aws-sdk/client-s3": "^3.969.0",
     "@types/node": "^22.15.21",
     "@vitest/coverage-v8": "^4.0.16",
-    "esbuild": "^0.27.2",
     "@yao-pkg/pkg": "^5.11.4",
+    "esbuild": "^0.27.2",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",
     "vitest": "^4.0.16"

@@ -2,7 +2,7 @@
  * Vaulter Client - s3db.js wrapper for environment variable storage
  */
 
-import { S3db } from 's3db.js'
+import { S3db } from 's3db.js/lite'
 import type {
   EnvVar,
   EnvVarInput,
