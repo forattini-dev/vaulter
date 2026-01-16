@@ -363,6 +363,34 @@ const cliSchema: CLISchema = {
               type: 'boolean',
               default: false,
               description: 'List across all environments'
+            },
+            user: {
+              type: 'string',
+              description: 'Filter by user'
+            },
+            operation: {
+              type: 'string',
+              description: 'Filter by operation (set, delete, sync, push, rotate)'
+            },
+            key: {
+              type: 'string',
+              description: 'Filter by key pattern (supports * and ? wildcards)'
+            },
+            source: {
+              type: 'string',
+              description: 'Filter by source (cli, mcp, api, loader)'
+            },
+            since: {
+              type: 'string',
+              description: 'Filter entries after this date (ISO format)'
+            },
+            until: {
+              type: 'string',
+              description: 'Filter entries before this date (ISO format)'
+            },
+            limit: {
+              type: 'number',
+              description: 'Maximum entries to return (default: 50)'
             }
           }
         },
@@ -484,7 +512,19 @@ function toCliArgs(result: CommandParseResult): CLIArgs {
     algorithm: opts.algorithm as string | undefined,
     alg: opts.alg as string | undefined,
     // List command options
-    'all-envs': opts['all-envs'] as boolean | undefined
+    'all-envs': opts['all-envs'] as boolean | undefined,
+    // Rotation command options
+    days: opts.days as number | undefined,
+    interval: opts.interval as string | undefined,
+    clear: opts.clear as boolean | undefined,
+    // Audit command options
+    retention: opts.retention as number | undefined,
+    user: opts.user as string | undefined,
+    operation: opts.operation as string | undefined,
+    since: opts.since as string | undefined,
+    until: opts.until as string | undefined,
+    limit: opts.limit as number | undefined,
+    source: opts.source as string | undefined
   }
 }
 

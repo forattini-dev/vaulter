@@ -42,26 +42,20 @@ function parseDuration(duration: string): number | null {
 }
 
 /**
- * Calculate rotation due date from last rotation and interval
- */
-function calculateDueDate(lastRotatedAt: string | undefined, intervalDays: number): Date {
-  const lastDate = lastRotatedAt ? new Date(lastRotatedAt) : new Date(0)
-  return new Date(lastDate.getTime() + intervalDays * 24 * 60 * 60 * 1000)
-}
-
-/**
  * Check if a secret needs rotation
+ * Note: rotateAfter can be Date or string (from storage deserialization)
  */
 function needsRotation(
   rotatedAt: string | undefined,
-  rotateAfter: Date | undefined,
+  rotateAfter: Date | string | undefined,
   defaultIntervalDays: number
 ): boolean {
   const now = new Date()
 
   // If rotateAfter is set, use that
   if (rotateAfter) {
-    return now > new Date(rotateAfter)
+    const dueDate = rotateAfter instanceof Date ? rotateAfter : new Date(rotateAfter)
+    return now > dueDate
   }
 
   // Otherwise, check against last rotation + default interval
@@ -116,8 +110,8 @@ async function runRotationCheck(context: RotationContext): Promise<void> {
     process.exit(1)
   }
 
-  const allEnvs = (args as any)['all-envs'] as boolean
-  const defaultDays = ((args as any).days as number) || config?.encryption?.rotation?.interval_days || 90
+  const allEnvs = args['all-envs']
+  const defaultDays = args.days || config?.encryption?.rotation?.interval_days || 90
   const environments = allEnvs && config
     ? getValidEnvironments(config)
     : [environment]
@@ -163,11 +157,16 @@ async function runRotationCheck(context: RotationContext): Promise<void> {
           daysUntilDue = Math.floor((due.getTime() - Date.now()) / (24 * 60 * 60 * 1000))
         }
 
+        // Normalize rotateAfter to ISO string (could be Date or string from storage)
+        const rotateAfterStr = rotateAfter
+          ? (rotateAfter instanceof Date ? rotateAfter.toISOString() : String(rotateAfter))
+          : undefined
+
         results.push({
           key: variable.key,
           environment: env,
           rotatedAt,
-          rotateAfter: rotateAfter ? rotateAfter.toISOString() : undefined,
+          rotateAfter: rotateAfterStr,
           needsRotation: needs,
           daysOld,
           daysUntilDue
@@ -242,8 +241,8 @@ async function runRotationSet(context: RotationContext): Promise<void> {
     process.exit(1)
   }
 
-  const intervalStr = (args as any).interval as string | undefined
-  const clear = (args as any).clear as boolean
+  const intervalStr = args.interval
+  const clear = args.clear
 
   if (!intervalStr && !clear) {
     console.error('Error: Either --interval or --clear is required')
@@ -360,7 +359,7 @@ async function runRotationList(context: RotationContext): Promise<void> {
     process.exit(1)
   }
 
-  const allEnvs = (args as any)['all-envs'] as boolean
+  const allEnvs = args['all-envs']
   const environments = allEnvs && config
     ? getValidEnvironments(config)
     : [environment]

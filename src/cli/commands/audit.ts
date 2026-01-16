@@ -82,37 +82,18 @@ export async function runAuditList(context: AuditContext): Promise<void> {
   const logger = await createAuditLogger(context)
 
   try {
-    // Build query options from args
+    // Build query options from typed args
     const queryOptions: Record<string, unknown> = {
       project,
       environment: args['all-envs'] ? undefined : environment,
-      service
-    }
-
-    // Additional filters from CLI args
-    const restArgs = args._ || []
-    for (let i = 0; i < restArgs.length; i++) {
-      const arg = restArgs[i]
-      if (arg === '--user' && restArgs[i + 1]) {
-        queryOptions.user = restArgs[++i]
-      } else if (arg === '--operation' && restArgs[i + 1]) {
-        queryOptions.operation = restArgs[++i]
-      } else if (arg === '--key' && restArgs[i + 1]) {
-        queryOptions.key = restArgs[++i]
-      } else if (arg === '--source' && restArgs[i + 1]) {
-        queryOptions.source = restArgs[++i]
-      } else if (arg === '--since' && restArgs[i + 1]) {
-        queryOptions.since = new Date(restArgs[++i])
-      } else if (arg === '--until' && restArgs[i + 1]) {
-        queryOptions.until = new Date(restArgs[++i])
-      } else if (arg === '--limit' && restArgs[i + 1]) {
-        queryOptions.limit = parseInt(restArgs[++i], 10)
-      }
-    }
-
-    // Default limit
-    if (!queryOptions.limit) {
-      queryOptions.limit = 50
+      service,
+      user: args.user,
+      operation: args.operation,
+      key: args.key,
+      source: args.source,
+      since: args.since ? new Date(args.since) : undefined,
+      until: args.until ? new Date(args.until) : undefined,
+      limit: args.limit || 50
     }
 
     ui.verbose(`Querying audit log for ${project}/${service || '*'}/${environment}`, verbose)
@@ -288,15 +269,8 @@ export async function runAuditStats(context: AuditContext): Promise<void> {
 export async function runAuditCleanup(context: AuditContext): Promise<void> {
   const { args, config, verbose, jsonOutput } = context
 
-  // Get retention days from args or config
-  const restArgs = args._ || []
-  let retentionDays = config?.audit?.retention_days || 90
-
-  for (let i = 0; i < restArgs.length; i++) {
-    if (restArgs[i] === '--retention' && restArgs[i + 1]) {
-      retentionDays = parseInt(restArgs[++i], 10)
-    }
-  }
+  // Get retention days from typed args or config
+  const retentionDays = args.retention || config?.audit?.retention_days || 90
 
   const logger = await createAuditLogger(context)
 

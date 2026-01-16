@@ -326,6 +326,18 @@ export interface CLIArgs {
   global?: boolean
   // List command flags
   'all-envs'?: boolean
+  // Rotation command flags
+  days?: number
+  interval?: string
+  clear?: boolean
+  // Audit command flags
+  retention?: number
+  user?: string
+  operation?: string
+  since?: string
+  until?: string
+  limit?: number
+  source?: string
 }
 
 export interface CommandContext {

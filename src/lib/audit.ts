@@ -28,7 +28,8 @@ const DEFAULT_USER_SOURCE = 'git'
  * maskValue('') // ''
  */
 export function maskValue(value: string | undefined): string | undefined {
-  if (!value) return undefined
+  if (value === undefined) return undefined
+  if (value === '') return ''
   if (value.length <= 8) return '*'.repeat(value.length)
   return `${value.slice(0, 4)}****${value.slice(-4)}`
 }
@@ -112,9 +113,10 @@ export class AuditLogger {
 
   /**
    * Initialize the audit logger with a connection string
+   * Note: Connection is allowed even when audit.enabled is false
+   * (only writing is disabled, reading/cleanup still work)
    */
   async connect(connectionString: string, passphrase?: string): Promise<void> {
-    if (!this.config.enabled) return
     if (this.initialized) return
 
     this.db = new S3db({
@@ -201,9 +203,9 @@ export class AuditLogger {
 
   /**
    * Query audit entries with filters
+   * Note: Works even when audit.enabled is false (only writing is disabled)
    */
   async query(options: AuditQueryOptions = {}): Promise<AuditEntry[]> {
-    if (!this.config.enabled) return []
     if (!this.initialized || !this.resource) {
       throw new Error('AuditLogger not initialized. Call connect() first.')
     }
@@ -241,10 +243,13 @@ export class AuditLogger {
       results = results.filter((e: AuditEntry) => e.service === options.service)
     }
     if (options.key) {
-      // Support glob-style patterns
-      const keyPattern = new RegExp(
-        '^' + options.key.replace(/\*/g, '.*').replace(/\?/g, '.') + '$'
-      )
+      // Support glob-style patterns (* and ?)
+      // First escape regex metacharacters, then convert glob wildcards
+      const escaped = options.key
+        .replace(/[.+^${}()|[\]\\]/g, '\\$&')  // Escape regex special chars
+        .replace(/\*/g, '.*')                    // Convert * to .*
+        .replace(/\?/g, '.')                     // Convert ? to .
+      const keyPattern = new RegExp('^' + escaped + '$')
       results = results.filter((e: AuditEntry) => keyPattern.test(e.key))
     }
     if (options.source) {
@@ -271,9 +276,9 @@ export class AuditLogger {
 
   /**
    * Get a single audit entry by ID
+   * Note: Works even when audit.enabled is false (only writing is disabled)
    */
   async get(id: string): Promise<AuditEntry | null> {
-    if (!this.config.enabled) return null
     if (!this.initialized || !this.resource) {
       throw new Error('AuditLogger not initialized. Call connect() first.')
     }
@@ -288,9 +293,9 @@ export class AuditLogger {
   /**
    * Cleanup old audit entries based on retention policy
    * Returns the number of entries deleted
+   * Note: Works even when audit.enabled is false (only writing is disabled)
    */
   async cleanup(): Promise<number> {
-    if (!this.config.enabled) return 0
     if (!this.initialized || !this.resource) {
       throw new Error('AuditLogger not initialized. Call connect() first.')
     }
