@@ -72,8 +72,16 @@ MCP server for Claude AI. Zero config for dev, production-ready.
 - [Monorepo Support](#monorepo-support)
   - [NX Monorepo](#nx-monorepo)
   - [Turborepo](#turborepo)
-- [MCP Tools](#mcp-tools)
+- [MCP Server](#mcp-server)
+  - [MCP Tools](#mcp-tools-14)
+  - [MCP Resources](#mcp-resources-5)
+  - [MCP Prompts](#mcp-prompts-5)
 - [CI/CD](#cicd)
+  - [Developer Daily Workflow](#developer-daily-workflow)
+  - [GitHub Actions](#github-actions)
+  - [GitLab CI](#gitlab-ci)
+  - [CircleCI](#circleci)
+  - [Azure DevOps](#azure-devops)
 - [Security Best Practices](#security-best-practices)
 - [API Usage](#api-usage)
 - [Pre-built Binaries](#pre-built-binaries)
@@ -777,28 +785,297 @@ vaulter sync -e dev -s "svc-*"
 vaulter export -e prd --all --format=json
 ```
 
-## MCP Tools
+## MCP Server
 
-| Tool | Description |
-|:-----|:------------|
-| `vaulter_get` | Get a single variable |
-| `vaulter_set` | Set a variable |
-| `vaulter_delete` | Delete a variable |
-| `vaulter_list` | List all variables |
-| `vaulter_export` | Export in various formats |
-| `vaulter_sync` | Sync with .env file |
+Vaulter includes a full-featured **Model Context Protocol (MCP)** server for AI assistant integration. Works with Claude, ChatGPT, and any MCP-compatible client.
+
+### Quick Setup
+
+```bash
+# Start MCP server
+vaulter mcp
+```
+
+Add to your Claude config (`~/.config/claude/claude_desktop_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "vaulter": {
+      "command": "npx",
+      "args": ["vaulter", "mcp"]
+    }
+  }
+}
+```
+
+Or with the binary:
+
+```json
+{
+  "mcpServers": {
+    "vaulter": {
+      "command": "/usr/local/bin/vaulter",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+### MCP Tools (14)
+
+The MCP server exposes 14 tools organized into categories:
+
+#### Core Tools
+
+| Tool | Description | Example Use |
+|:-----|:------------|:------------|
+| `vaulter_get` | Get a single variable | "Get the DATABASE_URL for production" |
+| `vaulter_set` | Set a variable with tags | "Set API_KEY to sk-xxx for dev" |
+| `vaulter_delete` | Delete a variable | "Remove the old LEGACY_KEY" |
+| `vaulter_list` | List all variables | "Show all vars in staging" |
+| `vaulter_export` | Export in various formats | "Export prod vars as JSON" |
+
+#### Sync Tools
+
+| Tool | Description | Example Use |
+|:-----|:------------|:------------|
+| `vaulter_sync` | Bidirectional sync | "Sync local .env with dev backend" |
+| `vaulter_pull` | Download from backend | "Pull production vars to .env.prd" |
+| `vaulter_push` | Upload to backend | "Push .env.local to dev" |
+
+#### Analysis Tools
+
+| Tool | Description | Example Use |
+|:-----|:------------|:------------|
+| `vaulter_compare` | Compare two environments | "What's different between stg and prd?" |
+| `vaulter_search` | Search by key pattern | "Find all vars containing DATABASE" |
+
+#### Monorepo Tools
+
+| Tool | Description | Example Use |
+|:-----|:------------|:------------|
+| `vaulter_services` | List discovered services | "What services are in this monorepo?" |
+
+#### Kubernetes Tools
+
+| Tool | Description | Example Use |
+|:-----|:------------|:------------|
+| `vaulter_k8s_secret` | Generate K8s Secret YAML | "Generate a K8s secret for prod" |
+| `vaulter_k8s_configmap` | Generate K8s ConfigMap | "Create a ConfigMap for non-secrets" |
+
+#### Setup Tools
+
+| Tool | Description | Example Use |
+|:-----|:------------|:------------|
+| `vaulter_init` | Initialize new project | "Set up vaulter in this project" |
+
+### MCP Resources (5)
+
+Resources provide read-only views of your secrets and configuration:
+
+| Resource URI | Description | Content |
+|:-------------|:------------|:--------|
+| `vaulter://config` | Project configuration | YAML from .vaulter/config.yaml |
+| `vaulter://services` | Monorepo services | JSON list of discovered services |
+| `vaulter://project/env` | Environment variables | .env format for project/env |
+| `vaulter://project/env/service` | Service-specific vars | .env format for service |
+| `vaulter://compare/env1/env2` | Environment comparison | Diff between two environments |
+
+**Example resource access:**
+- `vaulter://config` → Current config.yaml content
+- `vaulter://my-app/prd` → Production vars for my-app
+- `vaulter://compare/dev/prd` → What's different between dev and prod
+
+### MCP Prompts (5)
+
+Pre-configured workflow prompts guide AI through complex operations:
+
+| Prompt | Description | Arguments |
+|:-------|:------------|:----------|
+| `setup_project` | Initialize a new vaulter project | `project_name`, `mode?`, `backend?` |
+| `migrate_dotenv` | Migrate existing .env to vaulter | `file_path`, `environment`, `dry_run?` |
+| `deploy_secrets` | Deploy secrets to Kubernetes | `environment`, `namespace?`, `secret_name?` |
+| `compare_environments` | Compare two environments | `source_env`, `target_env`, `show_values?` |
+| `security_audit` | Audit secrets for security issues | `environment`, `strict?` |
+
+**Example prompt usage in Claude:**
+- "Use the setup_project prompt to create a new project called api-service"
+- "Run the migrate_dotenv prompt for .env.local to dev environment"
+- "Execute security_audit for production in strict mode"
+
+### MCP Capabilities Summary
+
+| Category | Count | Features |
+|:---------|------:|:---------|
+| **Tools** | 14 | CRUD, sync, compare, K8s, init |
+| **Resources** | 5 | Config, services, vars, comparison |
+| **Prompts** | 5 | Setup, migrate, deploy, compare, audit |
+| **Formats** | 5 | shell, json, yaml, env, tfvars |
+
+### Example AI Conversations
+
+**Setting up a new project:**
+> "Help me set up vaulter for my new api-service project using S3 backend"
+
+The AI will use `vaulter_init`, guide through backend config, and set up encryption.
+
+**Migrating from dotenv:**
+> "I have a .env.production file with 50 variables. Help me migrate to vaulter"
+
+The AI will analyze the file, identify secrets vs configs, and sync to backend.
+
+**Deploying to Kubernetes:**
+> "Generate Kubernetes secrets for production and show me how to deploy them"
+
+The AI will use `vaulter_k8s_secret` and provide kubectl commands.
+
+**Comparing environments:**
+> "What variables are in staging but missing from production?"
+
+The AI will use `vaulter_compare` and show the differences.
+
+**Security review:**
+> "Audit my production secrets for security issues"
+
+The AI will analyze variable patterns, check for weak values, and provide recommendations.
 
 ## CI/CD
 
+### Developer Daily Workflow
+
+A typical day with vaulter:
+
+#### 1. Morning Setup
+
+```bash
+# Pull latest secrets to your local .env
+vaulter pull -e dev
+
+# Start development with loaded vars
+eval $(vaulter export -e dev) npm run dev
+
+# Or use the alias (add to ~/.bashrc)
+alias vdev='eval $(vaulter export -e dev)'
+vdev npm run dev
+```
+
+#### 2. Adding New Variables
+
+```bash
+# Add a new secret (encrypted, synced to backend)
+vaulter set NEW_API_KEY="sk-xxx" -e dev
+
+# Add a config (plain text)
+vaulter set LOG_LEVEL::debug -e dev
+
+# Batch add multiple vars
+vaulter set DB_HOST::localhost DB_PORT::5432 DB_PASSWORD="secret123" -e dev
+
+# Check what you have
+vaulter list -e dev
+```
+
+#### 3. Syncing with Team
+
+```bash
+# Your teammate added new vars - pull them
+vaulter pull -e dev
+
+# You made changes - push to backend
+vaulter push -e dev
+
+# Two-way sync (recommended)
+vaulter sync -e dev
+
+# Preview before sync
+vaulter sync -e dev --dry-run
+```
+
+#### 4. Testing Different Environments
+
+```bash
+# Run with staging config
+eval $(vaulter export -e stg) npm test
+
+# Compare what's different in production
+vaulter compare -e dev -e prd
+
+# One-liner to check production
+vdev npm run dev   # dev
+vstg npm test      # stg
+vprd npm run build # prd (be careful!)
+```
+
+#### 5. Before Code Review
+
+```bash
+# Make sure all required vars are documented
+vaulter list -e dev --json | jq 'keys'
+
+# Check nothing sensitive is in wrong place
+vaulter search "*PASSWORD*" -e dev
+vaulter search "*SECRET*" -e dev
+```
+
+#### 6. Deployment Prep
+
+```bash
+# Generate K8s secret and review
+vaulter k8s:secret -e prd --dry-run
+
+# Generate and apply
+vaulter k8s:secret -e prd | kubectl apply -f -
+
+# Or export for Helm
+vaulter helm:values -e prd > values.prd.yaml
+helm upgrade myapp ./chart -f values.prd.yaml
+```
+
+### Shell Aliases (Recommended)
+
+Add to `~/.bashrc` or `~/.zshrc`:
+
+```bash
+# Quick environment loading
+alias vdev='eval $(vaulter export -e dev)'
+alias vstg='eval $(vaulter export -e stg)'
+alias vprd='eval $(vaulter export -e prd)'
+
+# Common operations
+alias vpull='vaulter pull -e dev'
+alias vpush='vaulter push -e dev'
+alias vsync='vaulter sync -e dev'
+alias vlist='vaulter list -e dev'
+
+# K8s shortcuts
+alias vk8s='vaulter k8s:secret'
+alias vhelm='vaulter helm:values'
+
+# Usage
+vdev npm run dev              # Dev with env vars
+vstg npm test                 # Test with staging
+vpull && vdev npm run dev     # Pull latest, then run
+vk8s -e prd | kubectl apply -f -  # Deploy secrets
+```
+
 ### GitHub Actions
 
+#### Basic Deploy Secrets
+
 ```yaml
+name: Deploy
+on:
+  push:
+    branches: [main]
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Deploy secrets
+
+      - name: Deploy secrets to K8s
         env:
           VAULTER_KEY: ${{ secrets.VAULTER_KEY }}
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -807,14 +1084,209 @@ jobs:
           npx vaulter k8s:secret -e prd | kubectl apply -f -
 ```
 
+#### Multi-Environment Deploy
+
+```yaml
+name: Deploy to Environment
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy'
+        required: true
+        type: choice
+        options: [dev, stg, prd]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy secrets
+        env:
+          VAULTER_KEY: ${{ secrets.VAULTER_KEY }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        run: |
+          npx vaulter k8s:secret -e ${{ inputs.environment }} | kubectl apply -f -
+          npx vaulter k8s:configmap -e ${{ inputs.environment }} | kubectl apply -f -
+```
+
+#### Monorepo with Matrix
+
+```yaml
+name: Deploy Services
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service: [api, web, worker]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy ${{ matrix.service }} secrets
+        env:
+          VAULTER_KEY: ${{ secrets.VAULTER_KEY }}
+        run: |
+          cd apps/${{ matrix.service }}
+          npx vaulter k8s:secret -e prd | kubectl apply -f -
+```
+
+#### PR Preview Environment
+
+```yaml
+name: PR Preview
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create preview secrets
+        env:
+          VAULTER_KEY: ${{ secrets.VAULTER_KEY }}
+        run: |
+          # Use dev secrets for PR previews
+          npx vaulter k8s:secret -e dev -n preview-pr-${{ github.event.number }} | \
+            kubectl apply -f -
+```
+
+#### Validate Secrets Exist
+
+```yaml
+name: Validate Secrets
+on:
+  pull_request:
+    paths:
+      - '.vaulter/**'
+      - 'deploy/**'
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check required secrets exist
+        env:
+          VAULTER_KEY: ${{ secrets.VAULTER_KEY }}
+        run: |
+          # List and verify required secrets are set
+          npx vaulter list -e prd --json | jq -e '.DATABASE_URL and .API_KEY'
+```
+
 ### GitLab CI
 
 ```yaml
-deploy:
+stages:
+  - validate
+  - deploy
+
+variables:
+  VAULTER_KEY: $VAULTER_KEY
+
+validate-secrets:
+  stage: validate
+  script:
+    - npx vaulter list -e $CI_ENVIRONMENT_NAME --json | jq -e 'keys | length > 0'
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+
+deploy-secrets:
+  stage: deploy
   script:
     - npx vaulter k8s:secret -e prd | kubectl apply -f -
-  variables:
-    VAULTER_KEY: $VAULTER_KEY
+  environment:
+    name: production
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+```
+
+### CircleCI
+
+```yaml
+version: 2.1
+jobs:
+  deploy:
+    docker:
+      - image: cimg/node:20.0
+    steps:
+      - checkout
+      - run:
+          name: Deploy secrets
+          command: |
+            npx vaulter k8s:secret -e prd | kubectl apply -f -
+          environment:
+            VAULTER_KEY: ${VAULTER_KEY}
+
+workflows:
+  deploy:
+    jobs:
+      - deploy:
+          filters:
+            branches:
+              only: main
+```
+
+### Azure DevOps
+
+```yaml
+trigger:
+  - main
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+steps:
+  - task: NodeTool@0
+    inputs:
+      versionSpec: '20.x'
+
+  - script: |
+      npx vaulter k8s:secret -e prd | kubectl apply -f -
+    displayName: 'Deploy secrets'
+    env:
+      VAULTER_KEY: $(VAULTER_KEY)
+      AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
+      AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
+```
+
+### CI/CD Best Practices
+
+| Practice | Recommendation |
+|:---------|:---------------|
+| **Store VAULTER_KEY securely** | Use CI provider's secret management |
+| **Use IAM roles when possible** | Prefer roles over hardcoded credentials |
+| **Different keys per environment** | Don't share prd key with dev |
+| **Validate before deploy** | Run `--dry-run` first in pipelines |
+| **Use environment protection** | Require approval for prd deploys |
+| **Cache vaulter binary** | Download once per pipeline, not per job |
+
+### Caching Vaulter Binary
+
+```yaml
+# GitHub Actions
+- uses: actions/cache@v3
+  with:
+    path: ~/.npm
+    key: vaulter-${{ runner.os }}
+
+# Or download binary directly
+- name: Install vaulter
+  run: |
+    curl -sL https://github.com/forattini-dev/vaulter/releases/latest/download/vaulter-linux -o /usr/local/bin/vaulter
+    chmod +x /usr/local/bin/vaulter
 ```
 
 ## Security Best Practices
@@ -891,7 +1363,9 @@ await client.disconnect()
 | Backends | 7 (S3, MinIO, R2, Spaces, B2, FileSystem, Memory) |
 | Environments | 5 (dev, stg, prd, sbx, dr) |
 | Export Formats | 5 (shell, json, yaml, env, tfvars) |
-| MCP Tools | 6 |
+| MCP Tools | 14 (core, sync, analysis, monorepo, k8s, setup) |
+| MCP Resources | 5 (config, services, vars, service vars, compare) |
+| MCP Prompts | 5 (setup, migrate, deploy, compare, audit) |
 | Integrations | 5 (K8s Secret, K8s ConfigMap, Helm, Terraform, tfvars) |
 
 ## Pre-built Binaries
