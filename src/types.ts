@@ -87,7 +87,7 @@ export interface EncryptionConfig {
 }
 
 export interface SyncConfig {
-  conflict?: 'local' | 'remote' | 'prompt' | 'error'
+  conflict?: 'local' | 'remote' | 'error'
   ignore?: string[]
   required?: Record<Environment, string[]>
 }
@@ -127,6 +127,28 @@ export interface SecurityConfig {
   }
 }
 
+/**
+ * Directory structure configuration
+ *
+ * Supports two modes:
+ * - unified (default): All env files in .vaulter/environments/<env>.env
+ * - split: Separate directories for configs and secrets (apps-lair pattern)
+ *
+ * Split mode example:
+ *   deploy/configs/dev.env  → Non-sensitive (committable)
+ *   deploy/secrets/dev.env  → Sensitive (gitignored)
+ */
+export interface DirectoriesConfig {
+  /** Directory structure mode */
+  mode?: 'unified' | 'split'
+  /** Path to configs directory (non-sensitive, committable) - used in split mode */
+  configs?: string
+  /** Path to secrets directory (sensitive, gitignored) - used in split mode */
+  secrets?: string
+  /** Path to unified environments directory - used in unified mode */
+  path?: string
+}
+
 export interface VaulterConfig {
   version: '1'
   project: string
@@ -140,6 +162,8 @@ export interface VaulterConfig {
   integrations?: IntegrationsConfig
   hooks?: HooksConfig
   security?: SecurityConfig
+  /** Directory structure configuration (unified or split mode) */
+  directories?: DirectoriesConfig
 }
 
 // ============================================================================
@@ -177,6 +201,8 @@ export interface CLIArgs {
   namespace?: string
   n?: string
   format?: string
+  // Init command flags
+  split?: boolean
 }
 
 export interface CommandContext {

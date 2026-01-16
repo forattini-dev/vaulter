@@ -23,6 +23,12 @@ interface InitContext {
  */
 export async function runInit(context: InitContext): Promise<void> {
   const { args, verbose, dryRun, jsonOutput } = context
+  const splitMode = args.split || false
+  const splitDirectories = {
+    mode: 'split' as const,
+    configs: 'deploy/configs',
+    secrets: 'deploy/secrets'
+  }
 
   // Check if already initialized
   if (configExists()) {
@@ -55,18 +61,24 @@ export async function runInit(context: InitContext): Promise<void> {
         action: 'init',
         project: projectName,
         configDir,
+        splitMode,
         dryRun: true
       }))
     } else {
       console.log('Dry run - would create:')
       console.log(`  ${configDir}/config.yaml`)
-      console.log(`  ${configDir}/environments/`)
+      if (splitMode) {
+        console.log(`  ${splitDirectories.configs}/`)
+        console.log(`  ${splitDirectories.secrets}/`)
+      } else {
+        console.log(`  ${configDir}/environments/`)
+      }
     }
     return
   }
 
   // Create configuration
-  createDefaultConfig(configDir, projectName)
+  createDefaultConfig(configDir, projectName, splitMode ? { directories: splitDirectories } : {})
 
   // Create .gitignore for sensitive files
   const gitignorePath = path.join(configDir, '.gitignore')
@@ -79,16 +91,56 @@ export async function runInit(context: InitContext): Promise<void> {
   }
 
   // Create placeholder environment files
-  const envDir = path.join(configDir, 'environments')
   const environments = ['dev', 'stg', 'prd', 'sbx', 'dr']
 
-  for (const env of environments) {
-    const envFile = path.join(envDir, `${env}.env`)
-    if (!fs.existsSync(envFile)) {
-      fs.writeFileSync(envFile, `# ${env.toUpperCase()} Environment Variables
+  if (splitMode) {
+    const baseDir = path.dirname(configDir)
+    const configsDir = path.join(baseDir, splitDirectories.configs)
+    const secretsDir = path.join(baseDir, splitDirectories.secrets)
+
+    if (!fs.existsSync(configsDir)) {
+      fs.mkdirSync(configsDir, { recursive: true })
+    }
+    if (!fs.existsSync(secretsDir)) {
+      fs.mkdirSync(secretsDir, { recursive: true })
+    }
+
+    const secretsGitignore = path.join(secretsDir, '.gitignore')
+    if (!fs.existsSync(secretsGitignore)) {
+      fs.writeFileSync(secretsGitignore, `# Vaulter secrets (do not commit)
+*
+!.gitignore
+`)
+    }
+
+    for (const env of environments) {
+      const configsFile = path.join(configsDir, `${env}.env`)
+      if (!fs.existsSync(configsFile)) {
+        fs.writeFileSync(configsFile, `# ${env.toUpperCase()} Config Variables
+# Non-sensitive config values for ${env}
+# Example: NODE_ENV=${env}
+`)
+      }
+
+      const secretsFile = path.join(secretsDir, `${env}.env`)
+      if (!fs.existsSync(secretsFile)) {
+        fs.writeFileSync(secretsFile, `# ${env.toUpperCase()} Secret Variables
+# Sensitive values for ${env} (gitignored)
+# Example: DATABASE_URL=postgres://localhost/${env}_db
+`)
+      }
+    }
+  } else {
+    const envDir = path.join(configDir, 'environments')
+
+    for (const env of environments) {
+      const envFile = path.join(envDir, `${env}.env`)
+      if (!fs.existsSync(envFile)) {
+        fs.writeFileSync(envFile, `# ${env.toUpperCase()} Environment Variables
 # Add your ${env} environment variables here
 # Example: DATABASE_URL=postgres://localhost/${env}_db
 `)
+      }
     }
   }
 
@@ -97,20 +149,38 @@ export async function runInit(context: InitContext): Promise<void> {
       success: true,
       project: projectName,
       configDir,
+      splitMode,
       files: [
         'config.yaml',
         '.gitignore',
-        ...environments.map(e => `environments/${e}.env`)
+        ...(splitMode
+          ? [
+              `${splitDirectories.secrets}/.gitignore`,
+              ...environments.map(e => `${splitDirectories.configs}/${e}.env`),
+              ...environments.map(e => `${splitDirectories.secrets}/${e}.env`)
+            ]
+          : environments.map(e => `environments/${e}.env`))
       ]
     }))
   } else {
     console.log(`✓ Initialized vaulter for project: ${projectName}`)
     console.log(`  Config: ${configDir}/config.yaml`)
-    console.log(`  Environments: ${envDir}/`)
+    if (splitMode) {
+      console.log(`  Configs: ${splitDirectories.configs}/`)
+      console.log(`  Secrets: ${splitDirectories.secrets}/`)
+    } else {
+      console.log(`  Environments: ${path.join(configDir, 'environments')}/`)
+    }
     console.log('')
     console.log('Next steps:')
     console.log('  1. Edit .vaulter/config.yaml to configure your backend')
-    console.log('  2. Add environment variables to .vaulter/environments/*.env')
-    console.log('  3. Run "vaulter sync -e dev" to sync with backend')
+    if (splitMode) {
+      console.log('  2. Add non-sensitive vars to deploy/configs/*.env')
+      console.log('  3. Add secrets to deploy/secrets/*.env')
+      console.log('  4. Run "vaulter sync -e dev" to sync with backend')
+    } else {
+      console.log('  2. Add environment variables to .vaulter/environments/*.env')
+      console.log('  3. Run "vaulter sync -e dev" to sync with backend')
+    }
   }
 }

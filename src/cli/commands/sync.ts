@@ -1,8 +1,9 @@
 /**
  * Vaulter CLI - Sync Command
  *
- * Bidirectional sync between local .env file and backend
- * with conflict detection
+ * Merge local .env file with backend storage
+ * Local changes are pushed to remote, remote-only keys are pulled to local
+ * Conflict handling is configurable (local wins by default)
  */
 
 import fs from 'node:fs'
@@ -10,7 +11,7 @@ import path from 'node:path'
 import type { CLIArgs, VaulterConfig, Environment, SyncResult } from '../../types.js'
 import { createClientFromConfig } from '../lib/create-client.js'
 import { runHook } from '../lib/hooks.js'
-import { findConfigDir, getEnvFilePath } from '../../lib/config-loader.js'
+import { findConfigDir, getEnvFilePathForConfig } from '../../lib/config-loader.js'
 import { parseEnvFile, hasStdinData, parseEnvFromStdin, serializeEnv } from '../../lib/env-parser.js'
 import { compileGlobPatterns } from '../../lib/pattern-matcher.js'
 import { discoverServices, filterServices, findMonorepoRoot, formatServiceList, type ServiceInfo } from '../../lib/monorepo.js'
@@ -71,12 +72,14 @@ async function syncSingleService(
     if (filePath && !serviceInfo) {
       resolvedPath = path.resolve(filePath)
     } else {
-      // Default to .vaulter/environments/<env>.env
+      // Default path depends on directories.mode:
+      // - unified: .vaulter/environments/<env>.env
+      // - split: deploy/secrets/<env>.env
       const configDir = serviceInfo?.configDir || findConfigDir()
       if (!configDir) {
         throw new Error('No config directory found and no file specified')
       }
-      resolvedPath = getEnvFilePath(configDir, environment)
+      resolvedPath = getEnvFilePathForConfig(effectiveConfig!, configDir, environment)
     }
 
     if (!fs.existsSync(resolvedPath)) {
@@ -165,9 +168,6 @@ async function syncSingleService(
 
       if (remoteValue !== undefined) {
         if (!canUpdateLocal) {
-          if (conflictMode === 'remote' || conflictMode === 'prompt' || conflictMode === 'error') {
-            conflicts.push({ key, localValue: '', remoteValue })
-          }
           syncVars[key] = remoteValue
           continue
         }
@@ -177,20 +177,24 @@ async function syncSingleService(
       }
     }
 
+    // Check for blocking conflicts first (before required check)
+    // This prevents "missing required" errors for keys that are actually in conflict
+    const isBlockingConflict = conflictMode === 'error' && conflicts.length > 0
+
+    if (isBlockingConflict && !dryRun) {
+      const conflictKeyNames = conflicts.map(c => c.key).join(', ')
+      throw new Error(`Sync conflicts detected: ${conflictKeyNames}`)
+    }
+
+    // Now check for missing required keys
+    // Exclude keys that are in conflicts (they exist but have value mismatches)
+    const conflictKeySet = new Set(conflicts.map(c => c.key))
     const missingRequired = requiredKeys
       .filter(key => !isIgnored(key))
-      .filter(key => !(key in syncVars))
+      .filter(key => !(key in syncVars) && !conflictKeySet.has(key))
 
     if (missingRequired.length > 0) {
       throw new Error(`Missing required keys for ${environment}: ${missingRequired.join(', ')}`)
-    }
-
-    const isBlockingConflict = (conflictMode === 'prompt' || conflictMode === 'error') &&
-      conflicts.length > 0
-
-    if (isBlockingConflict && !dryRun) {
-      const conflictKeys = conflicts.map(c => c.key).join(', ')
-      throw new Error(`Sync conflicts detected: ${conflictKeys}`)
     }
 
     if (!dryRun) {
@@ -389,7 +393,6 @@ async function runBatchSync(context: SyncContext): Promise<void> {
       return syncSingleService({ ...context, config: service.config }, service)
     },
     {
-      verbose,
       onProgress: verbose ? (completed, total, current) => {
         console.error(`[${completed + 1}/${total}] Syncing ${current.name}...`)
       } : undefined

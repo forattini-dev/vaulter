@@ -9,7 +9,7 @@ import path from 'node:path'
 import type { CLIArgs, VaulterConfig, Environment } from '../../types.js'
 import { createClientFromConfig } from '../lib/create-client.js'
 import { runHook } from '../lib/hooks.js'
-import { findConfigDir, getEnvFilePath } from '../../lib/config-loader.js'
+import { findConfigDir, getEnvFilePathForConfig } from '../../lib/config-loader.js'
 import { serializeEnv } from '../../lib/env-parser.js'
 
 interface PullContext {
@@ -42,10 +42,12 @@ export async function runPull(context: PullContext): Promise<void> {
   if (outputPath) {
     envFilePath = path.resolve(outputPath)
   } else {
-    // Default to .vaulter/environments/<env>.env if config exists
+    // Default path depends on directories.mode:
+    // - unified: .vaulter/environments/<env>.env
+    // - split: deploy/secrets/<env>.env
     const configDir = findConfigDir()
-    if (configDir) {
-      envFilePath = getEnvFilePath(configDir, environment)
+    if (configDir && config) {
+      envFilePath = getEnvFilePathForConfig(config, configDir, environment)
     }
   }
 

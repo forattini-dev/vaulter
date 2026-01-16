@@ -257,10 +257,90 @@ export function getEnvironmentsDir(configDir: string): string {
 }
 
 /**
- * Get the path to an environment file
+ * Get the path to an environment file (unified mode)
  */
 export function getEnvFilePath(configDir: string, environment: Environment): string {
   return path.join(getEnvironmentsDir(configDir), `${environment}.env`)
+}
+
+/**
+ * Check if config uses split mode (separate configs/secrets directories)
+ */
+export function isSplitMode(config: VaulterConfig): boolean {
+  return config.directories?.mode === 'split'
+}
+
+/**
+ * Get the base directory for resolving relative paths
+ * In split mode, paths are relative to the config directory's parent
+ */
+export function getBaseDir(configDir: string): string {
+  return path.dirname(configDir)
+}
+
+/**
+ * Get the path to secrets file (split mode)
+ * Secrets are sensitive and should be gitignored
+ *
+ * @param config - Vaulter configuration
+ * @param configDir - Path to .vaulter directory
+ * @param environment - Target environment
+ */
+export function getSecretsFilePath(
+  config: VaulterConfig,
+  configDir: string,
+  environment: Environment
+): string {
+  const baseDir = getBaseDir(configDir)
+  const secretsDir = config.directories?.secrets || 'deploy/secrets'
+  return path.join(baseDir, secretsDir, `${environment}.env`)
+}
+
+/**
+ * Get the path to configs file (split mode)
+ * Configs are non-sensitive and can be committed to git
+ *
+ * @param config - Vaulter configuration
+ * @param configDir - Path to .vaulter directory
+ * @param environment - Target environment
+ */
+export function getConfigsFilePath(
+  config: VaulterConfig,
+  configDir: string,
+  environment: Environment
+): string {
+  const baseDir = getBaseDir(configDir)
+  const configsDir = config.directories?.configs || 'deploy/configs'
+  return path.join(baseDir, configsDir, `${environment}.env`)
+}
+
+/**
+ * Get the appropriate env file path based on config mode
+ *
+ * - unified mode: .vaulter/environments/<env>.env
+ * - split mode: deploy/secrets/<env>.env (for secrets/sync operations)
+ *
+ * @param config - Vaulter configuration
+ * @param configDir - Path to .vaulter directory
+ * @param environment - Target environment
+ */
+export function getEnvFilePathForConfig(
+  config: VaulterConfig,
+  configDir: string,
+  environment: Environment
+): string {
+  if (isSplitMode(config)) {
+    // In split mode, sync/pull/push work with secrets directory
+    return getSecretsFilePath(config, configDir, environment)
+  }
+
+  // Unified mode: check for custom path or use default
+  if (config.directories?.path) {
+    const baseDir = getBaseDir(configDir)
+    return path.join(baseDir, config.directories.path, `${environment}.env`)
+  }
+
+  return getEnvFilePath(configDir, environment)
 }
 
 /**
@@ -323,15 +403,35 @@ export function createDefaultConfig(
     ...options
   }
 
+  const directoriesSection = buildDirectoriesSection(config.directories)
+
   // Ensure directory exists
   if (!fs.existsSync(configDir)) {
     fs.mkdirSync(configDir, { recursive: true })
   }
 
-  // Create environments directory
-  const envDir = getEnvironmentsDir(configDir)
-  if (!fs.existsSync(envDir)) {
-    fs.mkdirSync(envDir, { recursive: true })
+  // Create directories based on mode
+  const directoriesMode = config.directories?.mode || 'unified'
+  const baseDir = getBaseDir(configDir)
+
+  if (directoriesMode === 'split') {
+    const configsDir = path.join(baseDir, config.directories?.configs || 'deploy/configs')
+    const secretsDir = path.join(baseDir, config.directories?.secrets || 'deploy/secrets')
+
+    if (!fs.existsSync(configsDir)) {
+      fs.mkdirSync(configsDir, { recursive: true })
+    }
+    if (!fs.existsSync(secretsDir)) {
+      fs.mkdirSync(secretsDir, { recursive: true })
+    }
+  } else {
+    const envDir = config.directories?.path
+      ? path.join(baseDir, config.directories.path)
+      : getEnvironmentsDir(configDir)
+
+    if (!fs.existsSync(envDir)) {
+      fs.mkdirSync(envDir, { recursive: true })
+    }
   }
 
   // Write config file
@@ -387,10 +487,11 @@ environments:
 
 # Default environment
 default_environment: dev
+${directoriesSection}
 
 # Sync behavior
 sync:
-  conflict: local  # local | remote | prompt | error
+  conflict: local  # local | remote | error
 
 # Security settings
 security:
@@ -411,4 +512,28 @@ security:
 `
 
   fs.writeFileSync(configPath, yamlContent)
+}
+
+function buildDirectoriesSection(directories?: VaulterConfig['directories']): string {
+  if (!directories) {
+    return ''
+  }
+
+  const mode = directories.mode || 'unified'
+  const lines = [
+    '',
+    '# Directory structure',
+    'directories:',
+    `  mode: ${mode}`
+  ]
+
+  if (mode === 'split') {
+    lines.push(`  configs: ${directories.configs || 'deploy/configs'}`)
+    lines.push(`  secrets: ${directories.secrets || 'deploy/secrets'}`)
+  } else if (directories.path) {
+    lines.push(`  path: ${directories.path}`)
+  }
+
+  lines.push('')
+  return lines.join('\n')
 }

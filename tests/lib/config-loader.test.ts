@@ -14,6 +14,11 @@ import {
   loadEncryptionKey,
   createDefaultConfig,
   getEnvFilePath,
+  getSecretsFilePath,
+  getConfigsFilePath,
+  getEnvFilePathForConfig,
+  isSplitMode,
+  getBaseDir,
   DEFAULT_CONFIG
 } from '../../src/lib/config-loader.js'
 
@@ -417,6 +422,58 @@ project: b
       createDefaultConfig(configDir, 'test-project')
       expect(fs.existsSync(path.join(configDir, 'config.yaml'))).toBe(true)
     })
+
+    it('should create split mode directories when configured', () => {
+      const configDir = path.join(tempDir, '.vaulter')
+      createDefaultConfig(configDir, 'test-project', {
+        directories: {
+          mode: 'split',
+          configs: 'deploy/configs',
+          secrets: 'deploy/secrets'
+        }
+      })
+
+      // Should create split directories
+      expect(fs.existsSync(path.join(tempDir, 'deploy/configs'))).toBe(true)
+      expect(fs.existsSync(path.join(tempDir, 'deploy/secrets'))).toBe(true)
+
+      // Should write directories section to config
+      const content = fs.readFileSync(path.join(configDir, 'config.yaml'), 'utf-8')
+      expect(content).toContain('mode: split')
+      expect(content).toContain('configs: deploy/configs')
+      expect(content).toContain('secrets: deploy/secrets')
+    })
+
+    it('should create split mode with default paths', () => {
+      const configDir = path.join(tempDir, '.vaulter')
+      createDefaultConfig(configDir, 'test-project', {
+        directories: {
+          mode: 'split'
+        }
+      })
+
+      // Should create default split directories
+      expect(fs.existsSync(path.join(tempDir, 'deploy/configs'))).toBe(true)
+      expect(fs.existsSync(path.join(tempDir, 'deploy/secrets'))).toBe(true)
+    })
+
+    it('should create unified mode with custom path', () => {
+      const configDir = path.join(tempDir, '.vaulter')
+      createDefaultConfig(configDir, 'test-project', {
+        directories: {
+          mode: 'unified',
+          path: 'custom/envs'
+        }
+      })
+
+      // Should create custom unified directory
+      expect(fs.existsSync(path.join(tempDir, 'custom/envs'))).toBe(true)
+
+      // Should write path to config
+      const content = fs.readFileSync(path.join(configDir, 'config.yaml'), 'utf-8')
+      expect(content).toContain('mode: unified')
+      expect(content).toContain('path: custom/envs')
+    })
   })
 
   describe('DEFAULT_CONFIG', () => {
@@ -434,6 +491,147 @@ project: b
       expect(patterns).toContain('*_KEY')
       expect(patterns).toContain('*_SECRET')
       expect(patterns).toContain('DATABASE_URL')
+    })
+  })
+
+  describe('split mode (directories.mode=split)', () => {
+    describe('isSplitMode', () => {
+      it('should return false when directories not configured', () => {
+        const config = { ...DEFAULT_CONFIG }
+        expect(isSplitMode(config)).toBe(false)
+      })
+
+      it('should return false when mode is unified', () => {
+        const config = {
+          ...DEFAULT_CONFIG,
+          directories: { mode: 'unified' as const }
+        }
+        expect(isSplitMode(config)).toBe(false)
+      })
+
+      it('should return true when mode is split', () => {
+        const config = {
+          ...DEFAULT_CONFIG,
+          directories: { mode: 'split' as const }
+        }
+        expect(isSplitMode(config)).toBe(true)
+      })
+    })
+
+    describe('getBaseDir', () => {
+      it('should return parent directory of config dir', () => {
+        const configDir = '/home/user/project/.vaulter'
+        expect(getBaseDir(configDir)).toBe('/home/user/project')
+      })
+    })
+
+    describe('getSecretsFilePath', () => {
+      it('should use default secrets path', () => {
+        const configDir = path.join(tempDir, '.vaulter')
+        const config = {
+          ...DEFAULT_CONFIG,
+          directories: { mode: 'split' as const }
+        }
+
+        const result = getSecretsFilePath(config, configDir, 'dev')
+        expect(result).toBe(path.join(tempDir, 'deploy/secrets', 'dev.env'))
+      })
+
+      it('should use custom secrets path', () => {
+        const configDir = path.join(tempDir, '.vaulter')
+        const config = {
+          ...DEFAULT_CONFIG,
+          directories: {
+            mode: 'split' as const,
+            secrets: 'custom/secrets'
+          }
+        }
+
+        const result = getSecretsFilePath(config, configDir, 'prd')
+        expect(result).toBe(path.join(tempDir, 'custom/secrets', 'prd.env'))
+      })
+    })
+
+    describe('getConfigsFilePath', () => {
+      it('should use default configs path', () => {
+        const configDir = path.join(tempDir, '.vaulter')
+        const config = {
+          ...DEFAULT_CONFIG,
+          directories: { mode: 'split' as const }
+        }
+
+        const result = getConfigsFilePath(config, configDir, 'stg')
+        expect(result).toBe(path.join(tempDir, 'deploy/configs', 'stg.env'))
+      })
+
+      it('should use custom configs path', () => {
+        const configDir = path.join(tempDir, '.vaulter')
+        const config = {
+          ...DEFAULT_CONFIG,
+          directories: {
+            mode: 'split' as const,
+            configs: 'env/configs'
+          }
+        }
+
+        const result = getConfigsFilePath(config, configDir, 'dev')
+        expect(result).toBe(path.join(tempDir, 'env/configs', 'dev.env'))
+      })
+    })
+
+    describe('getEnvFilePathForConfig', () => {
+      it('should return unified path when not in split mode', () => {
+        const configDir = path.join(tempDir, '.vaulter')
+        const config = { ...DEFAULT_CONFIG }
+
+        const result = getEnvFilePathForConfig(config, configDir, 'dev')
+        expect(result).toBe(path.join(configDir, 'environments', 'dev.env'))
+      })
+
+      it('should return secrets path when in split mode', () => {
+        const configDir = path.join(tempDir, '.vaulter')
+        const config = {
+          ...DEFAULT_CONFIG,
+          directories: { mode: 'split' as const }
+        }
+
+        const result = getEnvFilePathForConfig(config, configDir, 'prd')
+        expect(result).toBe(path.join(tempDir, 'deploy/secrets', 'prd.env'))
+      })
+
+      it('should use custom unified path when configured', () => {
+        const configDir = path.join(tempDir, '.vaulter')
+        const config = {
+          ...DEFAULT_CONFIG,
+          directories: {
+            mode: 'unified' as const,
+            path: 'custom/envs'
+          }
+        }
+
+        const result = getEnvFilePathForConfig(config, configDir, 'dev')
+        expect(result).toBe(path.join(tempDir, 'custom/envs', 'dev.env'))
+      })
+    })
+
+    describe('config with split mode', () => {
+      it('should load config with directories.mode=split', () => {
+        const vaulterDir = path.join(tempDir, '.vaulter')
+        fs.mkdirSync(vaulterDir)
+        fs.writeFileSync(path.join(vaulterDir, 'config.yaml'), `
+version: "1"
+project: split-project
+directories:
+  mode: split
+  configs: deploy/configs
+  secrets: deploy/secrets
+`)
+
+        const config = loadConfig(tempDir)
+        expect(config.directories?.mode).toBe('split')
+        expect(config.directories?.configs).toBe('deploy/configs')
+        expect(config.directories?.secrets).toBe('deploy/secrets')
+      })
     })
   })
 })
