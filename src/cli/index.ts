@@ -357,6 +357,14 @@ const cliSchema: CLISchema = {
       }
     },
 
+    tui: {
+      description: 'Launch interactive TUI (menu, dashboard, audit, keys)',
+      aliases: ['ui'],
+      positional: [
+        { name: 'screen', required: false, description: 'Screen to open: menu, dashboard, audit, keys' }
+      ]
+    },
+
     config: {
       description: 'Manage configuration'
     },
@@ -710,6 +718,54 @@ async function main(): Promise<void> {
           cwd: opts.cwd as string | undefined,
           verbose: opts.verbose as boolean | undefined
         })
+        break
+
+      case 'tui':
+      case 'ui':
+        // TUI - dynamically loaded (not available in standalone binaries)
+        if (IS_STANDALONE) {
+          console.error('Error: TUI is not available in standalone binaries')
+          console.error('Install via npm/pnpm to use TUI: pnpm add -g vaulter')
+          process.exit(1)
+        }
+        const tuiScreen = context.args._[1] || 'menu'
+        switch (tuiScreen) {
+          case 'dashboard':
+          case 'secrets':
+            const { startDashboard } = await import('./tui/index.js')
+            await startDashboard({
+              environment: context.environment,
+              service: context.service,
+              verbose: context.verbose
+            })
+            break
+          case 'audit':
+          case 'logs':
+            const { startAuditViewer } = await import('./tui/index.js')
+            await startAuditViewer({
+              environment: context.environment,
+              service: context.service,
+              verbose: context.verbose
+            })
+            break
+          case 'keys':
+          case 'key':
+            const { startKeyManager } = await import('./tui/index.js')
+            await startKeyManager({
+              verbose: context.verbose
+            })
+            break
+          case 'menu':
+          default:
+            const { startLauncher } = await import('./tui/index.js')
+            await startLauncher({
+              environment: context.environment,
+              service: context.service,
+              verbose: context.verbose,
+              screen: tuiScreen !== 'menu' ? tuiScreen : undefined
+            })
+            break
+        }
         break
 
       case 'config':
