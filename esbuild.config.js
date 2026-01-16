@@ -12,11 +12,40 @@
 
 import esbuild from 'esbuild'
 import { readFileSync } from 'node:fs'
+import { dirname } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
+const __dirname = dirname(fileURLToPath(import.meta.url))
 const pkg = JSON.parse(readFileSync('./package.json', 'utf8'))
 
 const isWatch = process.argv.includes('--watch')
 const isStandalone = process.argv.includes('--standalone')
+
+// Banner for pkg compatibility - defines __filename/__dirname and patches createRequire
+const pkgCompatBanner = `#!/usr/bin/env node
+// pkg compatibility shim
+if (typeof __filename === 'undefined') {
+  globalThis.__filename = process.execPath;
+  globalThis.__dirname = require('path').dirname(process.execPath);
+}
+(function() {
+  var Module = require('node:module');
+  var origCreateRequire = Module.createRequire.bind(Module);
+  Module.createRequire = function(url) {
+    // Handle undefined/null from import.meta.url in pkg binaries
+    if (url === undefined || url === null || url === '' ||
+        (typeof url === 'object' && url.href === undefined)) {
+      return origCreateRequire(__filename || process.execPath);
+    }
+    try {
+      return origCreateRequire(url);
+    } catch (e) {
+      // Fallback for invalid URLs
+      return origCreateRequire(__filename || process.execPath);
+    }
+  };
+})();
+`
 
 // Common build options
 const commonOptions = {
@@ -49,6 +78,31 @@ const fullConfig = {
     '@modelcontextprotocol/sdk',
     '@aws-sdk/client-s3'
   ]
+}
+
+// Plugin to fix import.meta.url in ESM modules when bundling for CJS
+// This patches fdir (used by tinyglobby) which uses createRequire(import.meta.url)
+const fixImportMetaUrl = {
+  name: 'fix-import-meta-url',
+  setup(build) {
+    // Only apply to fdir module
+    build.onLoad({ filter: /fdir.*\.mjs$/ }, async (args) => {
+      let contents = readFileSync(args.path, 'utf8')
+
+      // Replace createRequire(import.meta.url) with a pkg-compatible version
+      // The original: __require = createRequire(import.meta.url)
+      // We replace import.meta.url with a fallback that works in pkg binaries
+      contents = contents.replace(
+        /createRequire\s*\(\s*import\.meta\.url\s*\)/g,
+        'createRequire(typeof __filename !== "undefined" ? __filename : process.execPath)'
+      )
+
+      return {
+        contents,
+        loader: 'js'
+      }
+    })
+  }
 }
 
 // Plugin to stub optional modules not used by standalone vaulter
@@ -84,17 +138,22 @@ const standaloneConfig = {
   ...commonOptions,
   entryPoints: ['./src/cli/index.ts'],
   outfile: './dist/bin/vaulter-standalone.cjs',
+  minify: true,
   define: {
     ...commonOptions.define,
     'process.env.VAULTER_STANDALONE': JSON.stringify('true'),
     // Force JSON logging to avoid pino-pretty dependency in standalone
     'process.env.S3DB_LOG_FORMAT': JSON.stringify('json')
   },
+  // Use pkg-compat banner that patches createRequire for undefined import.meta.url
+  banner: {
+    js: pkgCompatBanner
+  },
   external: [
     '@modelcontextprotocol/sdk',
     '@modelcontextprotocol/sdk/*'
   ],
-  plugins: [stubOptionalNative]
+  plugins: [fixImportMetaUrl, stubOptionalNative]
 }
 
 async function build() {

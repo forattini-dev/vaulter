@@ -18,6 +18,7 @@ import type { CLIArgs, VaulterConfig, Environment } from '../../types.js'
 import { createClientFromConfig } from '../lib/create-client.js'
 import { findConfigDir, getSecretsFilePath, getConfigsFilePath, getEnvFilePath, getEnvFilePathForConfig } from '../../lib/config-loader.js'
 import { parseEnvFile, serializeEnv } from '../../lib/env-parser.js'
+import { createConnectedAuditLogger, logSetOperation, disconnectAuditLogger } from '../lib/audit-helper.js'
 
 type SeparatorValue = string | number | boolean | null
 
@@ -267,12 +268,17 @@ export async function runSet(context: SetContext): Promise<void> {
 
     // Sync secrets to backend
     const client = await createClientFromConfig({ args, config, project, verbose })
+    const auditLogger = await createConnectedAuditLogger(config, verbose)
 
     try {
       await client.connect()
 
       for (const [key, value] of secrets) {
         try {
+          // Get existing value for audit log
+          const existing = await client.get(key, project, environment, service)
+          const previousValue = existing?.value
+
           await client.set({
             key,
             value,
@@ -285,6 +291,17 @@ export async function runSet(context: SetContext): Promise<void> {
               ...(owner && { owner }),
               ...(description && { description })
             }
+          })
+
+          // Log to audit trail
+          await logSetOperation(auditLogger, {
+            key,
+            previousValue,
+            newValue: value,
+            project,
+            environment,
+            service,
+            source: 'cli'
           })
 
           results.push({ key, type: 'secret', success: true })
@@ -302,6 +319,7 @@ export async function runSet(context: SetContext): Promise<void> {
       }
     } finally {
       await client.disconnect()
+      await disconnectAuditLogger(auditLogger)
     }
   }
 
@@ -329,12 +347,17 @@ export async function runSet(context: SetContext): Promise<void> {
 
       // Also sync to backend in unified mode
       const client = await createClientFromConfig({ args, config, project, verbose })
+      const auditLogger = await createConnectedAuditLogger(config, verbose)
 
       try {
         await client.connect()
 
         for (const [key, value] of configs) {
           try {
+            // Get existing value for audit log
+            const existing = await client.get(key, project, environment, service)
+            const previousValue = existing?.value
+
             await client.set({
               key,
               value,
@@ -347,6 +370,17 @@ export async function runSet(context: SetContext): Promise<void> {
                 ...(owner && { owner }),
                 ...(description && { description })
               }
+            })
+
+            // Log to audit trail
+            await logSetOperation(auditLogger, {
+              key,
+              previousValue,
+              newValue: value,
+              project,
+              environment,
+              service,
+              source: 'cli'
             })
 
             results.push({ key, type: 'config', success: true })
@@ -364,6 +398,7 @@ export async function runSet(context: SetContext): Promise<void> {
         }
       } finally {
         await client.disconnect()
+        await disconnectAuditLogger(auditLogger)
       }
     } else {
       console.error('Error: No config directory found')

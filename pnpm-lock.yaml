@@ -20,9 +20,12 @@ importers:
       p-limit:
         specifier: ^7.2.0
         version: 7.2.0
+      recker:
+        specifier: ^1.0.58
+        version: 1.0.58
       s3db.js:
-        specifier: ^19.3.0
-        version: 19.3.0(@hono/node-server@1.19.9(hono@4.11.4))(bcrypt@6.0.0)(express@5.2.1)(hono@4.11.4)(jose@6.1.3)(ws@8.19.0)(zod@4.3.5)
+        specifier: ^19.3.1
+        version: 19.3.1(@hono/node-server@1.19.9(hono@4.11.4))(bcrypt@6.0.0)(express@5.2.1)(hono@4.11.4)(jose@6.1.3)(ws@8.19.0)(zod@4.3.5)
       tinyglobby:
         specifier: ^0.2.15
         version: 0.2.15
@@ -1682,6 +1685,22 @@ packages:
       ssh2-sftp-client:
         optional: true
 
+  recker@1.0.58:
+    resolution: {integrity: sha512-GkWcEZisgK1BhezxA+40h01sH4D3Ihk1vBB6R2FbO6930VeU+xVMX1nngvyYLvthv7U/0g5zdA+xipwSc8z/Zg==}
+    engines: {node: '>=18'}
+    hasBin: true
+    peerDependencies:
+      cardinal: ^2.1.0
+      ioredis: ^5.0.0
+      ssh2-sftp-client: ^11.0.0
+    peerDependenciesMeta:
+      cardinal:
+        optional: true
+      ioredis:
+        optional: true
+      ssh2-sftp-client:
+        optional: true
+
   require-directory@2.1.1:
     resolution: {integrity: sha512-fGxEI7+wsG9xrvdjsrlmL22OMTTiHRwAMroiEeMgq8gzoLC/PQr7RsRDSTLUg/bZAZtF+TVIkHc6/4RIKrui+Q==}
     engines: {node: '>=0.10.0'}
@@ -1707,8 +1726,8 @@ packages:
     resolution: {integrity: sha512-nLTrUKm2UyiL7rlhapu/Zl45FwNgkZGaCpZbIHajDYgwlJCOzLSk+cIPAnsEqV955GjILJnKbdQC1nVPz+gAYQ==}
     engines: {node: '>= 18'}
 
-  s3db.js@19.3.0:
-    resolution: {integrity: sha512-nXFJ/gEoC+T3Nj+SpdFnXU+rRsDYi5A7bisEWRIMs6Ymgbs6CgBMV2+3qbePZgj+76FWBkQXbpGSqQzUSePrTg==}
+  s3db.js@19.3.1:
+    resolution: {integrity: sha512-achEB9hyQn6GzM+Tjs2Krc99OhgneQ5D6AD3vTidWkGPZpOK47LoweYyYDnsCzkMk0N9FpdJdGgcAhCcuyOjOg==}
     hasBin: true
     peerDependencies:
       '@aws-sdk/client-acm': ^3.0.0
@@ -4343,6 +4362,16 @@ snapshots:
       undici: 7.18.2
       zod: 4.3.5
 
+  recker@1.0.58:
+    dependencies:
+      '@maxmind/geoip2-node': 6.3.4
+      css-select: 6.0.0
+      fuse.js: 7.1.0
+      he: 1.2.0
+      tuiuiu.js: 1.0.50
+      undici: 7.18.2
+      zod: 4.3.5
+
   require-directory@2.1.1: {}
 
   require-from-string@2.0.2: {}
@@ -4396,7 +4425,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  s3db.js@19.3.0(@hono/node-server@1.19.9(hono@4.11.4))(bcrypt@6.0.0)(express@5.2.1)(hono@4.11.4)(jose@6.1.3)(ws@8.19.0)(zod@4.3.5):
+  s3db.js@19.3.1(@hono/node-server@1.19.9(hono@4.11.4))(bcrypt@6.0.0)(express@5.2.1)(hono@4.11.4)(jose@6.1.3)(ws@8.19.0)(zod@4.3.5):
     dependencies:
       '@aws-sdk/client-s3': 3.970.0
       '@aws-sdk/credential-providers': 3.970.0

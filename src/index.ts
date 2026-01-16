@@ -77,3 +77,20 @@ export {
 // Loader (dotenv integration)
 export { loader, parse } from './loader.js'
 export type { LoaderOptions } from './loader.js'
+
+// Audit logging
+export {
+  AuditLogger,
+  createAuditLogger,
+  maskValue,
+  detectUser
+} from './lib/audit.js'
+
+export type {
+  AuditEntry,
+  AuditEntryInput,
+  AuditQueryOptions,
+  AuditConfig,
+  AuditOperation,
+  AuditSource
+} from './types.js'

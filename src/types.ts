@@ -55,7 +55,8 @@ export interface EnvVarMetadata {
   description?: string
   owner?: string
   rotateAfter?: Date
-  source?: 'manual' | 'sync' | 'import'
+  rotatedAt?: string
+  source?: 'manual' | 'sync' | 'import' | 'rotation'
 }
 
 export interface EnvVar {
@@ -276,6 +277,8 @@ export interface VaulterConfig {
   security?: SecurityConfig
   /** Directory structure configuration (unified or split mode) */
   directories?: DirectoriesConfig
+  /** Audit logging configuration */
+  audit?: AuditConfig
 }
 
 // ============================================================================
@@ -416,3 +419,102 @@ export const DEFAULT_SECRET_PATTERNS = [
   'API_KEY',
   'AUTH_*'
 ]
+
+// ============================================================================
+// Audit Logging Types
+// ============================================================================
+
+/**
+ * Operations that can be audited
+ */
+export type AuditOperation = 'set' | 'delete' | 'sync' | 'push' | 'rotate' | 'deleteAll'
+
+/**
+ * Source of the audit event
+ */
+export type AuditSource = 'cli' | 'mcp' | 'api' | 'loader'
+
+/**
+ * Audit log entry
+ */
+export interface AuditEntry {
+  /** Unique identifier */
+  id: string
+  /** When the operation occurred */
+  timestamp: Date
+  /** Who performed the operation */
+  user: string
+  /** What operation was performed */
+  operation: AuditOperation
+  /** Which variable key was affected */
+  key: string
+  /** Project name */
+  project: string
+  /** Environment name */
+  environment: string
+  /** Service name (optional, for monorepos) */
+  service?: string
+  /** Masked previous value (first/last 4 chars) */
+  previousValue?: string
+  /** Masked new value (first/last 4 chars) */
+  newValue?: string
+  /** Source of the operation */
+  source: AuditSource
+  /** Additional metadata */
+  metadata?: Record<string, unknown>
+}
+
+/**
+ * Input for creating an audit entry
+ */
+export interface AuditEntryInput {
+  operation: AuditOperation
+  key: string
+  project: string
+  environment: string
+  service?: string
+  previousValue?: string
+  newValue?: string
+  source: AuditSource
+  metadata?: Record<string, unknown>
+}
+
+/**
+ * Query options for listing audit entries
+ */
+export interface AuditQueryOptions {
+  /** Filter by project */
+  project?: string
+  /** Filter by environment */
+  environment?: string
+  /** Filter by service */
+  service?: string
+  /** Filter by user */
+  user?: string
+  /** Filter by operation type */
+  operation?: AuditOperation
+  /** Filter by key pattern */
+  key?: string
+  /** Filter by source */
+  source?: AuditSource
+  /** Filter entries after this date */
+  since?: Date
+  /** Filter entries before this date */
+  until?: Date
+  /** Maximum number of entries to return */
+  limit?: number
+  /** Number of entries to skip */
+  offset?: number
+}
+
+/**
+ * Audit configuration in config.yaml
+ */
+export interface AuditConfig {
+  /** Enable audit logging (default: true) */
+  enabled?: boolean
+  /** Retention period in days (default: 90) */
+  retention_days?: number
+  /** How to detect user identity */
+  user_source?: 'git' | 'env' | 'anonymous'
+}

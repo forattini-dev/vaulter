@@ -41,6 +41,8 @@ import { runTfVars, runTfJson } from './commands/integrations/terraform.js'
 import { runKey } from './commands/key.js'
 import { runServices } from './commands/services.js'
 import { runScan } from './commands/scan.js'
+import { runAudit } from './commands/audit.js'
+import { runRotation } from './commands/rotation.js'
 
 // MCP is loaded dynamically (not available in standalone binaries)
 const IS_STANDALONE = process.env.VAULTER_STANDALONE === 'true'
@@ -348,6 +350,83 @@ const cliSchema: CLISchema = {
 
     'tf:json': {
       description: 'Generate Terraform JSON'
+    },
+
+    audit: {
+      description: 'Audit log management',
+      commands: {
+        list: {
+          description: 'List audit entries',
+          aliases: ['ls'],
+          options: {
+            'all-envs': {
+              type: 'boolean',
+              default: false,
+              description: 'List across all environments'
+            }
+          }
+        },
+        show: {
+          description: 'Show details of an audit entry',
+          positional: [
+            { name: 'id', required: true, description: 'Audit entry ID' }
+          ]
+        },
+        stats: {
+          description: 'Show audit statistics'
+        },
+        cleanup: {
+          description: 'Delete old audit entries',
+          options: {
+            retention: {
+              type: 'number',
+              description: 'Retention period in days (default: 90)'
+            }
+          }
+        }
+      }
+    },
+
+    rotation: {
+      description: 'Secret rotation management',
+      commands: {
+        check: {
+          description: 'Check which secrets need rotation',
+          aliases: ['status'],
+          options: {
+            'all-envs': {
+              type: 'boolean',
+              default: false,
+              description: 'Check across all environments'
+            },
+            days: {
+              type: 'number',
+              description: 'Check secrets older than N days (default: 90)'
+            }
+          }
+        },
+        set: {
+          description: 'Set rotation policy for a secret',
+          positional: [
+            { name: 'key', required: true, description: 'Secret key name' }
+          ],
+          options: {
+            interval: {
+              type: 'string',
+              description: 'Rotation interval (e.g., 30d, 90d, 1y)'
+            },
+            clear: {
+              type: 'boolean',
+              default: false,
+              description: 'Clear rotation policy'
+            }
+          }
+        },
+        list: {
+          description: 'List secrets with rotation policies',
+          aliases: ['ls']
+        }
+      }
     }
   }
 }
@@ -580,6 +659,14 @@ async function main(): Promise<void> {
 
       case 'tf:json':
         await runTfJson(context)
+        break
+
+      case 'audit':
+        await runAudit(context)
+        break
+
+      case 'rotation':
+        await runRotation(context)
         break
 
       default:

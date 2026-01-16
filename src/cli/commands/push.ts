@@ -10,6 +10,7 @@ import type { CLIArgs, VaulterConfig, Environment } from '../../types.js'
 import { createClientFromConfig } from '../lib/create-client.js'
 import { findConfigDir, getEnvFilePathForConfig } from '../../lib/config-loader.js'
 import { parseEnvFile, hasStdinData, parseEnvFromStdin } from '../../lib/env-parser.js'
+import { createConnectedAuditLogger, logPushOperation, disconnectAuditLogger } from '../lib/audit-helper.js'
 
 interface PushContext {
   args: CLIArgs
@@ -108,6 +109,7 @@ export async function runPush(context: PushContext): Promise<void> {
   }
 
   const client = await createClientFromConfig({ args, config, project, verbose })
+  const auditLogger = await createConnectedAuditLogger(config, verbose)
 
   try {
     await client.connect()
@@ -161,8 +163,8 @@ export async function runPush(context: PushContext): Promise<void> {
     }
 
     // Push all variables (insert/update only, no delete)
-    let added = 0
-    let updated = 0
+    const addedKeys: string[] = []
+    const updatedKeys: string[] = []
 
     for (const [key, value] of Object.entries(localVars)) {
       const existing = await client.get(key, project, environment, service)
@@ -179,11 +181,22 @@ export async function runPush(context: PushContext): Promise<void> {
       })
 
       if (existing) {
-        updated++
+        updatedKeys.push(key)
       } else {
-        added++
+        addedKeys.push(key)
       }
     }
+
+    // Log to audit trail
+    await logPushOperation(auditLogger, {
+      project,
+      environment,
+      service,
+      added: addedKeys,
+      updated: updatedKeys,
+      deleted: [],
+      source: 'cli'
+    })
 
     if (jsonOutput) {
       console.log(JSON.stringify({
@@ -191,20 +204,21 @@ export async function runPush(context: PushContext): Promise<void> {
         project,
         service,
         environment,
-        added,
-        updated,
+        added: addedKeys.length,
+        updated: updatedKeys.length,
         total: varCount
       }))
     } else {
       console.log(`✓ Pushed ${varCount} variables to ${project}/${environment}`)
-      if (added > 0) {
-        console.log(`  Added: ${added}`)
+      if (addedKeys.length > 0) {
+        console.log(`  Added: ${addedKeys.length}`)
       }
-      if (updated > 0) {
-        console.log(`  Updated: ${updated}`)
+      if (updatedKeys.length > 0) {
+        console.log(`  Updated: ${updatedKeys.length}`)
       }
     }
   } finally {
     await client.disconnect()
+    await disconnectAuditLogger(auditLogger)
   }
 }

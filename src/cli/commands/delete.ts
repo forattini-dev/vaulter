@@ -6,6 +6,7 @@
 
 import type { CLIArgs, VaulterConfig, Environment } from '../../types.js'
 import { createClientFromConfig } from '../lib/create-client.js'
+import { createConnectedAuditLogger, logDeleteOperation, disconnectAuditLogger } from '../lib/audit-helper.js'
 
 interface DeleteContext {
   args: CLIArgs
@@ -74,9 +75,14 @@ export async function runDelete(context: DeleteContext): Promise<void> {
   }
 
   const client = await createClientFromConfig({ args, config, project, verbose })
+  const auditLogger = await createConnectedAuditLogger(config, verbose)
 
   try {
     await client.connect()
+
+    // Get existing value for audit log
+    const existing = await client.get(key, project, environment, service)
+    const previousValue = existing?.value
 
     const deleted = await client.delete(key, project, environment, service)
 
@@ -88,6 +94,16 @@ export async function runDelete(context: DeleteContext): Promise<void> {
       }
       process.exit(1)
     }
+
+    // Log to audit trail
+    await logDeleteOperation(auditLogger, {
+      key,
+      previousValue,
+      project,
+      environment,
+      service,
+      source: 'cli'
+    })
 
     if (jsonOutput) {
       console.log(JSON.stringify({
@@ -102,5 +118,6 @@ export async function runDelete(context: DeleteContext): Promise<void> {
     }
   } finally {
     await client.disconnect()
+    await disconnectAuditLogger(auditLogger)
   }
 }

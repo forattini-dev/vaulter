@@ -16,6 +16,7 @@ import { parseEnvFile, hasStdinData, parseEnvFromStdin, serializeEnv } from '../
 import { compileGlobPatterns } from '../../lib/pattern-matcher.js'
 import { discoverServices, filterServices, findMonorepoRoot, formatServiceList, type ServiceInfo } from '../../lib/monorepo.js'
 import { runBatch, formatBatchResult, formatBatchResultJson } from '../../lib/batch-runner.js'
+import { createConnectedAuditLogger, logSyncOperation, disconnectAuditLogger } from '../lib/audit-helper.js'
 
 interface SyncContext {
   args: CLIArgs
@@ -103,6 +104,7 @@ async function syncSingleService(
   }
 
   const client = await createClientFromConfig({ args, config: effectiveConfig, project: effectiveProject, verbose })
+  const auditLogger = await createConnectedAuditLogger(effectiveConfig, verbose)
 
   try {
     await client.connect()
@@ -217,6 +219,17 @@ async function syncSingleService(
       }
 
       runHook(effectiveConfig?.hooks?.post_sync, 'post_sync', verbose)
+
+      // Log to audit trail
+      await logSyncOperation(auditLogger, {
+        project: effectiveProject,
+        environment,
+        service: effectiveService,
+        added,
+        updated,
+        deleted: [],
+        source: 'cli'
+      })
     }
 
     return {
@@ -230,6 +243,7 @@ async function syncSingleService(
     }
   } finally {
     await client.disconnect()
+    await disconnectAuditLogger(auditLogger)
   }
 }
 
