@@ -2,7 +2,11 @@
  * Vaulter MCP Server
  *
  * Model Context Protocol server for Claude integration
- * Exposes vaulter tools and resources via stdio transport
+ * Exposes vaulter tools, resources, and prompts via stdio transport
+ *
+ * Tools:     14 tools for managing secrets and configs
+ * Resources: 5 resource types (config, services, env, compare)
+ * Prompts:   5 workflow prompts (setup, migrate, deploy, compare, audit)
  */
 
 import { Server } from '@modelcontextprotocol/sdk/server/index.js'
@@ -12,11 +16,14 @@ import {
   ListResourcesRequestSchema,
   ListToolsRequestSchema,
   ReadResourceRequestSchema,
+  ListPromptsRequestSchema,
+  GetPromptRequestSchema,
   ErrorCode,
   McpError
 } from '@modelcontextprotocol/sdk/types.js'
 import { registerTools, handleToolCall } from './tools.js'
 import { handleResourceRead, listResources } from './resources.js'
+import { registerPrompts, getPrompt } from './prompts.js'
 import { createRequire } from 'node:module'
 
 const SERVER_NAME = 'vaulter'
@@ -44,12 +51,15 @@ export function createServer(): Server {
     {
       capabilities: {
         tools: {},
-        resources: {}
+        resources: {},
+        prompts: {}
       }
     }
   )
 
-  // Register tool handlers
+  // ─────────────────────────────────────────────────────────────
+  // Tools: Actions that can be executed
+  // ─────────────────────────────────────────────────────────────
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
     tools: registerTools()
   }))
@@ -64,7 +74,9 @@ export function createServer(): Server {
     }
   })
 
-  // Register resource handlers
+  // ─────────────────────────────────────────────────────────────
+  // Resources: Read-only data views
+  // ─────────────────────────────────────────────────────────────
   server.setRequestHandler(ListResourcesRequestSchema, async () => ({
     resources: await listResources()
   }))
@@ -73,6 +85,23 @@ export function createServer(): Server {
     const { uri } = request.params
     try {
       return await handleResourceRead(uri)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      throw new McpError(ErrorCode.InternalError, message)
+    }
+  })
+
+  // ─────────────────────────────────────────────────────────────
+  // Prompts: Pre-configured workflow templates
+  // ─────────────────────────────────────────────────────────────
+  server.setRequestHandler(ListPromptsRequestSchema, async () => ({
+    prompts: registerPrompts()
+  }))
+
+  server.setRequestHandler(GetPromptRequestSchema, async (request) => {
+    const { name, arguments: args } = request.params
+    try {
+      return getPrompt(name, args || {})
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       throw new McpError(ErrorCode.InternalError, message)
