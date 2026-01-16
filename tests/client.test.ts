@@ -20,8 +20,8 @@ const mockDb = {
   createResource: vi.fn()
 }
 
-// Mock s3db.js before importing client
-vi.mock('s3db.js', () => {
+// Mock s3db.js/lite before importing client
+vi.mock('s3db.js/lite', () => {
   return {
     S3db: function(config: any) {
       // Store config for assertions
