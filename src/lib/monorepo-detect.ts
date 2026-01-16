@@ -9,6 +9,41 @@ import fs from 'node:fs'
 import path from 'node:path'
 import YAML from 'yaml'
 import { glob } from 'tinyglobby'
+import type { VaulterConfig } from '../types.js'
+
+/**
+ * Extract environment name from an env file name
+ *
+ * Supports patterns:
+ * - `dev.env` → 'dev'
+ * - `.env.dev` → 'dev'
+ * - `.env.production` → 'production'
+ * - `.env.local` → 'local'
+ * - `.env` → null (generic, no specific env)
+ *
+ * @param filename - The env file name (e.g., 'dev.env', '.env.production')
+ * @returns The detected environment name or null if generic
+ */
+export function extractEnvironmentName(filename: string): string | null {
+  // Pattern: name.env (e.g., dev.env, production.env)
+  if (filename.endsWith('.env') && !filename.startsWith('.')) {
+    const name = filename.slice(0, -4) // Remove .env
+    return name || null
+  }
+
+  // Pattern: .env.name (e.g., .env.dev, .env.production)
+  if (filename.startsWith('.env.')) {
+    const name = filename.slice(5) // Remove .env.
+    return name || null
+  }
+
+  // Generic .env file
+  if (filename === '.env') {
+    return null
+  }
+
+  return null
+}
 
 export type MonorepoTool = 'nx' | 'turborepo' | 'lerna' | 'pnpm' | 'yarn' | 'rush' | 'unknown'
 
@@ -19,12 +54,28 @@ export interface MonorepoInfo {
   workspacePatterns: string[]
 }
 
+export interface EnvFileInfo {
+  /** File path relative to package (e.g., 'deploy/secrets/dev.env') */
+  path: string
+  /** Detected environment name (e.g., 'dev', 'production') */
+  environment: string | null
+  /** Location type */
+  location: 'root' | 'deploy/configs' | 'deploy/secrets' | 'vaulter'
+}
+
 export interface PackageInfo {
   name: string
   path: string
   relativePath: string
   hasPackageJson: boolean
+  /** @deprecated Use envFiles instead */
   hasEnvFiles: string[]
+  /** Detailed env file information */
+  envFiles: EnvFileInfo[]
+  /** Detected environment names from files */
+  detectedEnvironments: string[]
+  /** Configured environments from .vaulter/config.yaml */
+  configuredEnvironments: string[] | null
   hasDeployDir: boolean
   hasVaulterConfig: boolean
   type: 'app' | 'lib' | 'package' | 'unknown'
@@ -283,38 +334,85 @@ function detectPackageType(relativePath: string): 'app' | 'lib' | 'package' | 'u
 }
 
 /**
- * Find .env files in a directory
+ * Find .env files in a directory with detailed info
  */
-function findEnvFiles(dir: string): string[] {
-  const envFiles: string[] = []
+function findEnvFiles(dir: string): EnvFileInfo[] {
+  const envFiles: EnvFileInfo[] = []
 
   try {
     const entries = fs.readdirSync(dir, { withFileTypes: true })
 
     for (const entry of entries) {
       if (entry.isFile() && (entry.name.startsWith('.env') || entry.name.endsWith('.env'))) {
-        envFiles.push(entry.name)
+        envFiles.push({
+          path: entry.name,
+          environment: extractEnvironmentName(entry.name),
+          location: 'root'
+        })
       }
     }
 
-    // Also check deploy/configs and deploy/secrets (apps-lair pattern)
-    const deployConfigs = path.join(dir, 'deploy', 'configs')
-    const deploySecrets = path.join(dir, 'deploy', 'secrets')
-
-    if (fs.existsSync(deployConfigs)) {
-      const configFiles = fs.readdirSync(deployConfigs).filter(f => f.endsWith('.env'))
-      envFiles.push(...configFiles.map(f => `deploy/configs/${f}`))
+    // Check .vaulter/environments/ (vaulter unified mode)
+    const vaulterEnvs = path.join(dir, '.vaulter', 'environments')
+    if (fs.existsSync(vaulterEnvs)) {
+      const vaulterFiles = fs.readdirSync(vaulterEnvs).filter(f => f.endsWith('.env'))
+      for (const f of vaulterFiles) {
+        envFiles.push({
+          path: `.vaulter/environments/${f}`,
+          environment: extractEnvironmentName(f),
+          location: 'vaulter'
+        })
+      }
     }
 
+    // Check deploy/configs (apps-lair pattern - non-sensitive)
+    const deployConfigs = path.join(dir, 'deploy', 'configs')
+    if (fs.existsSync(deployConfigs)) {
+      const configFiles = fs.readdirSync(deployConfigs).filter(f => f.endsWith('.env'))
+      for (const f of configFiles) {
+        envFiles.push({
+          path: `deploy/configs/${f}`,
+          environment: extractEnvironmentName(f),
+          location: 'deploy/configs'
+        })
+      }
+    }
+
+    // Check deploy/secrets (apps-lair pattern - sensitive)
+    const deploySecrets = path.join(dir, 'deploy', 'secrets')
     if (fs.existsSync(deploySecrets)) {
       const secretFiles = fs.readdirSync(deploySecrets).filter(f => f.endsWith('.env'))
-      envFiles.push(...secretFiles.map(f => `deploy/secrets/${f}`))
+      for (const f of secretFiles) {
+        envFiles.push({
+          path: `deploy/secrets/${f}`,
+          environment: extractEnvironmentName(f),
+          location: 'deploy/secrets'
+        })
+      }
     }
   } catch {
     // Permission denied or other errors
   }
 
   return envFiles
+}
+
+/**
+ * Load vaulter config from a package directory
+ * Returns null if no config exists
+ */
+function loadPackageVaulterConfig(pkgDir: string): VaulterConfig | null {
+  const configPath = path.join(pkgDir, '.vaulter', 'config.yaml')
+  if (!fs.existsSync(configPath)) {
+    return null
+  }
+
+  try {
+    const content = fs.readFileSync(configPath, 'utf-8')
+    return YAML.parse(content) as VaulterConfig
+  } catch {
+    return null
+  }
 }
 
 /**
@@ -375,12 +473,28 @@ export async function scanMonorepo(rootDir: string = process.cwd()): Promise<Sca
     const hasDeployDir = fs.existsSync(path.join(pkgPath, 'deploy'))
     const hasVaulterConfig = fs.existsSync(path.join(pkgPath, '.vaulter', 'config.yaml'))
 
+    // Load vaulter config to get configured environments
+    const vaulterConfig = hasVaulterConfig ? loadPackageVaulterConfig(pkgPath) : null
+    const configuredEnvironments = vaulterConfig?.environments || null
+
+    // Extract unique detected environments from env files
+    const detectedEnvironments = [...new Set(
+      envFiles
+        .map(f => f.environment)
+        .filter((env): env is string => env !== null)
+    )].sort()
+
     packages.push({
       name,
       path: pkgPath,
       relativePath,
       hasPackageJson,
-      hasEnvFiles: envFiles,
+      // Deprecated field for backward compatibility
+      hasEnvFiles: envFiles.map(f => f.path),
+      // New detailed fields
+      envFiles,
+      detectedEnvironments,
+      configuredEnvironments,
       hasDeployDir,
       hasVaulterConfig,
       type: detectPackageType(relativePath)
@@ -400,6 +514,32 @@ export async function scanMonorepo(rootDir: string = process.cwd()): Promise<Sca
 }
 
 /**
+ * Format environment info for display
+ */
+function formatEnvironmentInfo(pkg: PackageInfo): string {
+  const parts: string[] = []
+
+  if (pkg.detectedEnvironments.length > 0) {
+    parts.push(`envs: ${pkg.detectedEnvironments.join(', ')}`)
+  }
+
+  if (pkg.configuredEnvironments) {
+    // Show configured vs detected
+    const missing = pkg.configuredEnvironments.filter(e => !pkg.detectedEnvironments.includes(e))
+    const extra = pkg.detectedEnvironments.filter(e => !pkg.configuredEnvironments!.includes(e))
+
+    if (missing.length > 0) {
+      parts.push(`missing: ${missing.join(', ')}`)
+    }
+    if (extra.length > 0) {
+      parts.push(`extra: ${extra.join(', ')}`)
+    }
+  }
+
+  return parts.length > 0 ? ` (${parts.join(' | ')})` : ''
+}
+
+/**
  * Format scan result for display
  */
 export function formatScanResult(result: ScanResult): string {
@@ -414,29 +554,42 @@ export function formatScanResult(result: ScanResult): string {
   lines.push(`Patterns: ${result.monorepo.workspacePatterns.join(', ')}`)
   lines.push('')
 
+  // Collect all unique environments across packages
+  const allDetectedEnvs = new Set<string>()
+  for (const pkg of result.packages) {
+    for (const env of pkg.detectedEnvironments) {
+      allDetectedEnvs.add(env)
+    }
+  }
+
   // Summary
   lines.push(`Found ${result.packages.length} package(s):`)
   lines.push(`  ✓ Vaulter initialized: ${result.initialized.length}`)
   lines.push(`  ○ Not initialized: ${result.uninitialized.length}`)
   lines.push(`  📄 With .env files: ${result.withEnvFiles.length}`)
+  if (allDetectedEnvs.size > 0) {
+    lines.push(`  🌍 Detected environments: ${[...allDetectedEnvs].sort().join(', ')}`)
+  }
   lines.push('')
 
   // Uninitialized packages (priority)
   if (result.uninitialized.length > 0) {
     lines.push('Packages needing vaulter init:')
     for (const pkg of result.uninitialized) {
-      const envInfo = pkg.hasEnvFiles.length > 0 ? ` (has ${pkg.hasEnvFiles.length} .env files)` : ''
+      const envInfo = formatEnvironmentInfo(pkg)
       const deployInfo = pkg.hasDeployDir ? ' [deploy/]' : ''
-      lines.push(`  ○ ${pkg.relativePath}${envInfo}${deployInfo}`)
+      const fileCount = pkg.hasEnvFiles.length > 0 ? ` [${pkg.hasEnvFiles.length} files]` : ''
+      lines.push(`  ○ ${pkg.relativePath}${fileCount}${envInfo}${deployInfo}`)
     }
     lines.push('')
   }
 
-  // Initialized packages
+  // Initialized packages with environment status
   if (result.initialized.length > 0) {
     lines.push('Already initialized:')
     for (const pkg of result.initialized) {
-      lines.push(`  ✓ ${pkg.relativePath}`)
+      const envInfo = formatEnvironmentInfo(pkg)
+      lines.push(`  ✓ ${pkg.relativePath}${envInfo}`)
     }
   }
 

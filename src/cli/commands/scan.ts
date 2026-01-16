@@ -31,6 +31,14 @@ export async function runScan(context: ScanContext): Promise<void> {
     })
 
     if (jsonOutput) {
+      // Collect all unique environments across packages
+      const allDetectedEnvs = new Set<string>()
+      for (const pkg of result.packages) {
+        for (const env of pkg.detectedEnvironments) {
+          allDetectedEnvs.add(env)
+        }
+      }
+
       ui.output(JSON.stringify({
         monorepo: {
           tool: result.monorepo.tool,
@@ -42,15 +50,19 @@ export async function runScan(context: ScanContext): Promise<void> {
           total: result.packages.length,
           initialized: result.initialized.length,
           uninitialized: result.uninitialized.length,
-          withEnvFiles: result.withEnvFiles.length
+          withEnvFiles: result.withEnvFiles.length,
+          detectedEnvironments: [...allDetectedEnvs].sort()
         },
         packages: result.packages.map(p => ({
           name: p.name,
           path: p.relativePath,
           type: p.type,
           hasVaulterConfig: p.hasVaulterConfig,
-          hasEnvFiles: p.hasEnvFiles,
-          hasDeployDir: p.hasDeployDir
+          hasDeployDir: p.hasDeployDir,
+          // Detailed env info
+          envFiles: p.envFiles,
+          detectedEnvironments: p.detectedEnvironments,
+          configuredEnvironments: p.configuredEnvironments
         }))
       }, null, 2))
       return
