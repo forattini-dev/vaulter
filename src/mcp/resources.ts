@@ -9,6 +9,7 @@ import type { Resource } from '@modelcontextprotocol/sdk/types.js'
 import { VaulterClient } from '../client.js'
 import { loadConfig, loadEncryptionKey } from '../lib/config-loader.js'
 import type { Environment, VaulterConfig } from '../types.js'
+import { resolveBackendUrls } from '../index.js'
 
 const ENVIRONMENTS: Environment[] = ['dev', 'stg', 'prd', 'sbx', 'dr']
 
@@ -23,11 +24,11 @@ async function getClientAndConfig(): Promise<{ client: VaulterClient; config: Va
     // Config not found is OK
   }
 
-  const connectionString = config?.backend?.url
+  const connectionStrings = config ? resolveBackendUrls(config) : []
   const passphrase = config ? await loadEncryptionKey(config) : undefined
 
   const client = new VaulterClient({
-    connectionString: connectionString || undefined,
+    connectionStrings: connectionStrings.length > 0 ? connectionStrings : undefined,
     passphrase: passphrase || undefined
   })
 

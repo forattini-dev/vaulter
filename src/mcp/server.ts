@@ -17,9 +17,20 @@ import {
 } from '@modelcontextprotocol/sdk/types.js'
 import { registerTools, handleToolCall } from './tools.js'
 import { handleResourceRead, listResources } from './resources.js'
+import { createRequire } from 'node:module'
 
 const SERVER_NAME = 'vaulter'
-const SERVER_VERSION = process.env.VAULTER_VERSION || '0.1.0'
+const SERVER_VERSION = process.env.VAULTER_VERSION || getPackageVersion() || '0.0.0'
+
+function getPackageVersion(): string | undefined {
+  try {
+    const require = createRequire(import.meta.url)
+    const pkg = require('../../package.json') as { version?: string }
+    return pkg.version
+  } catch {
+    return undefined
+  }
+}
 
 /**
  * Create and configure the MCP server

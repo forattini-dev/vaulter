@@ -6,10 +6,17 @@
 
 import type { Tool } from '@modelcontextprotocol/sdk/types.js'
 import { VaulterClient } from '../client.js'
-import { loadConfig, loadEncryptionKey, findConfigDir, getEnvFilePath } from '../lib/config-loader.js'
+import {
+  loadConfig,
+  loadEncryptionKey,
+  findConfigDir,
+  getEnvFilePath,
+  getEnvFilePathForConfig
+} from '../lib/config-loader.js'
 import { parseEnvFile } from '../lib/env-parser.js'
 import type { Environment, VaulterConfig } from '../types.js'
 import fs from 'node:fs'
+import { resolveBackendUrls } from '../index.js'
 
 /**
  * Get current config and client
@@ -22,11 +29,11 @@ async function getClientAndConfig(): Promise<{ client: VaulterClient; config: Va
     // Config not found is OK
   }
 
-  const connectionString = config?.backend?.url
+  const connectionStrings = config ? resolveBackendUrls(config) : []
   const passphrase = config ? await loadEncryptionKey(config) : undefined
 
   const client = new VaulterClient({
-    connectionString: connectionString || undefined,
+    connectionStrings: connectionStrings.length > 0 ? connectionStrings : undefined,
     passphrase: passphrase || undefined
   })
 
@@ -353,7 +360,9 @@ export async function handleToolCall(
           }
         }
 
-        const envFilePath = getEnvFilePath(configDir, environment)
+        const envFilePath = config
+          ? getEnvFilePathForConfig(config, configDir, environment)
+          : getEnvFilePath(configDir, environment)
         if (!fs.existsSync(envFilePath)) {
           return {
             content: [{
@@ -369,7 +378,6 @@ export async function handleToolCall(
           const remoteVars = await client.export(project, environment, service)
           const toAdd: string[] = []
           const toUpdate: string[] = []
-          const toDelete: string[] = []
 
           for (const [key, value] of Object.entries(localVars)) {
             if (!(key in remoteVars)) {
@@ -379,17 +387,10 @@ export async function handleToolCall(
             }
           }
 
-          for (const key of Object.keys(remoteVars)) {
-            if (!(key in localVars)) {
-              toDelete.push(key)
-            }
-          }
-
           const lines = ['Dry run - changes that would be made:']
           if (toAdd.length > 0) lines.push(`  Add: ${toAdd.join(', ')}`)
           if (toUpdate.length > 0) lines.push(`  Update: ${toUpdate.join(', ')}`)
-          if (toDelete.length > 0) lines.push(`  Delete: ${toDelete.join(', ')}`)
-          if (toAdd.length === 0 && toUpdate.length === 0 && toDelete.length === 0) {
+          if (toAdd.length === 0 && toUpdate.length === 0) {
             lines.push('  No changes needed')
           }
 
