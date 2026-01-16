@@ -14,7 +14,7 @@
 
 Store secrets anywhere: AWS S3, MinIO, R2, Spaces, B2, or local filesystem.
 <br>
-AES-256-GCM encryption. Native K8s, Helm & Terraform integration.
+AES-256-GCM encryption. RSA/EC hybrid encryption. Native K8s, Helm & Terraform integration.
 
 [Quick Start](#quick-start) · [Security](#security) · [CI/CD](#cicd) · [Commands](#commands)
 
@@ -124,10 +124,61 @@ Every secret is encrypted **before** leaving your machine using **AES-256-GCM**:
 
 ### Key Management
 
-Vaulter supports multiple key sources with priority fallback:
+Vaulter stores keys in `~/.vaulter/` directory (outside project) for security:
+
+```
+~/.vaulter/
+├── projects/
+│   └── <project-name>/
+│       └── keys/
+│           ├── master           # Private key (mode 600)
+│           └── master.pub       # Public key (mode 644)
+└── global/
+    └── keys/                    # Shared across all projects
+        ├── shared
+        └── shared.pub
+```
+
+#### Key Commands
+
+```bash
+# Generate keys
+vaulter key generate --name master                    # Symmetric key
+vaulter key generate --name master --asymmetric       # RSA-4096 key pair
+vaulter key generate --name master --asym --alg ec-p256  # EC P-256 key pair
+vaulter key generate --name shared --global           # Global key (all projects)
+
+# List and show keys
+vaulter key list                      # List all keys (project + global)
+vaulter key show --name master        # Show key details
+
+# Export/import for deployment
+vaulter key export --name master -o keys.enc    # Export encrypted bundle
+vaulter key import -f keys.enc                  # Import on another machine
+
+# Set VAULTER_EXPORT_PASSPHRASE to encrypt the bundle with custom passphrase
+```
+
+#### Configuration with key_name
+
+The simplest way to use keys is via `key_name` resolution:
 
 ```yaml
 # .vaulter/config.yaml
+encryption:
+  mode: asymmetric
+  asymmetric:
+    algorithm: rsa-4096
+    key_name: master           # → ~/.vaulter/projects/<project>/keys/master[.pub]
+    # Or for global key:
+    # key_name: global:master  # → ~/.vaulter/global/keys/master[.pub]
+```
+
+#### Legacy Key Sources (still supported)
+
+You can also specify explicit key sources:
+
+```yaml
 encryption:
   key_source:
     - env: VAULTER_KEY           # 1. Environment variable (CI/CD)
@@ -135,34 +186,32 @@ encryption:
     - s3: s3://keys/vaulter.key  # 3. Remote S3 (shared teams)
 ```
 
-#### Option 1: Environment Variable (Recommended for CI/CD)
+##### Option 1: Environment Variable (Recommended for CI/CD)
 
 ```bash
 # Generate a key
-vaulter key generate
-# Output: VAULTER_KEY=base64-encoded-32-byte-key
+vaulter key generate --name master
 
-# Set in CI/CD secrets
-export VAULTER_KEY="dGhpcyBpcyBhIDMyIGJ5dGUga2V5IGZvciBhZXM="
+# Set in CI/CD secrets from the generated key
+export VAULTER_KEY=$(cat ~/.vaulter/projects/myproject/keys/master)
 ```
 
-**Pros**: Key never touches disk, rotates easily via CI/CD secret rotation
+**Pros**: Key never in project directory, rotates easily via CI/CD secret rotation
 **Use case**: GitHub Actions, GitLab CI, Jenkins
 
-#### Option 2: Local File (Development)
+##### Option 2: key_name Resolution (Recommended for Development)
 
-```bash
-# Generate and save
-vaulter key generate -o .vaulter/.key
-
-# Add to .gitignore (CRITICAL!)
-echo ".vaulter/.key" >> .gitignore
+```yaml
+encryption:
+  mode: asymmetric
+  asymmetric:
+    key_name: master    # Auto-resolves to ~/.vaulter/projects/<project>/keys/
 ```
 
-**Pros**: Simple, works offline
-**Use case**: Local development, small teams
+**Pros**: Simple, keys stored securely outside project
+**Use case**: Local development, team workflows
 
-#### Option 3: Remote S3 (Team Shared)
+##### Option 3: Remote S3 (Team Shared)
 
 ```yaml
 encryption:
@@ -172,6 +221,139 @@ encryption:
 
 **Pros**: Centralized key management, IAM-controlled access
 **Use case**: Teams, multiple developers needing same key
+
+### Asymmetric Key Encryption (RSA/EC)
+
+For enhanced security with separate encrypt/decrypt permissions, Vaulter supports hybrid encryption using RSA or Elliptic Curve key pairs.
+
+#### How It Works
+
+```
+┌────────────────────────────────────────────────────────────────┐
+│                     Hybrid Encryption                          │
+│                                                                │
+│  Your secret ──► AES-256-GCM ──► Encrypted data               │
+│                      │                                         │
+│                      │ (random AES key)                        │
+│                      ▼                                         │
+│  Public key ──► RSA/EC encrypt ──► Encrypted AES key          │
+│                                                                │
+│  Stored: { encrypted_key + encrypted_data + metadata }        │
+│                                                                │
+│  Decryption requires: Private key + Encrypted blob            │
+└────────────────────────────────────────────────────────────────┘
+```
+
+**Benefits:**
+- **Separation of duties**: Public key can only encrypt, private key can decrypt
+- **CI/CD security**: Give CI/CD only the public key - it can write but not read secrets
+- **Production isolation**: Only production has the private key for decryption
+
+#### Generate Key Pair
+
+```bash
+# RSA 4096-bit (default, most compatible)
+vaulter key generate --name master --asymmetric
+
+# RSA 2048-bit (faster, less secure)
+vaulter key generate --name master --asym --algorithm rsa-2048
+
+# Elliptic Curve P-256 (modern, fast)
+vaulter key generate --name master --asym --alg ec-p256
+
+# Elliptic Curve P-384 (stronger EC)
+vaulter key generate --name master --asym --alg ec-p384
+
+# Global key (shared across all projects)
+vaulter key generate --name shared --global --asymmetric
+```
+
+Output:
+```
+✓ Generated rsa-4096 key pair: master
+  Private: ~/.vaulter/projects/my-project/keys/master (mode 600 - keep secret!)
+  Public:  ~/.vaulter/projects/my-project/keys/master.pub (mode 644)
+
+To use these keys in config.yaml:
+  encryption:
+    mode: asymmetric
+    asymmetric:
+      algorithm: rsa-4096
+      key_name: master
+```
+
+#### Configuration
+
+```yaml
+# .vaulter/config.yaml
+encryption:
+  mode: asymmetric              # Enable asymmetric mode
+  asymmetric:
+    algorithm: rsa-4096         # or rsa-2048, ec-p256, ec-p384
+    key_name: master            # Uses ~/.vaulter/projects/<project>/keys/master[.pub]
+    # Or for global keys:
+    # key_name: global:master   # Uses ~/.vaulter/global/keys/master[.pub]
+
+# Alternative: explicit key sources (for CI/CD or custom paths)
+# encryption:
+#   mode: asymmetric
+#   asymmetric:
+#     algorithm: rsa-4096
+#     public_key:
+#       - file: /path/to/master.pub
+#       - env: VAULTER_PUBLIC_KEY
+#     private_key:
+#       - file: /path/to/master
+#       - env: VAULTER_PRIVATE_KEY
+```
+
+#### Supported Algorithms
+
+| Algorithm | Key Size | Performance | Use Case |
+|:----------|:---------|:------------|:---------|
+| `rsa-4096` | 4096 bits | Slower | Maximum security, wide compatibility |
+| `rsa-2048` | 2048 bits | Medium | Good balance, legacy systems |
+| `ec-p256` | 256 bits | Fast | Modern systems, smaller keys |
+| `ec-p384` | 384 bits | Medium | Higher security EC |
+
+#### Use Case: Secure CI/CD Pipeline
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ Development                                                  │
+│   Developers have BOTH keys → can read and write secrets    │
+│   vaulter set API_KEY="..." -e dev                          │
+└──────────────────────────┬──────────────────────────────────┘
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────────────┐
+│ CI/CD (GitHub Actions, Jenkins, etc.)                        │
+│   Only PUBLIC key → can write NEW secrets, cannot read      │
+│   Useful for automated secret rotation scripts              │
+│                                                             │
+│   env:                                                      │
+│     VAULTER_PUBLIC_KEY: ${{ secrets.VAULTER_PUBLIC_KEY }}   │
+└──────────────────────────┬──────────────────────────────────┘
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────────────┐
+│ Production                                                   │
+│   Only PRIVATE key → can read secrets at runtime            │
+│                                                             │
+│   env:                                                      │
+│     VAULTER_PRIVATE_KEY: ${{ secrets.VAULTER_PRIVATE_KEY }} │
+│                                                             │
+│   # Application reads secrets at startup                    │
+│   eval $(vaulter export -e prd)                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+#### Environment Variables
+
+| Variable | Purpose |
+|:---------|:--------|
+| `VAULTER_PUBLIC_KEY` | Public key PEM content (for encryption) |
+| `VAULTER_PRIVATE_KEY` | Private key PEM content (for decryption) |
 
 ### Advanced Security Configurations
 
@@ -193,38 +375,6 @@ encryption:
 3. AWS KMS encrypts the DEK (envelope encryption)
 4. Only encrypted DEK + encrypted secrets are stored
 5. Decryption requires both KMS access AND S3 access
-
-#### Certificate-Based Encryption (Planned)
-
-For X.509/PKI environments:
-
-```yaml
-encryption:
-  certificate:
-    public: ./certs/vaulter.pub    # Encrypt (anyone)
-    private: ./certs/vaulter.key   # Decrypt (restricted)
-```
-
-**Use cases:**
-- Separate encrypt/decrypt permissions
-- CI/CD can read (decrypt) but not write new secrets
-- Developers can write (encrypt) but production keys decrypt
-
-#### Asymmetric Key Scenarios
-
-**Scenario 1: Read-Only CI/CD**
-```
-Developer (has private key) → encrypts secrets → S3
-CI/CD (has public key) → CANNOT decrypt, only verify
-Production (has private key) → decrypts at runtime
-```
-
-**Scenario 2: Multi-Team Isolation**
-```
-Team A (key A) → encrypts → S3/team-a/
-Team B (key B) → encrypts → S3/team-b/
-Neither team can read the other's secrets
-```
 
 ### Threat Model
 
@@ -332,7 +482,7 @@ vaulter set PORT::3000 HOST::localhost   # Configs
 -f, --file <path>       Input file path
 -o, --output <path>     Output file path
 -n, --namespace <name>  Kubernetes namespace
-    --format <fmt>      Output format (shell/json/yaml/env/tfvars)
+    --format <fmt>      Output format (shell/json/yaml/env/tfvars/docker-args)
 -v, --verbose           Verbose output (shows values)
     --dry-run           Preview without applying
     --json              JSON output
@@ -595,20 +745,30 @@ pipeline {
 }
 ```
 
-### Docker Build Args
-
-```dockerfile
-# Dockerfile
-ARG DATABASE_URL
-ARG API_KEY
-ENV DATABASE_URL=$DATABASE_URL
-ENV API_KEY=$API_KEY
-```
+### Docker Integration
 
 ```bash
-# Build with secrets
-eval $(vaulter export -e prd --format=docker-args)
-docker build $VAULTER_DOCKER_ARGS -t myapp .
+# Recommended: Use --env-file for production (handles all values safely)
+vaulter export -e prd --format=env > .env.prd
+docker run --env-file .env.prd myapp
+
+# For simple values only: command substitution (no spaces/newlines in values)
+docker run $(vaulter export -e prd --format=docker-args) myapp
+```
+
+> **Note**: The `docker-args` format outputs `-e "KEY=VALUE"` flags. Due to shell word-splitting,
+> values containing spaces or special characters won't work correctly with `$(...)` substitution.
+> Use `--env-file` for complex values or production deployments.
+
+For `docker build` with build args, use shell format:
+
+```bash
+# Export to shell and use in build
+eval $(vaulter export -e prd)
+docker build \
+  --build-arg DATABASE_URL="$DATABASE_URL" \
+  --build-arg API_KEY="$API_KEY" \
+  -t myapp .
 ```
 
 ### Terraform Integration
@@ -872,7 +1032,7 @@ npx @anthropic-ai/mcp-inspector vaulter mcp
 }
 ```
 
-### Available Tools (15)
+### Available Tools (19)
 
 | Tool | Description |
 |:-----|:------------|
@@ -891,11 +1051,19 @@ npx @anthropic-ai/mcp-inspector vaulter mcp
 | `vaulter_k8s_secret` | Generate K8s Secret |
 | `vaulter_k8s_configmap` | Generate K8s ConfigMap |
 | `vaulter_init` | Initialize project |
+| `vaulter_key_generate` | Generate encryption key (symmetric or asymmetric) |
+| `vaulter_key_list` | List all keys (project + global) |
+| `vaulter_key_show` | Show key details |
+| `vaulter_key_export` | Export key to encrypted bundle |
+| `vaulter_key_import` | Import key from encrypted bundle |
 
-### Resources (5)
+### Resources (7)
 
 - `vaulter://config` — Project configuration
 - `vaulter://services` — Monorepo services
+- `vaulter://keys` — List all encryption keys (project + global)
+- `vaulter://keys/<name>` — Specific key details
+- `vaulter://keys/global/<name>` — Global key details
 - `vaulter://project/env` — Environment variables
 - `vaulter://project/env/service` — Service-specific vars
 - `vaulter://compare/env1/env2` — Environment diff

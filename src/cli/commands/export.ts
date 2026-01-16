@@ -86,6 +86,27 @@ function formatTfvars(vars: Record<string, string>): string {
 }
 
 /**
+ * Format variables as Docker --env arguments
+ * Output: -e "KEY1=value1" -e "KEY2=value2"
+ *
+ * Usage: docker run $(vaulter export --format=docker-args -e prd) myimage
+ *
+ * LIMITATION: Due to shell word-splitting, values with spaces or special
+ * characters won't work correctly with $(...) command substitution.
+ * For complex values, recommend using --env-file instead:
+ *   vaulter export --format=env > .env && docker run --env-file .env myimage
+ */
+function formatDockerArgs(vars: Record<string, string>): string {
+  return Object.entries(vars)
+    .map(([key, value]) => {
+      // Escape double quotes and handle special shell characters
+      const escapedValue = value.replace(/"/g, '\\"')
+      return `-e "${key}=${escapedValue}"`
+    })
+    .join(' ')
+}
+
+/**
  * Run the export command
  */
 export async function runExport(context: ExportContext): Promise<void> {
@@ -100,7 +121,7 @@ export async function runExport(context: ExportContext): Promise<void> {
   // Determine format
   let format: ExportFormat = 'shell'
   if (args.format) {
-    const validFormats: ExportFormat[] = ['shell', 'json', 'yaml', 'env', 'tfvars']
+    const validFormats: ExportFormat[] = ['shell', 'json', 'yaml', 'env', 'tfvars', 'docker-args']
     if (!validFormats.includes(args.format as ExportFormat)) {
       console.error(`Error: Invalid format "${args.format}"`)
       console.error(`Valid formats: ${validFormats.join(', ')}`)
@@ -115,7 +136,7 @@ export async function runExport(context: ExportContext): Promise<void> {
     console.error(`Exporting ${project}/${service || '(no service)'}/${environment} as ${format}`)
   }
 
-  const client = await createClientFromConfig({ args, config, verbose })
+  const client = await createClientFromConfig({ args, config, project, verbose })
 
   try {
     await client.connect()
@@ -139,6 +160,9 @@ export async function runExport(context: ExportContext): Promise<void> {
         break
       case 'tfvars':
         output = formatTfvars(vars)
+        break
+      case 'docker-args':
+        output = formatDockerArgs(vars)
         break
       default:
         output = formatShell(vars)
