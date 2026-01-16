@@ -7,7 +7,7 @@
  *   vaulter set KEY "value" -e dev          # Legacy single-key syntax (secret)
  *   vaulter set KEY=value -e dev            # Secret (encrypted, file + backend)
  *   vaulter set KEY:=123 -e dev             # Secret typed (number/boolean)
- *   vaulter set KEY::value -e dev           # Config (plain text, file only)
+ *   vaulter set KEY::value -e dev           # Config (split: file only | unified: file + backend)
  *   vaulter set K1=v1 K2::v2 -e dev         # Batch: mix secrets and configs
  *   vaulter set KEY=val @tag:db,secret      # With metadata (@ prefix)
  */
@@ -211,7 +211,7 @@ export async function runSet(context: SetContext): Promise<void> {
       result.secrets = {
         count: secrets.size,
         keys: [...secrets.keys()],
-        destination: splitMode ? 'deploy/secrets + backend' : 'backend'
+        destination: splitMode ? 'deploy/secrets + backend' : 'env file + backend'
       }
     }
 
@@ -233,7 +233,7 @@ export async function runSet(context: SetContext): Promise<void> {
       if (secrets.size > 0) {
         console.log(`Dry run - would set ${secrets.size} secret(s):`)
         for (const key of secrets.keys()) {
-          const dest = splitMode ? 'secrets file + backend' : 'backend'
+          const dest = splitMode ? 'secrets file + backend' : 'env file + backend'
           console.log(`  ${key} → ${dest}`)
         }
       }
@@ -253,11 +253,15 @@ export async function runSet(context: SetContext): Promise<void> {
   // Results tracking
   const results: Array<{ key: string; type: 'secret' | 'config'; success: boolean; error?: string }> = []
 
-  // === HANDLE SECRETS (file + backend) ===
+  // === HANDLE SECRETS (split: secrets file + backend | unified: env file + backend) ===
   if (secrets.size > 0) {
-    // Write to secrets file in split mode
-    if (splitMode && configDir) {
-      const secretsFilePath = getSecretsFilePath(config!, configDir, environment)
+    // Write to file (secrets file in split mode, unified env file otherwise)
+    if (configDir) {
+      const secretsFilePath = splitMode
+        ? getSecretsFilePath(config!, configDir, environment)
+        : config
+          ? getEnvFilePathForConfig(config, configDir, environment)
+          : getEnvFilePath(configDir, environment)
       writeToEnvFile(secretsFilePath, secrets, verbose)
     }
 
