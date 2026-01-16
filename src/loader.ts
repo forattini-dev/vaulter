@@ -53,7 +53,9 @@ export interface LoaderOptions extends DotenvConfigOptions {
  * loader({ path: '.env.local', override: true })
  */
 export function loader(options?: LoaderOptions): DotenvConfigOutput {
-  return dotenv.config(options)
+  // Default to quiet mode unless debug is enabled
+  const opts = { quiet: !options?.debug, ...options }
+  return dotenv.config(opts)
 }
 
 /**
