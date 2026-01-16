@@ -6,6 +6,7 @@
 
 import type { CLIArgs, VaulterConfig, Environment, EnvVar } from '../../types.js'
 import { createClientFromConfig } from '../lib/create-client.js'
+import * as ui from '../ui.js'
 
 interface ListContext {
   args: CLIArgs
@@ -27,59 +28,25 @@ function maskValue(value: string, showFull: boolean = false): string {
 }
 
 /**
- * Format table output
- */
-function formatTable(vars: EnvVar[], showValues: boolean): string {
-  if (vars.length === 0) {
-    return 'No variables found'
-  }
-
-  // Calculate column widths
-  const keyWidth = Math.max(4, ...vars.map(v => v.key.length))
-  const valueWidth = showValues ? Math.max(5, ...vars.map(v => maskValue(v.value, showValues).length)) : 12
-  const envWidth = 3
-
-  // Header
-  const lines: string[] = []
-  lines.push(
-    'KEY'.padEnd(keyWidth) + '  ' +
-    'VALUE'.padEnd(valueWidth) + '  ' +
-    'ENV'
-  )
-  lines.push('-'.repeat(keyWidth + valueWidth + envWidth + 4))
-
-  // Rows
-  for (const v of vars) {
-    lines.push(
-      v.key.padEnd(keyWidth) + '  ' +
-      maskValue(v.value, showValues).padEnd(valueWidth) + '  ' +
-      v.environment
-    )
-  }
-
-  return lines.join('\n')
-}
-
-/**
  * Run the list command
  */
 export async function runList(context: ListContext): Promise<void> {
   const { args, config, project, service, environment, verbose, jsonOutput } = context
 
   if (!project) {
-    console.error('Error: Project not specified and no config found')
-    console.error('Run "vaulter init" or specify --project')
+    ui.error('Project not specified and no config found')
+    ui.log('Run "vaulter init" or specify --project')
     process.exit(1)
   }
 
-  if (verbose) {
-    console.error(`Listing variables for ${project}/${service || '(no service)'}/${environment}`)
-  }
+  ui.verbose(`Listing variables for ${project}/${service || '(no service)'}/${environment}`, verbose)
 
   const client = await createClientFromConfig({ args, config, verbose })
 
   try {
-    await client.connect()
+    await ui.withSpinner('Connecting...', () => client.connect(), {
+      successText: 'Connected'
+    })
 
     const vars = await client.list({
       project,
@@ -88,7 +55,8 @@ export async function runList(context: ListContext): Promise<void> {
     })
 
     if (jsonOutput) {
-      console.log(JSON.stringify({
+      // JSON output goes to stdout (for pipes)
+      ui.output(JSON.stringify({
         project,
         service,
         environment: args.all ? 'all' : environment,
@@ -104,13 +72,32 @@ export async function runList(context: ListContext): Promise<void> {
         }))
       }))
     } else {
-      // Table format
-      const showValues = args.verbose || args.v || false
-      console.log(formatTable(vars, showValues))
+      if (vars.length === 0) {
+        ui.log('No variables found')
+        return
+      }
 
-      if (!showValues && vars.length > 0) {
-        console.log('')
-        console.log('(use -v to show full values)')
+      // Table format using tuiuiu.js
+      const showValues = args.verbose || args.v || false
+      const tableData = vars.map(v => ({
+        key: v.key,
+        value: maskValue(v.value, showValues),
+        env: v.environment
+      }))
+
+      const table = ui.formatTable(
+        [
+          { key: 'key', header: 'KEY' },
+          { key: 'value', header: 'VALUE' },
+          { key: 'env', header: 'ENV' }
+        ],
+        tableData
+      )
+
+      ui.output(table)
+
+      if (!showValues) {
+        ui.log('\n(use -v to show full values)')
       }
     }
   } finally {
