@@ -67,19 +67,6 @@ const commonOptions = {
   logLevel: 'info'
 }
 
-// Full CLI bundle (with MCP - requires node_modules)
-const fullConfig = {
-  ...commonOptions,
-  entryPoints: ['./src/cli/index.ts'],
-  outfile: './dist/bin/vaulter.cjs',
-  external: [
-    's3db.js/lite',
-    'yaml',
-    '@modelcontextprotocol/sdk',
-    '@aws-sdk/client-s3'
-  ]
-}
-
 // Plugin to fix import.meta.url in ESM modules when bundling for CJS
 // This patches fdir (used by tinyglobby) which uses createRequire(import.meta.url)
 const fixImportMetaUrl = {
@@ -130,6 +117,24 @@ const stubOptionalNative = {
       loader: 'js'
     }))
   }
+}
+
+// Full CLI bundle (with MCP - requires node_modules)
+const fullConfig = {
+  ...commonOptions,
+  entryPoints: ['./src/cli/index.ts'],
+  outfile: './dist/bin/vaulter.cjs',
+  // Use pkg-compat banner that patches createRequire for undefined import.meta.url
+  banner: {
+    js: pkgCompatBanner
+  },
+  external: [
+    's3db.js/lite',
+    'yaml',
+    '@modelcontextprotocol/sdk',
+    '@aws-sdk/client-s3'
+  ],
+  plugins: [fixImportMetaUrl]
 }
 
 // Standalone CLI bundle (for pkg binaries - no MCP)

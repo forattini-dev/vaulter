@@ -24,16 +24,38 @@ import {
 import { registerTools, handleToolCall } from './tools.js'
 import { handleResourceRead, listResources } from './resources.js'
 import { registerPrompts, getPrompt } from './prompts.js'
-import { createRequire } from 'node:module'
+import fs from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 const SERVER_NAME = 'vaulter'
 const SERVER_VERSION = process.env.VAULTER_VERSION || getPackageVersion() || '0.0.0'
 
 function getPackageVersion(): string | undefined {
   try {
-    const require = createRequire(import.meta.url)
-    const pkg = require('../../package.json') as { version?: string }
-    return pkg.version
+    // Handle both ESM (import.meta.url) and CJS (__dirname) contexts
+    let baseDir: string
+    if (typeof __dirname !== 'undefined') {
+      // CJS context
+      baseDir = __dirname
+    } else if (typeof import.meta?.url === 'string') {
+      // ESM context
+      baseDir = path.dirname(fileURLToPath(import.meta.url))
+    } else {
+      return undefined
+    }
+
+    // Try to find package.json by walking up the directory tree
+    let dir = baseDir
+    for (let i = 0; i < 5; i++) {
+      const pkgPath = path.join(dir, 'package.json')
+      if (fs.existsSync(pkgPath)) {
+        const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8')) as { version?: string }
+        return pkg.version
+      }
+      dir = path.dirname(dir)
+    }
+    return undefined
   } catch {
     return undefined
   }
