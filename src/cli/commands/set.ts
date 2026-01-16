@@ -168,7 +168,7 @@ export async function runSet(context: SetContext): Promise<void> {
     console.error('Usage:')
     console.error('  vaulter set KEY "value" -e dev                  # Single secret')
     console.error('  vaulter set KEY=value -e dev                    # Secret (encrypted)')
-    console.error('  vaulter set KEY::value -e dev                   # Config (plain text)')
+    console.error('  vaulter set KEY::value -e dev                   # Config (split: file | unified: file + backend)')
     console.error('  vaulter set K1=v1 K2::v2 PORT:=3000             # Batch: mix secrets & configs')
     console.error('  vaulter set KEY=val @tag:db,secret @owner:team  # With metadata')
     process.exit(1)
