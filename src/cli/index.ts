@@ -51,7 +51,7 @@ import { startServer as startMcpServer } from '../mcp/server.js'
  * Enables HTTPie-style syntax for setting variables:
  *   vaulter set KEY=value              → secret (encrypted, file + backend)
  *   vaulter set KEY:=123               → secret typed (number/boolean)
- *   vaulter set PORT:3000              → config (plain text, file only)
+ *   vaulter set PORT::3000             → config (plain text, file only)
  *   vaulter set @tag:sensitive         → metadata
  *
  * In split mode:
@@ -61,8 +61,8 @@ import { startServer as startMcpServer } from '../mcp/server.js'
 const VAULTER_SEPARATORS = {
   '=': 'secrets',                        // KEY=value → secrets bucket
   ':=': { to: 'secrets', typed: true },  // KEY:=123 → typed secret
-  ':': 'configs',                        // KEY:value → configs bucket (plain text)
-  '@': 'meta'                            // @tag:value → metadata
+  '::': 'configs',                       // KEY::value → configs bucket (plain text)
+  '@': { to: 'meta', prefix: true }      // @tag:value → metadata (prefix mode)
 }
 
 const cliSchema: CLISchema = {

@@ -7,8 +7,8 @@
  *   vaulter set KEY "value" -e dev          # Legacy single-key syntax (secret)
  *   vaulter set KEY=value -e dev            # Secret (encrypted, file + backend)
  *   vaulter set KEY:=123 -e dev             # Secret typed (number/boolean)
- *   vaulter set KEY:value -e dev            # Config (plain text, file only)
- *   vaulter set K1=v1 K2:v2 -e dev          # Batch: mix secrets and configs
+ *   vaulter set KEY::value -e dev           # Config (plain text, file only)
+ *   vaulter set K1=v1 K2::v2 -e dev         # Batch: mix secrets and configs
  *   vaulter set KEY=val @tag:db,secret      # With metadata (@ prefix)
  */
 
@@ -16,7 +16,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import type { CLIArgs, VaulterConfig, Environment } from '../../types.js'
 import { createClientFromConfig } from '../lib/create-client.js'
-import { findConfigDir, getSecretsFilePath, getConfigsFilePath, getEnvFilePath } from '../../lib/config-loader.js'
+import { findConfigDir, getSecretsFilePath, getConfigsFilePath, getEnvFilePath, getEnvFilePathForConfig } from '../../lib/config-loader.js'
 import { parseEnvFile, serializeEnv } from '../../lib/env-parser.js'
 
 type SeparatorValue = string | number | boolean | null
@@ -168,8 +168,8 @@ export async function runSet(context: SetContext): Promise<void> {
     console.error('Usage:')
     console.error('  vaulter set KEY "value" -e dev                  # Single secret')
     console.error('  vaulter set KEY=value -e dev                    # Secret (encrypted)')
-    console.error('  vaulter set KEY:value -e dev                    # Config (plain text)')
-    console.error('  vaulter set K1=v1 K2:v2 PORT:=3000              # Batch: mix secrets & configs')
+    console.error('  vaulter set KEY::value -e dev                   # Config (plain text)')
+    console.error('  vaulter set K1=v1 K2::v2 PORT:=3000             # Batch: mix secrets & configs')
     console.error('  vaulter set KEY=val @tag:db,secret @owner:team  # With metadata')
     process.exit(1)
   }
@@ -317,7 +317,10 @@ export async function runSet(context: SetContext): Promise<void> {
       }
     } else if (configDir) {
       // Unified mode: write configs to the single env file + backend
-      const envFilePath = getEnvFilePath(configDir, environment)
+      // Use getEnvFilePathForConfig to respect directories.path if configured
+      const envFilePath = config
+        ? getEnvFilePathForConfig(config, configDir, environment)
+        : getEnvFilePath(configDir, environment)
       writeToEnvFile(envFilePath, configs, verbose)
 
       // Also sync to backend in unified mode

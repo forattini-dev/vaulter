@@ -12,8 +12,8 @@ importers:
         specifier: ^1.25.2
         version: 1.25.2(hono@4.11.4)(zod@4.3.5)
       cli-args-parser:
-        specifier: file:../cli-args-parser
-        version: file:../cli-args-parser
+        specifier: ^1.0.1
+        version: 1.0.1
       dotenv:
         specifier: ^17.2.3
         version: 17.2.3
@@ -976,8 +976,8 @@ packages:
   chownr@1.1.4:
     resolution: {integrity: sha512-jJ0bqzaylmJtVnNgzTeSOs8DPavpbYgEr/b0YL8/2GO3xJEhInFmhKMUnEJQjZumK7KXGFhUy89PrsJWlakBVg==}
 
-  cli-args-parser@file:../cli-args-parser:
-    resolution: {directory: ../cli-args-parser, type: directory}
+  cli-args-parser@1.0.1:
+    resolution: {integrity: sha512-5YAdCO0ZNWpFl/seCTRcIel275iXRvFwVQegS/8GZNL79/fRRZRmGwe9brTTOzPyiwEk8C+FO2YNjBOKRFkrZw==}
     engines: {node: '>=18.0.0'}
 
   cliui@7.0.4:
@@ -3641,7 +3641,7 @@ snapshots:
 
   chownr@1.1.4: {}
 
-  cli-args-parser@file:../cli-args-parser: {}
+  cli-args-parser@1.0.1: {}
 
   cliui@7.0.4:
     dependencies:

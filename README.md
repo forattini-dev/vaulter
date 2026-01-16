@@ -213,8 +213,8 @@ vaulter set KEY=value                    # Single secret
 vaulter set A=1 B=2 C=3 -e dev           # Batch secrets
 vaulter set KEY:=123                     # Typed secret (number/boolean)
 
-# Configs (plain text, file only in split mode)
-vaulter set PORT:3000 HOST:localhost     # Configs (not synced to backend)
+# Configs (plain text, file only in split mode, synced in unified mode)
+vaulter set PORT::3000 HOST::localhost   # Configs
 
 # With metadata
 vaulter set DB_URL=postgres://... @tag:database,sensitive @owner:backend -e prd
@@ -227,8 +227,8 @@ vaulter set KEY "value" -e dev           # Treated as secret
 |:----------|:-----|:-------------|:-----------|
 | `=` | Secret | ✓ | ✓ |
 | `:=` | Secret (typed) | ✓ | ✓ |
-| `:` | Config | Split: ✗ / Unified: ✓ | ✗ |
-| `@` | Metadata | — | — |
+| `::` | Config | Split: ✗ / Unified: ✓ | ✗ |
+| `@key:value` | Metadata | — | — |
 
 ## Global Options
 

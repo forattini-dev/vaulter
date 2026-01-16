@@ -95,7 +95,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.25.2",
-    "cli-args-parser": "file:../cli-args-parser",
+    "cli-args-parser": "^1.0.1",
     "dotenv": "^17.2.3",
     "p-limit": "^6.2.0",
     "s3db.js": "^19.2.4",
