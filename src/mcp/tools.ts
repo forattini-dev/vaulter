@@ -2,7 +2,7 @@
  * Vaulter MCP Tools
  *
  * Comprehensive tool definitions and handlers for the MCP server
- * Provides 21 tools for environment, secrets, and key management
+ * Provides 22 tools for environment, secrets, and key management
  */
 
 import type { Tool } from '@modelcontextprotocol/sdk/types.js'
@@ -89,16 +89,30 @@ export function getMcpOptions(): McpServerOptions {
 }
 
 /**
+ * Effective defaults resolved from all config sources
+ */
+interface McpDefaults {
+  project: string
+  environment: string
+  key?: string
+}
+
+/**
  * Get current config and client
  * Supports both symmetric and asymmetric encryption modes
  *
- * Priority order for backend:
- * 1. CLI --backend flag (mcpOptions.backend)
+ * Priority order for all settings:
+ * 1. CLI flags / tool arguments
  * 2. Project config (.vaulter/config.yaml)
- * 3. Global MCP config (~/.vaulter/config.yaml mcp.default_backend)
- * 4. Default (file://$HOME/.vaulter/store)
+ * 3. Project MCP config (.vaulter/config.yaml → mcp.*)
+ * 4. Global MCP config (~/.vaulter/config.yaml → mcp.*)
+ * 5. Defaults
  */
-async function getClientAndConfig(): Promise<{ client: VaulterClient; config: VaulterConfig | null }> {
+async function getClientAndConfig(): Promise<{
+  client: VaulterClient
+  config: VaulterConfig | null
+  defaults: McpDefaults
+}> {
   let config: VaulterConfig | null = null
   try {
     config = loadConfig()
@@ -108,6 +122,21 @@ async function getClientAndConfig(): Promise<{ client: VaulterClient; config: Va
 
   // Load global MCP config as fallback
   const mcpConfig = loadMcpConfig()
+
+  // Resolve effective defaults with priority chain:
+  // project config > project mcp > global mcp > hardcoded default
+  const defaults: McpDefaults = {
+    project: config?.project
+      || config?.mcp?.default_project
+      || mcpConfig?.default_project
+      || '',
+    environment: config?.default_environment
+      || config?.mcp?.default_environment
+      || mcpConfig?.default_environment
+      || 'dev',
+    key: config?.mcp?.default_key
+      || mcpConfig?.default_key
+  }
 
   // CLI --backend flag takes precedence over config file
   const backendOverride = mcpOptions.backend
@@ -148,7 +177,7 @@ async function getClientAndConfig(): Promise<{ client: VaulterClient; config: Va
       asymmetricAlgorithm: algorithm
     })
 
-    return { client, config }
+    return { client, config, defaults }
   }
 
   // Symmetric mode (default)
@@ -160,7 +189,7 @@ async function getClientAndConfig(): Promise<{ client: VaulterClient; config: Va
     passphrase: passphrase || undefined
   })
 
-  return { client, config }
+  return { client, config, defaults }
 }
 
 /**
@@ -507,9 +536,10 @@ export async function handleToolCall(
   name: string,
   args: Record<string, unknown>
 ): Promise<{ content: Array<{ type: 'text'; text: string }> }> {
-  const { client, config } = await getClientAndConfig()
-  const project = (args.project as string) || config?.project || ''
-  const environment = (args.environment as Environment) || config?.default_environment || 'dev'
+  const { client, config, defaults } = await getClientAndConfig()
+  // Use effective defaults from config chain (project > project.mcp > global mcp > hardcoded)
+  const project = (args.project as string) || defaults.project
+  const environment = (args.environment as Environment) || defaults.environment
   const service = args.service as string | undefined
 
   // Tools that don't need backend connection

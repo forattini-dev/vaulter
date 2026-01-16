@@ -1497,6 +1497,80 @@ npx @anthropic-ai/mcp-inspector vaulter mcp
 }
 ```
 
+### MCP Configuration
+
+The MCP server uses a priority chain to resolve defaults:
+
+1. **Tool arguments** (explicit in each call)
+2. **Project config** (`.vaulter/config.yaml`)
+3. **Project MCP config** (`.vaulter/config.yaml` → `mcp:` section)
+4. **Global MCP config** (`~/.vaulter/config.yaml` → `mcp:` section)
+5. **Hardcoded defaults**
+
+#### Project MCP Defaults
+
+Add an `mcp:` section to your project's `.vaulter/config.yaml`:
+
+```yaml
+# .vaulter/config.yaml
+version: "1"
+project: my-project
+
+backend:
+  url: s3://bucket/envs?region=us-east-1
+
+# MCP defaults (used when MCP server runs in this project)
+mcp:
+  default_backend: s3://bucket/envs?region=us-east-1
+  default_project: my-project
+  default_environment: dev
+  default_key: master    # Key name for encryption
+```
+
+#### Global MCP Defaults
+
+For MCP clients that don't support `cwd`, create `~/.vaulter/config.yaml`:
+
+```yaml
+# ~/.vaulter/config.yaml
+mcp:
+  default_backend: s3://bucket/envs?region=us-east-1
+  default_project: my-project
+  default_environment: dev
+  default_key: master
+```
+
+#### Working Directory
+
+MCP clients need to know which project to use. Options:
+
+```json
+{
+  "mcpServers": {
+    "vaulter": {
+      "command": "vaulter",
+      "args": ["mcp", "--cwd", "/path/to/project"]
+    }
+  }
+}
+```
+
+Or use the `VAULTER_CWD` environment variable:
+
+```json
+{
+  "mcpServers": {
+    "vaulter": {
+      "command": "vaulter",
+      "args": ["mcp"],
+      "env": {
+        "VAULTER_CWD": "/path/to/project"
+      }
+    }
+  }
+}
+```
+
 ### Available Tools (22)
 
 #### Core Operations
