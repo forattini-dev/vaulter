@@ -8,11 +8,33 @@
 
 </div>
 
-## Quick Start
+## Installation
+
+### One-liner (recommended)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/forattini-dev/vaulter/main/install.sh | sh
+```
+
+### npm
 
 ```bash
 npm install -g vaulter
 ```
+
+### Specific version
+
+```bash
+VAULTER_VERSION=v1.0.0 curl -fsSL https://raw.githubusercontent.com/forattini-dev/vaulter/main/install.sh | sh
+```
+
+### Custom directory
+
+```bash
+VAULTER_DIR=/usr/local/bin curl -fsSL https://raw.githubusercontent.com/forattini-dev/vaulter/main/install.sh | sh
+```
+
+## Quick Start
 
 ```bash
 # Initialize project
@@ -54,6 +76,7 @@ MCP server for Claude AI. Zero config for dev, production-ready.
 
 ## Table of Contents
 
+- [Installation](#installation)
 - [Quick Start](#quick-start)
 - [What's Inside](#whats-inside)
 - [Highlights](#highlights)
@@ -1284,11 +1307,11 @@ steps:
     path: ~/.npm
     key: vaulter-${{ runner.os }}
 
-# Or download binary directly
+# Or use the installer script
 - name: Install vaulter
   run: |
-    curl -sL https://github.com/forattini-dev/vaulter/releases/latest/download/vaulter-linux -o /usr/local/bin/vaulter
-    chmod +x /usr/local/bin/vaulter
+    curl -fsSL https://raw.githubusercontent.com/forattini-dev/vaulter/main/install.sh | sh
+    echo "$HOME/.local/bin" >> $GITHUB_PATH
 ```
 
 ## Security Best Practices
@@ -1372,15 +1395,35 @@ await client.disconnect()
 
 ## Pre-built Binaries
 
+### Automatic Installation
+
+```bash
+# Installs to ~/.local/bin by default
+curl -fsSL https://raw.githubusercontent.com/forattini-dev/vaulter/main/install.sh | sh
+```
+
+The installer auto-detects your OS and architecture.
+
+### Manual Download
+
 Download from [Releases](https://github.com/forattini-dev/vaulter/releases):
 
-| Platform | Binary |
-|:---------|:-------|
-| Linux x64 | `vaulter-linux` |
-| Linux ARM64 | `vaulter-linux-arm64` |
-| macOS x64 | `vaulter-macos` |
-| macOS ARM64 | `vaulter-macos-arm64` |
-| Windows | `vaulter-win.exe` |
+| Platform | Binary | Install |
+|:---------|:-------|:--------|
+| Linux x64 | `vaulter-linux-x64` | `chmod +x vaulter-linux-x64 && mv vaulter-linux-x64 ~/.local/bin/vaulter` |
+| Linux ARM64 | `vaulter-linux-arm64` | `chmod +x vaulter-linux-arm64 && mv vaulter-linux-arm64 ~/.local/bin/vaulter` |
+| macOS x64 | `vaulter-macos-x64` | `chmod +x vaulter-macos-x64 && mv vaulter-macos-x64 /usr/local/bin/vaulter` |
+| macOS ARM64 | `vaulter-macos-arm64` | `chmod +x vaulter-macos-arm64 && mv vaulter-macos-arm64 /usr/local/bin/vaulter` |
+| Windows x64 | `vaulter-win-x64.exe` | Add to PATH |
+
+### CI/CD Installation
+
+```bash
+# GitHub Actions / GitLab CI / CircleCI
+curl -fsSL https://raw.githubusercontent.com/forattini-dev/vaulter/main/install.sh | sh
+export PATH="$HOME/.local/bin:$PATH"
+vaulter --version
+```
 
 ## License
 
