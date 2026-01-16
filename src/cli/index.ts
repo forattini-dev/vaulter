@@ -7,12 +7,23 @@
 // Preload must be first - sets process.maxListeners before other imports
 import './preload.js'
 
-import minimist from 'minimist'
-import type { CLIArgs, Environment } from '../types.js'
+import { createCLI, type CommandParseResult, type CLISchema } from 'cli-args-parser'
+import type { CLIArgs, Environment, VaulterConfig } from '../types.js'
 import { loadConfig, getProjectName } from '../lib/config-loader.js'
+import { createRequire } from 'node:module'
 
 // Version is injected at build time or read from package.json
-const VERSION = process.env.VAULTER_VERSION || '0.1.0'
+const VERSION = process.env.VAULTER_VERSION || getPackageVersion() || '0.0.0'
+
+function getPackageVersion(): string | undefined {
+  try {
+    const require = createRequire(import.meta.url)
+    const pkg = require('../../package.json') as { version?: string }
+    return pkg.version
+  } catch {
+    return undefined
+  }
+}
 
 // CLI commands
 import { runInit } from './commands/init.js'
@@ -32,158 +43,297 @@ import { runServices } from './commands/services.js'
 import { startServer as startMcpServer } from '../mcp/server.js'
 
 /**
- * Parse command line arguments
+ * CLI Schema definition
  */
-function parseArgs(): CLIArgs {
-  return minimist(process.argv.slice(2), {
-    string: ['project', 'p', 'service', 's', 'env', 'e', 'backend', 'b', 'key', 'k', 'file', 'f', 'output', 'o', 'namespace', 'n', 'format'],
-    boolean: ['verbose', 'v', 'dry-run', 'json', 'no-color', 'help', 'h', 'version', 'force', 'all'],
-    alias: {
-      p: 'project',
-      s: 'service',
-      e: 'env',
-      b: 'backend',
-      k: 'key',
-      v: 'verbose',
-      f: 'file',
-      o: 'output',
-      h: 'help',
-      n: 'namespace'
+/**
+ * Custom separators for vaulter CLI
+ *
+ * Enables HTTPie-style syntax for setting variables:
+ *   vaulter set KEY=value              → secret (encrypted, file + backend)
+ *   vaulter set KEY:=123               → secret typed (number/boolean)
+ *   vaulter set PORT:3000              → config (plain text, file only)
+ *   vaulter set @tag:sensitive         → metadata
+ *
+ * In split mode:
+ *   secrets → deploy/secrets/<env>.env + remote backend
+ *   configs → deploy/configs/<env>.env (git-tracked, no backend)
+ */
+const VAULTER_SEPARATORS = {
+  '=': 'secrets',                        // KEY=value → secrets bucket
+  ':=': { to: 'secrets', typed: true },  // KEY:=123 → typed secret
+  ':': 'configs',                        // KEY:value → configs bucket (plain text)
+  '@': 'meta'                            // @tag:value → metadata
+}
+
+const cliSchema: CLISchema = {
+  name: 'vaulter',
+  version: VERSION,
+  description: 'Multi-backend environment variable and secrets manager',
+  autoShort: false,
+  separators: VAULTER_SEPARATORS,
+
+  // Global options available to all commands
+  options: {
+    help: {
+      short: 'h',
+      type: 'boolean',
+      default: false,
+      description: 'Show help'
     },
-    default: {
-      verbose: false,
-      'dry-run': false,
-      json: false,
-      'no-color': false
+    version: {
+      type: 'boolean',
+      default: false,
+      description: 'Show version'
+    },
+    project: {
+      short: 'p',
+      type: 'string',
+      description: 'Project name (default: from config or directory)'
+    },
+    service: {
+      short: 's',
+      type: 'string',
+      description: 'Service name (for monorepos, supports comma-separated)'
+    },
+    env: {
+      short: 'e',
+      type: 'string',
+      description: 'Environment (dev/stg/prd/sbx/dr)'
+    },
+    backend: {
+      short: 'b',
+      type: 'string',
+      description: 'Backend URL override'
+    },
+    key: {
+      short: 'k',
+      type: 'string',
+      description: 'Encryption key path or raw key'
+    },
+    verbose: {
+      short: 'v',
+      type: 'boolean',
+      default: false,
+      description: 'Enable verbose output'
+    },
+    all: {
+      type: 'boolean',
+      default: false,
+      description: 'Apply to all services in monorepo'
+    },
+    'dry-run': {
+      type: 'boolean',
+      default: false,
+      description: 'Show what would be done without making changes'
+    },
+    json: {
+      type: 'boolean',
+      default: false,
+      description: 'Output in JSON format'
+    },
+    'no-color': {
+      type: 'boolean',
+      default: false,
+      description: 'Disable colored output'
+    },
+    force: {
+      type: 'boolean',
+      default: false,
+      description: 'Skip confirmations'
+    },
+    file: {
+      short: 'f',
+      type: 'string',
+      description: 'File path'
+    },
+    output: {
+      short: 'o',
+      type: 'string',
+      description: 'Output file path'
+    },
+    namespace: {
+      short: 'n',
+      type: 'string',
+      description: 'Kubernetes namespace'
+    },
+    format: {
+      type: 'string',
+      description: 'Output format'
     }
-  }) as CLIArgs
+  },
+
+  commands: {
+    init: {
+      description: 'Initialize a new .vaulter configuration',
+      options: {
+        split: {
+          type: 'boolean',
+          default: false,
+          description: 'Use split mode (separate configs/secrets directories)'
+        }
+      }
+    },
+
+    get: {
+      description: 'Get a single environment variable',
+      positional: [
+        { name: 'key', required: true, description: 'Variable name' }
+      ]
+    },
+
+    set: {
+      description: 'Set environment variables (supports batch: KEY1=v1 KEY2=v2 PORT:=3000)',
+      positional: [
+        { name: 'key', required: false, description: 'Variable name (legacy syntax)' },
+        { name: 'value', required: false, description: 'Variable value (legacy syntax)' }
+      ]
+    },
+
+    delete: {
+      description: 'Delete an environment variable',
+      aliases: ['rm', 'remove'],
+      positional: [
+        { name: 'key', required: true, description: 'Variable name' }
+      ]
+    },
+
+    list: {
+      description: 'List all environment variables',
+      aliases: ['ls']
+    },
+
+    export: {
+      description: 'Export variables for shell evaluation'
+    },
+
+    sync: {
+      description: 'Merge local .env file with backend'
+    },
+
+    pull: {
+      description: 'Pull variables from backend to local .env'
+    },
+
+    push: {
+      description: 'Push local .env to backend'
+    },
+
+    key: {
+      description: 'Key management commands',
+      commands: {
+        generate: {
+          description: 'Generate a new encryption key'
+        }
+      }
+    },
+
+    services: {
+      description: 'List services in monorepo',
+      aliases: ['svc']
+    },
+
+    mcp: {
+      description: 'Start MCP server for Claude integration'
+    },
+
+    config: {
+      description: 'Manage configuration'
+    },
+
+    'k8s:secret': {
+      description: 'Generate Kubernetes Secret YAML'
+    },
+
+    'k8s:configmap': {
+      description: 'Generate Kubernetes ConfigMap YAML'
+    },
+
+    'helm:values': {
+      description: 'Generate Helm values.yaml'
+    },
+
+    'tf:vars': {
+      description: 'Generate Terraform .tfvars'
+    },
+
+    'tf:json': {
+      description: 'Generate Terraform JSON'
+    }
+  }
 }
 
 /**
- * Show help
+ * Convert cli-args-parser result to CLIArgs format for backward compatibility
  */
-function showHelp(): void {
-  console.log(`
-vaulter - Multi-backend environment variable and secrets manager
+function toCliArgs(result: CommandParseResult): CLIArgs {
+  const opts = result.options as Record<string, unknown>
+  const pos = result.positional as Record<string, unknown>
 
-Usage:
-  vaulter <command> [options]
+  // Build the _ array: command + positional args + rest
+  const args: string[] = [...result.command]
+  if (pos.key) args.push(pos.key as string)
+  if (pos.value) args.push(pos.value as string)
+  args.push(...(result.rest as string[]))
 
-Commands:
-  init                  Initialize a new .vaulter configuration
-  get <key>             Get a single environment variable
-  set <key> <value>     Set an environment variable
-  delete <key>          Delete an environment variable
-  list                  List all environment variables
-  export                Export variables for shell evaluation
-  sync                  Merge local .env file with backend
-  pull                  Pull variables from backend to local .env
-  push                  Push local .env to backend
-  key generate          Generate a new encryption key
-  services              List services in monorepo
-  config                Manage configuration
-  mcp                   Start MCP server for Claude integration
-
-Integration Commands:
-  k8s:secret            Generate Kubernetes Secret YAML
-  k8s:configmap         Generate Kubernetes ConfigMap YAML
-  helm:values           Generate Helm values.yaml
-  tf:vars               Generate Terraform .tfvars
-  tf:json               Generate Terraform JSON
-
-Global Options:
-  -p, --project <name>  Project name (default: from config or directory)
-  -s, --service <name>  Service name (for monorepos, supports comma-separated)
-  -e, --env <env>       Environment (dev/stg/prd/sbx/dr)
-  -b, --backend <url>   Backend URL override
-  -k, --key <path>      Encryption key path or raw key
-  -v, --verbose         Enable verbose output
-  --all                 Apply to all services in monorepo
-  --dry-run             Show what would be done without making changes
-  --json                Output in JSON format
-  --no-color            Disable colored output
-  -h, --help            Show this help message
-  --version             Show version
-
-Examples:
-  # Initialize project
-  vaulter init
-
-  # Get a variable
-  vaulter get DATABASE_URL -e prd
-
-  # Set a variable
-  vaulter set API_KEY "sk-..." -e prd
-
-  # Export for shell
-  eval $(vaulter export -e dev)
-
-  # Sync local .env
-  vaulter sync -f .env.local -e dev
-
-  # Sync all services in monorepo
-  vaulter sync -e dev --all
-
-  # Sync specific services
-  vaulter sync -e dev -s svc-auth,svc-api
-
-  # List services in monorepo
-  vaulter services
-
-  # Generate K8s secret
-  vaulter k8s:secret -e prd | kubectl apply -f -
-
-Documentation: https://github.com/tetis-io/vaulter
-`)
+  return {
+    _: args,
+    // Global options
+    project: opts.project as string | undefined,
+    p: opts.project as string | undefined,
+    service: opts.service as string | undefined,
+    s: opts.service as string | undefined,
+    env: opts.env as string | undefined,
+    e: opts.env as string | undefined,
+    backend: opts.backend as string | undefined,
+    b: opts.backend as string | undefined,
+    key: opts.key as string | undefined,
+    k: opts.key as string | undefined,
+    verbose: opts.verbose as boolean | undefined,
+    v: opts.verbose as boolean | undefined,
+    'dry-run': opts['dry-run'] as boolean | undefined,
+    json: opts.json as boolean | undefined,
+    'no-color': opts['no-color'] as boolean | undefined,
+    force: opts.force as boolean | undefined,
+    all: opts.all as boolean | undefined,
+    file: opts.file as string | undefined,
+    f: opts.file as string | undefined,
+    output: opts.output as string | undefined,
+    o: opts.output as string | undefined,
+    namespace: opts.namespace as string | undefined,
+    n: opts.namespace as string | undefined,
+    format: opts.format as string | undefined,
+    // Command-specific options
+    split: opts.split as boolean | undefined
+  }
 }
 
 /**
- * Show version
+ * Separator buckets from cli-args-parser
  */
-function showVersion(): void {
-  console.log(`vaulter v${VERSION}`)
-}
+type SeparatorValue = string | number | boolean | null
 
 /**
- * Main entry point
+ * Build context from parsed args
  */
-async function main(): Promise<void> {
-  const args = parseArgs()
-
-  // Handle version
-  if (args.version) {
-    showVersion()
-    return
-  }
-
-  // Handle help
-  if (args.help || args.h || args._.length === 0) {
-    showHelp()
-    return
-  }
-
-  const command = args._[0]
-
-  // Load configuration
-  let config
-  try {
-    config = loadConfig()
-  } catch (err) {
-    // Config not found is OK for some commands
-    config = null
-  }
+function buildContext(result: CommandParseResult, config: VaulterConfig | null) {
+  const opts = result.options as Record<string, unknown>
+  const args = toCliArgs(result)
 
   // Resolve options
-  const environment = (args.env || args.e || config?.default_environment || 'dev') as Environment
-  const project = args.project || args.p || (config ? getProjectName(config) : '')
-  const service = args.service || args.s || config?.service
-  const verbose = args.verbose || args.v || false
-  const dryRun = args['dry-run'] || false
-  const jsonOutput = args.json || false
-  const noColor = args['no-color'] || false
+  const environment = (opts.env || config?.default_environment || 'dev') as Environment
+  const project = (opts.project || (config ? getProjectName(config) : '')) as string
+  const service = (opts.service || config?.service) as string | undefined
+  const verbose = (opts.verbose || false) as boolean
+  const dryRun = (opts['dry-run'] || false) as boolean
+  const jsonOutput = (opts.json || false) as boolean
+  const noColor = (opts['no-color'] || false) as boolean
 
-  // Context for commands
-  const context = {
+  // Separator buckets (from KEY=value, KEY:value, @tag:value syntax)
+  const secrets = (result as Record<string, unknown>).secrets as Record<string, SeparatorValue> | undefined
+  const configs = (result as Record<string, unknown>).configs as Record<string, SeparatorValue> | undefined
+  const meta = (result as Record<string, unknown>).meta as Record<string, SeparatorValue> | undefined
+
+  return {
     args,
     config,
     project,
@@ -192,8 +342,56 @@ async function main(): Promise<void> {
     verbose,
     dryRun,
     jsonOutput,
-    noColor
+    noColor,
+    // Separator buckets
+    secrets: secrets ?? {},
+    configs: configs ?? {},
+    meta: meta ?? {}
   }
+}
+
+// Create CLI instance
+const cli = createCLI(cliSchema)
+
+/**
+ * Main entry point
+ */
+async function main(): Promise<void> {
+  const result = cli.parse(process.argv.slice(2))
+  const opts = result.options as Record<string, unknown>
+
+  // Handle help first (before error check, so `get --help` works)
+  if (opts.help || result.command.length === 0) {
+    console.log(cli.help(result.command))
+    return
+  }
+
+  // Handle version
+  if (opts.version) {
+    console.log(`vaulter v${VERSION}`)
+    return
+  }
+
+  // Handle errors from parser (after help/version checks)
+  if (result.errors.length > 0) {
+    for (const error of result.errors) {
+      console.error(`Error: ${error}`)
+    }
+    process.exit(1)
+  }
+
+  const command = result.command[0]
+
+  // Load configuration
+  let config: VaulterConfig | null = null
+  try {
+    config = loadConfig()
+  } catch {
+    // Config not found is OK for some commands
+  }
+
+  // Build context
+  const context = buildContext(result, config)
 
   try {
     switch (command) {
@@ -280,7 +478,7 @@ async function main(): Promise<void> {
         process.exit(1)
     }
   } catch (err) {
-    if (verbose) {
+    if (context.verbose) {
       console.error(err)
     } else {
       console.error(`Error: ${(err as Error).message}`)
