@@ -3,8 +3,9 @@
  *
  * Resource definitions and handlers for the MCP server
  *
- * Resources:
+ * Resources (8 types):
  *   vaulter://instructions         → CRITICAL: How vaulter works (READ THIS FIRST!)
+ *   vaulter://mcp-config           → MCP configuration with sources (WHERE each setting comes from)
  *   vaulter://config               → Current project configuration
  *   vaulter://services             → List of services in monorepo
  *   vaulter://keys                 → List all encryption keys
@@ -18,6 +19,7 @@ import type { Resource } from '@modelcontextprotocol/sdk/types.js'
 import fs from 'node:fs'
 import path from 'node:path'
 import { VaulterClient } from '../client.js'
+import { resolveMcpConfigWithSources, type ResolvedMcpConfig } from './tools.js'
 import {
   loadConfig,
   loadEncryptionKey,
@@ -94,6 +96,7 @@ async function getClientAndConfig(): Promise<{ client: VaulterClient; config: Va
  */
 type ParsedUri =
   | { type: 'instructions' }
+  | { type: 'mcp-config' }
   | { type: 'config' }
   | { type: 'services' }
   | { type: 'keys' }
@@ -106,6 +109,11 @@ function parseResourceUri(uri: string): ParsedUri {
   // vaulter://instructions (CRITICAL - must read first!)
   if (uri === 'vaulter://instructions') {
     return { type: 'instructions' }
+  }
+
+  // vaulter://mcp-config (shows WHERE each setting comes from)
+  if (uri === 'vaulter://mcp-config') {
+    return { type: 'mcp-config' }
   }
 
   // vaulter://config
@@ -214,6 +222,14 @@ export async function listResources(): Promise<Resource[]> {
     mimeType: 'text/markdown'
   })
 
+  // MCP Configuration Sources - shows WHERE each setting comes from
+  resources.push({
+    uri: 'vaulter://mcp-config',
+    name: 'MCP Configuration Sources',
+    description: 'Shows WHERE each MCP setting comes from (cli, project, project.mcp, global.mcp, or default)',
+    mimeType: 'application/json'
+  })
+
   // Always include config resource
   resources.push({
     uri: 'vaulter://config',
@@ -294,6 +310,8 @@ export async function handleResourceRead(uri: string): Promise<{ contents: Array
   switch (parsed.type) {
     case 'instructions':
       return handleInstructionsRead(uri)
+    case 'mcp-config':
+      return handleMcpConfigRead(uri)
     case 'config':
       return handleConfigRead(uri)
     case 'services':
@@ -479,6 +497,90 @@ Backend resolution priority (first match wins):
       mimeType: 'text/markdown',
       text: instructions
     }]
+  }
+}
+
+/**
+ * Read MCP configuration with sources
+ * Shows WHERE each setting comes from (cli, project, project.mcp, global.mcp, or default)
+ */
+async function handleMcpConfigRead(uri: string): Promise<{ contents: Array<{ uri: string; mimeType: string; text: string }> }> {
+  const resolved = resolveMcpConfigWithSources()
+
+  // Format for human readability
+  const formatted = {
+    summary: 'MCP Configuration Sources - shows WHERE each setting was loaded from',
+    settings: {
+      cwd: {
+        value: resolved.cwd.value,
+        source: resolved.cwd.source,
+        sourceDescription: describeSource(resolved.cwd.source)
+      },
+      backend: {
+        value: resolved.backend.value,
+        source: resolved.backend.source,
+        sourceDescription: describeSource(resolved.backend.source)
+      },
+      project: {
+        value: resolved.project.value,
+        source: resolved.project.source,
+        sourceDescription: describeSource(resolved.project.source)
+      },
+      environment: {
+        value: resolved.environment.value,
+        source: resolved.environment.source,
+        sourceDescription: describeSource(resolved.environment.source)
+      },
+      key: {
+        value: resolved.key.value,
+        source: resolved.key.source,
+        sourceDescription: describeSource(resolved.key.source)
+      },
+      encryptionMode: {
+        value: resolved.encryptionMode.value,
+        source: resolved.encryptionMode.source,
+        sourceDescription: describeSource(resolved.encryptionMode.source)
+      }
+    },
+    configFiles: {
+      projectConfig: resolved.configFiles.project || '(not found)',
+      globalConfig: resolved.configFiles.global || '(not found)'
+    },
+    priorityChain: [
+      '1. CLI flags (--backend, --project, etc.)',
+      '2. Project config (backend.url, project)',
+      '3. Project MCP defaults (mcp.default_backend, etc.)',
+      '4. Global MCP defaults (~/.vaulter/config.yaml → mcp.*)',
+      '5. Built-in defaults'
+    ]
+  }
+
+  return {
+    contents: [{
+      uri,
+      mimeType: 'application/json',
+      text: JSON.stringify(formatted, null, 2)
+    }]
+  }
+}
+
+/**
+ * Human-readable description of a config source
+ */
+function describeSource(source: string): string {
+  switch (source) {
+    case 'cli':
+      return 'CLI flag (--backend, --project, etc.)'
+    case 'project':
+      return 'Project config (.vaulter/config.yaml)'
+    case 'project.mcp':
+      return 'Project MCP defaults (.vaulter/config.yaml → mcp section)'
+    case 'global.mcp':
+      return 'Global MCP defaults (~/.vaulter/config.yaml → mcp section)'
+    case 'default':
+      return 'Built-in default'
+    default:
+      return source
   }
 }
 

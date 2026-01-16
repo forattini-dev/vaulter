@@ -42,7 +42,7 @@ import {
   ErrorCode,
   McpError
 } from '@modelcontextprotocol/sdk/types.js'
-import { registerTools, handleToolCall, setMcpOptions, type McpServerOptions } from './tools.js'
+import { registerTools, handleToolCall, setMcpOptions, resolveMcpConfigWithSources, formatResolvedConfig, type McpServerOptions } from './tools.js'
 import { handleResourceRead, listResources } from './resources.js'
 import { registerPrompts, getPrompt } from './prompts.js'
 import fs from 'node:fs'
@@ -162,6 +162,13 @@ export function createServer(): Server {
 export async function startServer(options: McpServerOptions = {}): Promise<void> {
   // Set options so tools can access them (e.g., backend override)
   setMcpOptions(options)
+
+  // Show configuration sources on startup (to stderr so it doesn't interfere with MCP protocol)
+  if (options.verbose) {
+    const resolvedConfig = resolveMcpConfigWithSources()
+    console.error(formatResolvedConfig(resolvedConfig))
+    console.error('')
+  }
 
   const server = createServer()
   const transport = new StdioServerTransport()
