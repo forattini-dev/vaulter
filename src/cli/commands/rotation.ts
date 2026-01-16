@@ -87,6 +87,10 @@ export async function runRotation(context: RotationContext): Promise<void> {
       await runRotationList(context)
       break
 
+    case 'run':
+      await runRotationRun(context)
+      break
+
     default:
       console.error('Usage: vaulter rotation <subcommand>')
       console.error('')
@@ -94,6 +98,7 @@ export async function runRotation(context: RotationContext): Promise<void> {
       console.error('  check, status   Check which secrets need rotation')
       console.error('  set KEY         Set rotation policy for a secret')
       console.error('  list, ls        List secrets with rotation policies')
+      console.error('  run             Run rotation workflow (CI/CD integration)')
       process.exit(1)
   }
 }
@@ -437,5 +442,194 @@ async function runRotationList(context: RotationContext): Promise<void> {
         }
       }
     }
+  }
+}
+
+/**
+ * Match a key against a glob-like pattern
+ * Supports: * (any chars), ? (single char)
+ */
+function matchPattern(key: string, pattern: string): boolean {
+  // Convert glob to regex: * -> .*, ? -> .
+  const regex = new RegExp(
+    '^' + pattern
+      .replace(/[.+^${}()|[\]\\]/g, '\\$&') // escape special chars
+      .replace(/\*/g, '.*')
+      .replace(/\?/g, '.') + '$',
+    'i'
+  )
+  return regex.test(key)
+}
+
+/**
+ * Run rotation workflow (CI/CD integration)
+ *
+ * Exits with non-zero code if secrets need rotation (useful for CI/CD gates)
+ *
+ * Flags:
+ *   --overdue         Only show secrets past their rotation date
+ *   --pattern <glob>  Filter secrets by key pattern (e.g., "*_KEY")
+ *   --days <n>        Override rotation threshold (default: from config or 90)
+ *   --fail            Exit with code 1 if any secrets need rotation
+ */
+async function runRotationRun(context: RotationContext): Promise<void> {
+  const { args, config, project, service, environment, verbose, jsonOutput } = context
+
+  if (!project) {
+    console.error('Error: Project not specified and no config found')
+    console.error('Run "vaulter init" or specify --project')
+    process.exit(1)
+  }
+
+  const allEnvs = args['all-envs']
+  const overdueOnly = args.overdue || false
+  const pattern = args.pattern
+  const failOnRotation = args.fail !== false // Default to true for CI/CD
+  const defaultDays = args.days || config?.encryption?.rotation?.interval_days || 90
+  const configPatterns = config?.encryption?.rotation?.patterns || []
+
+  const environments = allEnvs && config
+    ? getValidEnvironments(config)
+    : [environment]
+
+  // Check if rotation is enabled in config
+  const rotationEnabled = config?.encryption?.rotation?.enabled !== false
+
+  if (verbose) {
+    console.error(`Rotation workflow for ${project}`)
+    console.error(`  Rotation enabled: ${rotationEnabled}`)
+    console.error(`  Default interval: ${defaultDays} days`)
+    console.error(`  Overdue only: ${overdueOnly}`)
+    console.error(`  Pattern filter: ${pattern || 'none'}`)
+    console.error(`  Config patterns: ${configPatterns.length > 0 ? configPatterns.join(', ') : 'none'}`)
+    console.error(`  Environments: ${environments.join(', ')}`)
+  }
+
+  const client = await createClientFromConfig({ args, config, project, verbose })
+
+  interface RotationCandidate {
+    key: string
+    environment: string
+    value: string
+    rotatedAt?: string
+    rotateAfter?: string
+    daysOld: number
+    daysOverdue?: number
+    matchedPattern?: string
+  }
+
+  const candidates: RotationCandidate[] = []
+
+  try {
+    await client.connect()
+
+    for (const env of environments) {
+      const variables = await client.list({ project, environment: env as Environment, service })
+
+      for (const variable of variables) {
+        const rotatedAt = variable.metadata?.rotatedAt
+        const rotateAfter = variable.metadata?.rotateAfter
+        const needs = needsRotation(rotatedAt, rotateAfter, defaultDays)
+
+        // Skip if not needing rotation and overdueOnly is set
+        if (overdueOnly && !needs) continue
+
+        // Check pattern filter
+        let matchedPattern: string | undefined
+        if (pattern) {
+          if (!matchPattern(variable.key, pattern)) continue
+          matchedPattern = pattern
+        } else if (configPatterns.length > 0) {
+          // Use config patterns if no explicit pattern
+          const matched = configPatterns.find(p => matchPattern(variable.key, p))
+          if (!matched) continue
+          matchedPattern = matched
+        }
+
+        const lastRotation = rotatedAt ? new Date(rotatedAt) : variable.updatedAt
+        const daysOld = lastRotation
+          ? Math.floor((Date.now() - lastRotation.getTime()) / (24 * 60 * 60 * 1000))
+          : Infinity
+
+        let daysOverdue: number | undefined
+        if (rotateAfter) {
+          const due = new Date(rotateAfter)
+          const diff = Math.floor((Date.now() - due.getTime()) / (24 * 60 * 60 * 1000))
+          if (diff > 0) daysOverdue = diff
+        } else if (daysOld > defaultDays) {
+          daysOverdue = daysOld - defaultDays
+        }
+
+        // For overdue only mode, skip if not overdue
+        if (overdueOnly && daysOverdue === undefined) continue
+
+        candidates.push({
+          key: variable.key,
+          environment: env,
+          value: variable.value,
+          rotatedAt,
+          rotateAfter: rotateAfter?.toString(),
+          daysOld,
+          daysOverdue,
+          matchedPattern
+        })
+      }
+    }
+  } finally {
+    await client.disconnect()
+  }
+
+  // Sort by overdue status (most overdue first)
+  candidates.sort((a, b) => (b.daysOverdue ?? 0) - (a.daysOverdue ?? 0))
+
+  const overdue = candidates.filter(c => c.daysOverdue !== undefined)
+
+  if (jsonOutput) {
+    console.log(JSON.stringify({
+      project,
+      service,
+      environments,
+      rotationEnabled,
+      defaultIntervalDays: defaultDays,
+      pattern: pattern || null,
+      configPatterns,
+      total: candidates.length,
+      overdue: overdue.length,
+      secrets: candidates.map(c => ({
+        key: c.key,
+        environment: c.environment,
+        daysOld: c.daysOld,
+        daysOverdue: c.daysOverdue,
+        matchedPattern: c.matchedPattern
+      }))
+    }))
+  } else {
+    console.log(`Rotation workflow: ${project}`)
+    console.log('')
+
+    if (overdue.length > 0) {
+      console.log(`⚠️  Secrets requiring rotation (${overdue.length}):`)
+      for (const c of overdue) {
+        const envLabel = allEnvs ? ` [${c.environment}]` : ''
+        const overdueLabel = c.daysOverdue ? `${c.daysOverdue} days overdue` : `${c.daysOld} days old`
+        const patternLabel = c.matchedPattern ? ` (matched: ${c.matchedPattern})` : ''
+        console.log(`  • ${c.key}${envLabel} - ${overdueLabel}${patternLabel}`)
+      }
+      console.log('')
+      console.log('To rotate a secret:')
+      console.log('  vaulter set <KEY> "<new-value>" -e <env>')
+      console.log('')
+      console.log('The rotatedAt timestamp will be updated automatically.')
+    } else {
+      console.log('✓ No secrets require rotation')
+    }
+
+    console.log('')
+    console.log(`Summary: ${overdue.length} overdue, ${candidates.length - overdue.length} up to date`)
+  }
+
+  // Exit with non-zero if secrets need rotation (for CI/CD)
+  if (failOnRotation && overdue.length > 0) {
+    process.exit(1)
   }
 }

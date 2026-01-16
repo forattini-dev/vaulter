@@ -571,16 +571,14 @@ Vaulter includes built-in audit logging to track every change to your secrets. E
 audit:
   enabled: true              # Enable audit logging (default: true)
   retention_days: 90         # Auto-cleanup entries older than N days
-  mask_values: true          # Mask values in logs (show: sk-1234****5678)
-  include_values: false      # Include actual values (⚠️ security risk)
+  user_source: env           # User detection: 'env' (from USER/USERNAME) or custom
 ```
 
 | Option | Default | Description |
 |:-------|:--------|:------------|
 | `enabled` | `true` | Enable/disable audit logging |
 | `retention_days` | `90` | Auto-cleanup old entries |
-| `mask_values` | `true` | Mask sensitive values in logs |
-| `include_values` | `false` | Store full values (⚠️ use with caution) |
+| `user_source` | `'env'` | How to detect current user |
 
 ### Commands
 
@@ -602,8 +600,8 @@ vaulter audit list -e prd --pattern "DATABASE_*"
 # Filter by date range
 vaulter audit list -e prd --since "2025-01-01" --until "2025-01-15"
 
-# Filter by source
-vaulter audit list -e prd --source ci
+# Filter by source (cli, mcp, api, loader)
+vaulter audit list -e prd --source cli
 
 # Show all environments
 vaulter audit list --all-envs
@@ -620,7 +618,7 @@ vaulter audit list -e prd --user deploy --operation set --limit 100
 TIMESTAMP            USER          OP        KEY                       ENV   SRC
 2025-01-15 14:32:01  john          delete    API_KEY                   prd   cli
 2025-01-15 14:30:00  jane          set       DATABASE_URL              prd   cli
-2025-01-15 10:00:00  github-ci     push      *                         prd   ci
+2025-01-15 10:00:00  claude        set       JWT_SECRET                prd   mcp
 2025-01-14 16:45:22  jane          sync      *                         prd   cli
 
 Showing 4 entries
@@ -674,8 +672,8 @@ By User:
 
 By Source:
   cli        645
-  ci         470
-  sync       132
+  mcp        470
+  api        132
 ```
 
 #### Cleanup Old Entries
@@ -710,10 +708,9 @@ The `source` field indicates where the operation originated:
 | Source | Description |
 |:-------|:------------|
 | `cli` | Manual CLI command |
-| `ci` | CI/CD pipeline |
-| `sync` | Bidirectional sync operation |
-| `api` | Programmatic API call |
 | `mcp` | MCP server (AI assistant) |
+| `api` | Programmatic API usage |
+| `loader` | Auto-load from `vaulter/load` |
 
 ### Compliance Tips
 
@@ -759,8 +756,8 @@ Regular secret rotation is a security best practice. Vaulter tracks rotation sch
 │  3. vaulter set API_KEY="new-value" -e prd                      │
 │     → Automatically updates rotatedAt timestamp                 │
 │                                                                 │
-│  4. vaulter rotation run -e prd --clear                         │
-│     → Clears rotateAfter for updated keys (fresh start)         │
+│  4. vaulter rotation run -e prd --overdue                       │
+│     → CI/CD gate: fails if secrets are overdue                  │
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -790,77 +787,111 @@ encryption:
 
 ### Commands
 
-#### List Rotation Status
+#### Check Rotation Status
 
 ```bash
-# Show rotation status for all secrets
+# Check which secrets need rotation
+vaulter rotation check -e prd
+
+# Check all environments
+vaulter rotation check --all-envs
+
+# Custom threshold (default: 90 days)
+vaulter rotation check -e prd --days 30
+
+# JSON output
+vaulter rotation check -e prd --json
+```
+
+**Output:**
+```
+Rotation check for my-project/prd
+Default rotation interval: 90 days
+
+⚠️  Secrets needing rotation (2):
+  • API_KEY - 120 days old
+  • JWT_SECRET - never rotated
+
+Summary: 2 need rotation, 2 up to date
+```
+
+#### List Rotation Policies
+
+```bash
+# List secrets with rotation policies
 vaulter rotation list -e prd
 
 # Check all environments
 vaulter rotation list --all-envs
 
-# Filter overdue only
-vaulter rotation list -e prd --overdue
-
-# Custom interval check
-vaulter rotation list -e prd --days 30
-
-# JSON output
-vaulter rotation list -e prd --json
+# Verbose output with dates
+vaulter rotation list -e prd -v
 ```
 
 **Output:**
 ```
-Rotation Status for my-project/prd (default: 90 days)
+Secrets with rotation policies (3):
 
-KEY               LAST ROTATED         ROTATE AFTER         STATUS
-DATABASE_URL      2024-12-01           2025-03-01           ✓ OK (45 days)
-API_KEY           2024-09-15           2024-12-14           ⚠ OVERDUE (32 days)
-JWT_SECRET        never                —                    ⚠ NEVER ROTATED
-REDIS_URL         2024-11-20           2025-02-18           ✓ OK (34 days)
-
-Summary: 4 secrets, 2 overdue, 1 never rotated
+  • DATABASE_URL - due in 45 days
+  • API_KEY - ⚠️  OVERDUE
+  • REDIS_URL - due in 34 days
 ```
 
-#### Run Rotation Check
+#### Set Rotation Policy
 
 ```bash
-# Interactive rotation workflow
+# Set rotation policy for a secret
+vaulter rotation set API_KEY --interval 90d -e prd
+
+# Clear rotation policy
+vaulter rotation set API_KEY --clear -e prd
+
+# Set with different intervals
+vaulter rotation set JWT_SECRET --interval 30d -e prd
+vaulter rotation set DATABASE_URL --interval 6m -e prd
+```
+
+**Supported intervals:** `Nd` (days), `Nw` (weeks), `Nm` (months), `Ny` (years)
+
+#### Run Rotation Workflow (CI/CD)
+
+```bash
+# CI/CD gate - exits with code 1 if secrets are overdue
 vaulter rotation run -e prd
 
-# Clear rotation schedule for already-rotated keys
-vaulter rotation run -e prd --clear
+# Only check overdue secrets
+vaulter rotation run -e prd --overdue
 
-# Set new interval
-vaulter rotation run -e prd --interval 60
+# Filter by pattern
+vaulter rotation run -e prd --pattern "*_KEY"
 
-# Dry-run
-vaulter rotation run -e prd --dry-run
+# Custom threshold
+vaulter rotation run -e prd --days 30
+
+# Don't fail even if overdue (for reports)
+vaulter rotation run -e prd --fail=false
+
+# JSON output for scripting
+vaulter rotation run -e prd --json
 ```
 
-**Interactive Output:**
+**Output:**
 ```
-Checking rotation status for my-project/prd...
+Rotation workflow: my-project
 
-⚠ Found 2 secrets needing rotation:
+⚠️  Secrets requiring rotation (2):
+  • API_KEY - 32 days overdue (matched: *_KEY)
+  • JWT_SECRET - 120 days overdue
 
-  API_KEY (overdue by 32 days)
-    Last rotated: 2024-09-15
-    Rotate after: 2024-12-14
+To rotate a secret:
+  vaulter set <KEY> "<new-value>" -e prd
 
-  JWT_SECRET (never rotated)
-    Set a rotation schedule? [Y/n]: y
-    Rotation interval (days) [90]: 90
-    ✓ Scheduled rotation for 2025-04-15
+The rotatedAt timestamp will be updated automatically.
 
-To update a rotated secret:
-  vaulter set API_KEY="new-value" -e prd
-
-After rotating, clear the schedule:
-  vaulter rotation run -e prd --clear
+Summary: 2 overdue, 2 up to date
 ```
 
-#### Schedule Rotation
+#### Automatic rotatedAt Update
 
 When you set a new value, Vaulter automatically tracks when it was last changed:
 
@@ -869,13 +900,17 @@ When you set a new value, Vaulter automatically tracks when it was last changed:
 vaulter set API_KEY="sk-new-rotated-key" -e prd
 
 # Verify rotation was tracked
-vaulter rotation list -e prd --pattern "API_KEY"
+vaulter rotation check -e prd
 ```
 
 **Output:**
 ```
-KEY       LAST ROTATED         ROTATE AFTER    STATUS
-API_KEY   just now             2025-04-15      ✓ OK (90 days)
+Rotation check for my-project/prd
+
+✓ Secrets up to date (1):
+  • API_KEY - 0 days old
+
+Summary: 0 need rotation, 1 up to date
 ```
 
 ### Rotation Metadata
@@ -911,13 +946,17 @@ jobs:
         env:
           VAULTER_KEY: ${{ secrets.VAULTER_KEY }}
         run: |
-          OVERDUE=$(npx vaulter rotation list -e prd --json | jq '.overdue')
-          if [ "$OVERDUE" -gt 0 ]; then
-            echo "::warning::$OVERDUE secrets are overdue for rotation!"
-            npx vaulter rotation list -e prd
+          # rotation run exits with code 1 if any secrets are overdue
+          npx vaulter rotation run -e prd --overdue || {
+            echo "::warning::Some secrets are overdue for rotation!"
             exit 1
-          fi
+          }
           echo "✓ All secrets are within rotation policy"
+
+      # Optional: Filter by pattern for specific checks
+      - name: Check API keys specifically
+        run: |
+          npx vaulter rotation run -e prd --pattern "*_KEY" --overdue
 ```
 
 ### Compliance Matrix
@@ -1255,7 +1294,6 @@ encryption:
 audit:
   enabled: true
   retention_days: 90
-  mask_values: true
 
 environments:
   - dev
@@ -1459,7 +1497,7 @@ npx @anthropic-ai/mcp-inspector vaulter mcp
 }
 ```
 
-### Available Tools (21)
+### Available Tools (22)
 
 #### Core Operations
 
@@ -1501,6 +1539,7 @@ npx @anthropic-ai/mcp-inspector vaulter mcp
 | `vaulter_key_list` | List all keys (project + global) |
 | `vaulter_key_show` | Show key details |
 | `vaulter_key_export` | Export key to encrypted bundle |
+| `vaulter_key_import` | Import key from encrypted bundle |
 
 ### Resources (8)
 

@@ -193,6 +193,8 @@ export interface EncryptionConfig {
   rotation?: {
     enabled: boolean
     interval_days: number
+    /** Glob patterns for secrets that should be rotated (e.g., ["*_KEY", "*_SECRET"]) */
+    patterns?: string[]
   }
 }
 
@@ -330,6 +332,8 @@ export interface CLIArgs {
   days?: number
   interval?: string
   clear?: boolean
+  overdue?: boolean
+  fail?: boolean
   // Audit command flags
   retention?: number
   pattern?: string  // Key pattern filter (renamed from --key to avoid global conflict)

@@ -16,6 +16,7 @@ interface AuditContext {
   service?: string
   environment: Environment
   verbose: boolean
+  dryRun: boolean
   jsonOutput: boolean
 }
 
@@ -264,10 +265,10 @@ export async function runAuditStats(context: AuditContext): Promise<void> {
 /**
  * Run audit cleanup command - delete old entries
  *
- * vaulter audit cleanup [--retention DAYS]
+ * vaulter audit cleanup [--retention DAYS] [--dry-run]
  */
 export async function runAuditCleanup(context: AuditContext): Promise<void> {
-  const { args, config, verbose, jsonOutput } = context
+  const { args, config, verbose, dryRun, jsonOutput } = context
 
   // Get retention days from typed args or config
   const retentionDays = args.retention || config?.audit?.retention_days || 90
@@ -276,6 +277,45 @@ export async function runAuditCleanup(context: AuditContext): Promise<void> {
 
   try {
     ui.verbose(`Cleaning up entries older than ${retentionDays} days`, verbose)
+
+    // Calculate cutoff date
+    const cutoffDate = new Date()
+    cutoffDate.setDate(cutoffDate.getDate() - retentionDays)
+
+    if (dryRun) {
+      // Dry run: count entries that would be deleted
+      const stats = await logger.stats(context.project)
+      const oldestDate = stats.oldestEntry ? new Date(stats.oldestEntry) : null
+
+      // Estimate entries to delete based on date range
+      let estimatedDelete = 0
+      if (oldestDate && oldestDate < cutoffDate) {
+        // Simple estimate: assume even distribution
+        const totalDays = stats.newestEntry
+          ? Math.ceil((new Date(stats.newestEntry).getTime() - oldestDate.getTime()) / (24 * 60 * 60 * 1000))
+          : 1
+        const deleteDays = Math.ceil((cutoffDate.getTime() - oldestDate.getTime()) / (24 * 60 * 60 * 1000))
+        estimatedDelete = Math.floor((deleteDays / totalDays) * stats.totalEntries)
+      }
+
+      if (jsonOutput) {
+        ui.output(JSON.stringify({
+          dryRun: true,
+          retentionDays,
+          cutoffDate: cutoffDate.toISOString(),
+          estimatedDelete,
+          totalEntries: stats.totalEntries
+        }))
+      } else {
+        ui.log(`Dry run - would delete entries older than ${cutoffDate.toISOString().split('T')[0]}`)
+        ui.log(`  Retention: ${retentionDays} days`)
+        ui.log(`  Estimated entries to delete: ~${estimatedDelete}`)
+        ui.log(`  Total entries: ${stats.totalEntries}`)
+        ui.log('')
+        ui.log('Run without --dry-run to actually delete entries.')
+      }
+      return
+    }
 
     const deleted = await ui.withSpinner(
       `Cleaning up entries older than ${retentionDays} days...`,

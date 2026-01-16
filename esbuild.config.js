@@ -12,22 +12,27 @@
 
 import esbuild from 'esbuild'
 import { readFileSync } from 'node:fs'
-import { dirname } from 'node:path'
-import { fileURLToPath } from 'node:url'
 
-const __dirname = dirname(fileURLToPath(import.meta.url))
 const pkg = JSON.parse(readFileSync('./package.json', 'utf8'))
 
 const isWatch = process.argv.includes('--watch')
 const isStandalone = process.argv.includes('--standalone')
 
-// Banner for pkg compatibility - defines __filename/__dirname and patches createRequire
+// Banner for pkg compatibility - defines __filename/__dirname, patches createRequire, and suppresses harmless warnings
 const pkgCompatBanner = `#!/usr/bin/env node
 // pkg compatibility shim
 if (typeof __filename === 'undefined') {
   globalThis.__filename = process.execPath;
   globalThis.__dirname = require('path').dirname(process.execPath);
 }
+// Suppress harmless experimental SQLite warning (from s3db.js cache plugin)
+(function() {
+  var origEmit = process.emitWarning;
+  process.emitWarning = function(warning, options) {
+    if (typeof warning === 'string' && warning.includes('SQLite is an experimental feature')) return;
+    return origEmit.apply(process, arguments);
+  };
+})();
 (function() {
   var Module = require('node:module');
   var origCreateRequire = Module.createRequire.bind(Module);
@@ -134,7 +139,7 @@ const fullConfig = {
     '@modelcontextprotocol/sdk',
     '@aws-sdk/client-s3'
   ],
-  plugins: [fixImportMetaUrl]
+  plugins: [fixImportMetaUrl, stubOptionalNative]
 }
 
 // Standalone CLI bundle (for pkg binaries - no MCP)

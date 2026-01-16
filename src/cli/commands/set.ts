@@ -279,6 +279,10 @@ export async function runSet(context: SetContext): Promise<void> {
           const existing = await client.get(key, project, environment, service)
           const previousValue = existing?.value
 
+          // Update rotatedAt if value changed (secret rotation tracking)
+          const isValueChanged = previousValue !== undefined && previousValue !== value
+          const rotatedAt = isValueChanged ? new Date().toISOString() : existing?.metadata?.rotatedAt
+
           await client.set({
             key,
             value,
@@ -289,7 +293,11 @@ export async function runSet(context: SetContext): Promise<void> {
             metadata: {
               source: 'manual',
               ...(owner && { owner }),
-              ...(description && { description })
+              ...(description && { description }),
+              // Preserve rotation policy (rotateAfter) if it exists
+              ...(existing?.metadata?.rotateAfter && { rotateAfter: existing.metadata.rotateAfter }),
+              // Update rotatedAt when value changes
+              ...(rotatedAt && { rotatedAt })
             }
           })
 
@@ -305,6 +313,11 @@ export async function runSet(context: SetContext): Promise<void> {
           })
 
           results.push({ key, type: 'secret', success: true })
+
+          // Show rotation update in verbose mode
+          if (isValueChanged && verbose && !jsonOutput) {
+            console.error(`[vaulter] Updated rotatedAt timestamp for ${key}`)
+          }
 
           if (!jsonOutput) {
             console.log(`✓ Set secret ${key} in ${project}/${environment}`)
@@ -358,6 +371,10 @@ export async function runSet(context: SetContext): Promise<void> {
             const existing = await client.get(key, project, environment, service)
             const previousValue = existing?.value
 
+            // Update rotatedAt if value changed (rotation tracking)
+            const isValueChanged = previousValue !== undefined && previousValue !== value
+            const rotatedAt = isValueChanged ? new Date().toISOString() : existing?.metadata?.rotatedAt
+
             await client.set({
               key,
               value,
@@ -368,7 +385,11 @@ export async function runSet(context: SetContext): Promise<void> {
               metadata: {
                 source: 'manual',
                 ...(owner && { owner }),
-                ...(description && { description })
+                ...(description && { description }),
+                // Preserve rotation policy (rotateAfter) if it exists
+                ...(existing?.metadata?.rotateAfter && { rotateAfter: existing.metadata.rotateAfter }),
+                // Update rotatedAt when value changes
+                ...(rotatedAt && { rotatedAt })
               }
             })
 
@@ -384,6 +405,11 @@ export async function runSet(context: SetContext): Promise<void> {
             })
 
             results.push({ key, type: 'config', success: true })
+
+            // Show rotation update in verbose mode
+            if (isValueChanged && verbose && !jsonOutput) {
+              console.error(`[vaulter] Updated rotatedAt timestamp for ${key}`)
+            }
 
             if (!jsonOutput) {
               console.log(`✓ Set config ${key} in ${project}/${environment}`)
