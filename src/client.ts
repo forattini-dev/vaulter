@@ -95,6 +95,10 @@ export class VaulterClient {
             },
             byProjectServiceEnv: {
               fields: { project: 'string', service: 'string', environment: 'string' }
+            },
+            // Cross-project partition for compliance/auditing
+            byEnvironment: {
+              fields: { environment: 'string' }
             }
           },
 
@@ -193,14 +197,18 @@ export class VaulterClient {
     )
 
     if (existing) {
-      // Update existing
+      // Update existing - filter undefined values to preserve existing metadata
+      const filteredInputMeta = input.metadata
+        ? Object.fromEntries(Object.entries(input.metadata).filter(([, v]) => v !== undefined))
+        : {}
+
       return await this.resource.update(existing.id, {
         value: input.value,
         tags: input.tags,
         metadata: {
           ...existing.metadata,
-          ...input.metadata,
-          source: input.metadata?.source || 'manual'
+          ...filteredInputMeta,
+          source: input.metadata?.source || existing.metadata?.source || 'manual'
         }
       })
     } else {
@@ -235,6 +243,12 @@ export class VaulterClient {
 
   /**
    * List environment variables
+   *
+   * Automatically selects the most efficient partition based on provided filters:
+   * - project + service + environment → byProjectServiceEnv
+   * - project + environment → byProjectEnv
+   * - project only → byProject
+   * - environment only → byEnvironment (cross-project, for auditing)
    */
   async list(options: ListOptions = {}): Promise<EnvVar[]> {
     this.ensureConnected()
@@ -254,6 +268,10 @@ export class VaulterClient {
     } else if (project) {
       partition = 'byProject'
       partitionValues = { project }
+    } else if (environment) {
+      // Cross-project query by environment (for auditing/compliance)
+      partition = 'byEnvironment'
+      partitionValues = { environment }
     }
 
     const listOptions: any = {}

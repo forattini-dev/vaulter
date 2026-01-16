@@ -421,6 +421,57 @@ describe('VaulterClient', () => {
         offset: 5
       }))
     })
+
+    it('should list variables for project+service+environment', async () => {
+      const vars = [
+        { id: '1', key: 'VAR_1', value: 'value1', project: 'test-project', service: 'api', environment: 'dev' }
+      ]
+      mockResource.list.mockResolvedValue(vars)
+
+      const results = await client.list({
+        project: 'test-project',
+        service: 'api',
+        environment: 'dev'
+      })
+
+      expect(results.length).toBe(1)
+      expect(mockResource.list).toHaveBeenCalledWith(expect.objectContaining({
+        partition: 'byProjectServiceEnv',
+        partitionValues: { project: 'test-project', service: 'api', environment: 'dev' }
+      }))
+    })
+
+    it('should list variables by environment only (cross-project)', async () => {
+      const vars = [
+        { id: '1', key: 'VAR_1', value: 'value1', project: 'project-a', environment: 'prd' },
+        { id: '2', key: 'VAR_2', value: 'value2', project: 'project-b', environment: 'prd' }
+      ]
+      mockResource.list.mockResolvedValue(vars)
+
+      const results = await client.list({
+        environment: 'prd'
+      })
+
+      expect(results.length).toBe(2)
+      expect(mockResource.list).toHaveBeenCalledWith(expect.objectContaining({
+        partition: 'byEnvironment',
+        partitionValues: { environment: 'prd' }
+      }))
+    })
+
+    it('should list all variables without filters', async () => {
+      const vars = [
+        { id: '1', key: 'VAR_1', value: 'value1', project: 'project-a', environment: 'dev' },
+        { id: '2', key: 'VAR_2', value: 'value2', project: 'project-b', environment: 'prd' }
+      ]
+      mockResource.list.mockResolvedValue(vars)
+
+      const results = await client.list({})
+
+      expect(results.length).toBe(2)
+      // Should call list without partition when no filters provided
+      expect(mockResource.list).toHaveBeenCalledWith({})
+    })
   })
 
   describe('export', () => {
