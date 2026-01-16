@@ -4,9 +4,30 @@
  * Model Context Protocol server for Claude integration
  * Exposes vaulter tools, resources, and prompts via stdio transport
  *
- * Tools:     21 tools for managing secrets and configs
+ * Tools:     22 tools for managing secrets and configs
  * Resources: 6 resource types (config, services, keys, env, compare)
  * Prompts:   5 workflow prompts (setup, migrate, deploy, compare, audit)
+ *
+ * ═══════════════════════════════════════════════════════════════════════
+ * CRITICAL: HOW VAULTER STORES DATA
+ * ═══════════════════════════════════════════════════════════════════════
+ *
+ * Vaulter uses s3db.js internally, which stores data in S3 OBJECT METADATA,
+ * NOT in the object body. This means:
+ *
+ * ❌ NEVER upload .env files directly using AWS CLI (aws s3 cp)
+ * ❌ NEVER create JSON files manually in S3
+ * ❌ NEVER modify S3 objects outside of vaulter
+ *
+ * ✅ ALWAYS use vaulter CLI commands:
+ *    - npx vaulter push -e <env>     → Push local .env to backend
+ *    - npx vaulter pull -e <env>     → Pull from backend to local
+ *    - npx vaulter set KEY=value     → Set individual variable
+ *    - npx vaulter sync -e <env>     → Bidirectional sync
+ *
+ * If you see empty {} metadata in S3 objects, the data was uploaded wrong!
+ * The correct structure stores encrypted values in x-amz-meta-* headers.
+ * ═══════════════════════════════════════════════════════════════════════
  */
 
 import { Server } from '@modelcontextprotocol/sdk/server/index.js'

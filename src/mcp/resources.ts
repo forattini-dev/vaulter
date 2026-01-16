@@ -4,6 +4,7 @@
  * Resource definitions and handlers for the MCP server
  *
  * Resources:
+ *   vaulter://instructions         → CRITICAL: How vaulter works (READ THIS FIRST!)
  *   vaulter://config               → Current project configuration
  *   vaulter://services             → List of services in monorepo
  *   vaulter://keys                 → List all encryption keys
@@ -92,6 +93,7 @@ async function getClientAndConfig(): Promise<{ client: VaulterClient; config: Va
  *   vaulter://compare/env1/env2
  */
 type ParsedUri =
+  | { type: 'instructions' }
   | { type: 'config' }
   | { type: 'services' }
   | { type: 'keys' }
@@ -101,6 +103,11 @@ type ParsedUri =
   | null
 
 function parseResourceUri(uri: string): ParsedUri {
+  // vaulter://instructions (CRITICAL - must read first!)
+  if (uri === 'vaulter://instructions') {
+    return { type: 'instructions' }
+  }
+
   // vaulter://config
   if (uri === 'vaulter://config') {
     return { type: 'config' }
@@ -199,6 +206,14 @@ export async function listResources(): Promise<Resource[]> {
   const { config } = await getClientAndConfig()
   const resources: Resource[] = []
 
+  // CRITICAL: Instructions resource - MUST BE READ FIRST
+  resources.push({
+    uri: 'vaulter://instructions',
+    name: '⚠️ CRITICAL: How Vaulter Works',
+    description: 'IMPORTANT: Read this FIRST before using any vaulter tools. Explains how data is stored and what NOT to do.',
+    mimeType: 'text/markdown'
+  })
+
   // Always include config resource
   resources.push({
     uri: 'vaulter://config',
@@ -277,6 +292,8 @@ export async function handleResourceRead(uri: string): Promise<{ contents: Array
   }
 
   switch (parsed.type) {
+    case 'instructions':
+      return handleInstructionsRead(uri)
     case 'config':
       return handleConfigRead(uri)
     case 'services':
@@ -289,6 +306,88 @@ export async function handleResourceRead(uri: string): Promise<{ contents: Array
       return handleCompareRead(uri, parsed.env1, parsed.env2)
     case 'env':
       return handleEnvRead(uri, parsed.project, parsed.environment, parsed.service)
+  }
+}
+
+/**
+ * Read instructions resource - CRITICAL: How vaulter works
+ */
+async function handleInstructionsRead(uri: string): Promise<{ contents: Array<{ uri: string; mimeType: string; text: string }> }> {
+  const instructions = `# ⚠️ CRITICAL: How Vaulter Works
+
+## Data Storage Architecture
+
+Vaulter uses **s3db.js** internally, which stores data in **S3 OBJECT METADATA**,
+NOT in the object body. This is crucial to understand before using any tools.
+
+## ❌ NEVER DO THESE THINGS
+
+1. **NEVER upload files directly to S3**
+   \`\`\`bash
+   # ❌ WRONG - This creates empty/corrupted data
+   aws s3 cp .env s3://bucket/path/file.json
+   \`\`\`
+
+2. **NEVER create JSON files manually in S3**
+   \`\`\`bash
+   # ❌ WRONG - s3db.js doesn't read the object body
+   echo '{"KEY": "value"}' | aws s3 cp - s3://bucket/path/vars.json
+   \`\`\`
+
+3. **NEVER modify S3 objects using AWS CLI/SDK directly**
+
+## ✅ ALWAYS USE VAULTER CLI
+
+\`\`\`bash
+# Push local .env to backend
+npx vaulter push -e dev
+
+# Pull from backend to local .env
+npx vaulter pull -e dev
+
+# Set individual variable
+npx vaulter set DATABASE_URL="postgres://..." -e dev
+
+# Bidirectional sync
+npx vaulter sync -e dev
+
+# List variables
+npx vaulter list -e dev
+\`\`\`
+
+## How s3db.js Stores Data
+
+- Each variable is stored as an S3 object
+- The **value is encrypted** and stored in \`x-amz-meta-*\` headers
+- The object **body is empty** (or contains overflow data for very large values)
+- Keys, project, environment are stored as metadata fields
+
+## Diagnosing Issues
+
+If you see **empty metadata** (\`"Metadata": {}\`) when inspecting S3 objects:
+\`\`\`bash
+aws s3api head-object --bucket my-bucket --key path/to/object
+\`\`\`
+
+This means the data was uploaded WRONG (manually), not through vaulter.
+
+## Correct Workflow
+
+1. **Initialize project**: \`npx vaulter init\`
+2. **Generate key**: \`npx vaulter key generate\`
+3. **Set variables**: \`npx vaulter set KEY=value -e dev\`
+4. **Or push existing .env**: \`npx vaulter push -e dev\`
+5. **Pull to new machine**: \`npx vaulter pull -e dev\`
+
+Never bypass the CLI. The CLI handles encryption, metadata formatting, and s3db.js protocol.
+`
+
+  return {
+    contents: [{
+      uri,
+      mimeType: 'text/markdown',
+      text: instructions
+    }]
   }
 }
 
