@@ -370,7 +370,7 @@ vaulter k8s:secret -e uat | kubectl apply -f -
 
 ## CI/CD
 
-### GitHub Actions
+### GitHub Actions (Quick Start)
 
 ```yaml
 name: Deploy
@@ -391,6 +391,135 @@ jobs:
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         run: |
           npx vaulter k8s:secret -e prd | kubectl apply -f -
+```
+
+### GitHub Actions (Complete Example)
+
+```yaml
+name: Deploy to Kubernetes
+on:
+  push:
+    branches: [main, develop]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        default: 'dev'
+        type: choice
+        options: [dev, stg, prd]
+
+env:
+  VAULTER_VERSION: '1.0.1'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'prd') || 'dev' }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install Vaulter
+        run: npm install -g vaulter@${{ env.VAULTER_VERSION }}
+
+      - name: Configure kubectl
+        uses: azure/k8s-set-context@v4
+        with:
+          kubeconfig: ${{ secrets.KUBECONFIG }}
+
+      - name: Deploy Secrets
+        env:
+          VAULTER_KEY: ${{ secrets.VAULTER_KEY }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        run: |
+          ENV=${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'prd') || 'dev' }}
+
+          # Deploy K8s Secret
+          vaulter k8s:secret -e $ENV -n my-namespace | kubectl apply -f -
+
+          # Deploy ConfigMap (non-sensitive config)
+          vaulter k8s:configmap -e $ENV -n my-namespace | kubectl apply -f -
+
+          # Verify deployment
+          kubectl get secret,configmap -n my-namespace
+
+      - name: Restart Deployment
+        run: |
+          kubectl rollout restart deployment/my-app -n my-namespace
+          kubectl rollout status deployment/my-app -n my-namespace --timeout=120s
+```
+
+### GitHub Actions (Monorepo with Services)
+
+```yaml
+name: Deploy Service
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/svc-*/**'
+
+jobs:
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      services: ${{ steps.changes.outputs.services }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: changes
+        run: |
+          # Detect which services changed
+          SERVICES=$(git diff --name-only HEAD~1 | grep '^apps/svc-' | cut -d'/' -f2 | sort -u | jq -R -s -c 'split("\n")[:-1]')
+          echo "services=$SERVICES" >> $GITHUB_OUTPUT
+
+  deploy:
+    needs: detect-changes
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service: ${{ fromJson(needs.detect-changes.outputs.services) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy ${{ matrix.service }}
+        env:
+          VAULTER_KEY: ${{ secrets.VAULTER_KEY }}
+        run: |
+          # Deploy secrets for specific service
+          vaulter k8s:secret -e prd -s ${{ matrix.service }} | kubectl apply -f -
+```
+
+### GitHub Actions (Using Binary for Speed)
+
+```yaml
+name: Deploy (Fast)
+on: [push]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download Vaulter Binary
+        run: |
+          curl -sL https://github.com/forattini-dev/vaulter/releases/latest/download/vaulter-linux -o vaulter
+          chmod +x vaulter
+          sudo mv vaulter /usr/local/bin/
+
+      - name: Deploy
+        env:
+          VAULTER_KEY: ${{ secrets.VAULTER_KEY }}
+        run: |
+          vaulter k8s:secret -e prd | kubectl apply -f -
 ```
 
 ### GitHub Actions (Matrix Deploy)
