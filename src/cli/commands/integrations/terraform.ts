@@ -32,7 +32,7 @@ export async function runTfVars(context: TerraformContext): Promise<void> {
     console.error(`Generating Terraform tfvars for ${project}/${environment}`)
   }
 
-  const client = await createClientFromConfig({ args, config, verbose })
+  const client = await createClientFromConfig({ args, config, project, verbose })
 
   try {
     await client.connect()
@@ -80,7 +80,7 @@ export async function runTfJson(context: TerraformContext): Promise<void> {
     console.error(`Generating Terraform JSON for ${project}/${environment}`)
   }
 
-  const client = await createClientFromConfig({ args, config, verbose })
+  const client = await createClientFromConfig({ args, config, project, verbose })
 
   try {
     await client.connect()

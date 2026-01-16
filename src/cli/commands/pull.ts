@@ -64,7 +64,7 @@ export async function runPull(context: PullContext): Promise<void> {
     runHook(config?.hooks?.pre_pull, 'pre_pull', verbose)
   }
 
-  const client = await createClientFromConfig({ args, config, verbose })
+  const client = await createClientFromConfig({ args, config, project, verbose })
 
   try {
     await client.connect()

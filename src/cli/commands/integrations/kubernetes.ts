@@ -145,7 +145,7 @@ export async function runK8sSecret(context: K8sContext): Promise<void> {
     vars = getLocalVariables(localPath)
   } else {
     // Fetch from backend
-    const client = await createClientFromConfig({ args, config, verbose })
+    const client = await createClientFromConfig({ args, config, project, verbose })
 
     try {
       await client.connect()
@@ -254,7 +254,7 @@ export async function runK8sConfigMap(context: K8sContext): Promise<void> {
     configVars = plain
   } else {
     // Fetch from backend and filter out secrets
-    const client = await createClientFromConfig({ args, config, verbose })
+    const client = await createClientFromConfig({ args, config, project, verbose })
 
     try {
       await client.connect()

@@ -42,7 +42,7 @@ export async function runGet(context: GetContext): Promise<void> {
     console.error(`Getting ${key} for ${project}/${service || '(no service)'}/${environment}`)
   }
 
-  const client = await createClientFromConfig({ args, config, verbose })
+  const client = await createClientFromConfig({ args, config, project, verbose })
 
   try {
     await client.connect()

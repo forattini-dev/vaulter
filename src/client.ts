@@ -1,5 +1,9 @@
 /**
  * Vaulter Client - s3db.js wrapper for environment variable storage
+ *
+ * Supports two encryption modes:
+ * - symmetric (default): Uses s3db.js built-in AES-256-GCM encryption via passphrase
+ * - asymmetric: Uses RSA/EC hybrid encryption (public key encrypts, private key decrypts)
  */
 
 import { S3db } from 's3db.js/lite'
@@ -9,8 +13,15 @@ import type {
   Environment,
   ListOptions,
   VaulterClientOptions,
-  SyncResult
+  SyncResult,
+  AsymmetricAlgorithm
 } from './types.js'
+import {
+  hybridEncrypt,
+  hybridDecrypt,
+  isHybridEncrypted,
+  serializeEncrypted
+} from './lib/crypto.js'
 
 // Default connection string for local development (FileSystem backend)
 const DEFAULT_CONNECTION_STRING = `file://${process.env.HOME || '/tmp'}/.vaulter/store`
@@ -21,6 +32,10 @@ const DEFAULT_PASSPHRASE = 'vaulter-default-dev-key'
  *
  * Provides a high-level API for managing environment variables
  * using s3db.js as the storage backend.
+ *
+ * Encryption modes:
+ * - symmetric: passphrase-based AES-256-GCM (via s3db.js)
+ * - asymmetric: RSA/EC hybrid encryption (public key for write, private for read)
  */
 export class VaulterClient {
   private db: S3db | null = null
@@ -30,6 +45,12 @@ export class VaulterClient {
   private passphrase: string
   private initialized = false
   private verbose: boolean
+
+  // Asymmetric encryption properties
+  private encryptionMode: 'symmetric' | 'asymmetric'
+  private publicKey: string | null
+  private privateKey: string | null
+  private asymmetricAlgorithm: AsymmetricAlgorithm
 
   constructor(options: VaulterClientOptions = {}) {
     // Support single connectionString or array of connectionStrings
@@ -42,6 +63,87 @@ export class VaulterClient {
     }
     this.passphrase = options.passphrase || DEFAULT_PASSPHRASE
     this.verbose = options.verbose || false
+
+    // Asymmetric encryption configuration
+    this.encryptionMode = options.encryptionMode || 'symmetric'
+    this.publicKey = options.publicKey || null
+    this.privateKey = options.privateKey || null
+    this.asymmetricAlgorithm = options.asymmetricAlgorithm || 'rsa-4096'
+
+    // Validate asymmetric mode requirements
+    if (this.encryptionMode === 'asymmetric') {
+      if (!this.publicKey && !this.privateKey) {
+        throw new Error('Asymmetric mode requires at least a public key (for encryption) or private key (for decryption)')
+      }
+    }
+  }
+
+  /**
+   * Encrypt a value using the configured encryption mode
+   * For symmetric mode, encryption is handled by s3db.js
+   * For asymmetric mode, we use hybrid encryption
+   */
+  private encryptValue(value: string): string {
+    if (this.encryptionMode === 'symmetric') {
+      // s3db.js handles encryption via 'secret' field type
+      return value
+    }
+
+    // Asymmetric mode - use hybrid encryption
+    if (!this.publicKey) {
+      throw new Error('Cannot encrypt: public key not configured')
+    }
+
+    const encrypted = hybridEncrypt(value, this.publicKey, this.asymmetricAlgorithm)
+    return serializeEncrypted(encrypted)
+  }
+
+  /**
+   * Decrypt a value using the configured encryption mode
+   * For symmetric mode, decryption is handled by s3db.js
+   * For asymmetric mode, we use hybrid decryption
+   */
+  private decryptValue(value: string): string {
+    if (this.encryptionMode === 'symmetric') {
+      // s3db.js handles decryption via 'secret' field type
+      return value
+    }
+
+    // Asymmetric mode - check if value is hybrid-encrypted
+    try {
+      const parsed = JSON.parse(value)
+      if (isHybridEncrypted(parsed)) {
+        if (!this.privateKey) {
+          throw new Error('Cannot decrypt: private key not configured')
+        }
+        return hybridDecrypt(parsed, this.privateKey)
+      }
+    } catch {
+      // Not JSON or not hybrid-encrypted, return as-is
+    }
+
+    // Return as-is if not hybrid-encrypted (for backwards compatibility)
+    return value
+  }
+
+  /**
+   * Check if the client can encrypt (has public key for asymmetric mode)
+   */
+  canEncrypt(): boolean {
+    if (this.encryptionMode === 'symmetric') {
+      return !!this.passphrase
+    }
+    return !!this.publicKey
+  }
+
+  /**
+   * Check if the client can decrypt (has private key for asymmetric mode)
+   */
+  canDecrypt(): boolean {
+    if (this.encryptionMode === 'symmetric') {
+      return !!this.passphrase
+    }
+    return !!this.privateKey
   }
 
   /**
@@ -67,15 +169,19 @@ export class VaulterClient {
         await this.db.connect()
 
         // Create or get the environment-variables resource
+        // In symmetric mode, use 'secret' type for s3db.js auto-encryption
+        // In asymmetric mode, use 'string' type as we handle encryption ourselves
+        const valueFieldType = this.encryptionMode === 'symmetric' ? 'secret|required' : 'string|required'
+
         this.resource = await this.db.createResource({
           name: 'environment-variables',
 
           attributes: {
             key: 'string|required',
-            value: 'secret|required', // Auto-encrypted with AES-256-GCM
+            value: valueFieldType, // Encryption depends on mode
             project: 'string|required',
             service: 'string|optional',
-            environment: { type: 'string', enum: ['dev', 'stg', 'prd', 'sbx', 'dr'], required: true },
+            environment: 'string|required', // User-defined environment names (no enum constraint)
             tags: 'array|items:string|optional',
             metadata: {
               description: 'string|optional',
@@ -102,7 +208,7 @@ export class VaulterClient {
             }
           },
 
-          behavior: 'body-overflow', // Handle large values
+          behavior: 'body-overflow', // Works for both symmetric and asymmetric modes
           timestamps: true,
           asyncPartitions: true // Faster writes
         })
@@ -180,7 +286,13 @@ export class VaulterClient {
     })
 
     const found = results.find((item: EnvVar) => item.key === key)
-    return found || null
+    if (!found) return null
+
+    // Decrypt value if in asymmetric mode
+    return {
+      ...found,
+      value: this.decryptValue(found.value)
+    }
   }
 
   /**
@@ -189,12 +301,17 @@ export class VaulterClient {
   async set(input: EnvVarInput): Promise<EnvVar> {
     this.ensureConnected()
 
-    const existing = await this.get(
-      input.key,
-      input.project,
-      input.environment,
-      input.service
-    )
+    // Encrypt value if in asymmetric mode
+    const encryptedValue = this.encryptValue(input.value)
+
+    // For get, we need to query without decryption to find existing record
+    const partition = input.service ? 'byProjectServiceEnv' : 'byProjectEnv'
+    const partitionValues = input.service
+      ? { project: input.project, service: input.service, environment: input.environment }
+      : { project: input.project, environment: input.environment }
+
+    const results = await this.resource.list({ partition, partitionValues })
+    const existing = results.find((item: EnvVar) => item.key === input.key)
 
     if (existing) {
       // Update existing - filter undefined values to preserve existing metadata
@@ -202,8 +319,8 @@ export class VaulterClient {
         ? Object.fromEntries(Object.entries(input.metadata).filter(([, v]) => v !== undefined))
         : {}
 
-      return await this.resource.update(existing.id, {
-        value: input.value,
+      const result = await this.resource.update(existing.id, {
+        value: encryptedValue,
         tags: input.tags,
         metadata: {
           ...existing.metadata,
@@ -211,15 +328,22 @@ export class VaulterClient {
           source: input.metadata?.source || existing.metadata?.source || 'manual'
         }
       })
+
+      // Return with decrypted value
+      return { ...result, value: input.value }
     } else {
       // Create new
-      return await this.resource.insert({
+      const result = await this.resource.insert({
         ...input,
+        value: encryptedValue,
         metadata: {
           ...input.metadata,
           source: input.metadata?.source || 'manual'
         }
       })
+
+      // Return with decrypted value
+      return { ...result, value: input.value }
     }
   }
 
@@ -282,7 +406,13 @@ export class VaulterClient {
     if (limit) listOptions.limit = limit
     if (offset) listOptions.offset = offset
 
-    return await this.resource.list(listOptions)
+    const results = await this.resource.list(listOptions)
+
+    // Decrypt values if in asymmetric mode
+    return results.map((item: EnvVar) => ({
+      ...item,
+      value: this.decryptValue(item.value)
+    }))
   }
 
   /**
@@ -440,6 +570,20 @@ export class VaulterClient {
    */
   getConnectionStrings(): string[] {
     return this.connectionStrings
+  }
+
+  /**
+   * Get the current encryption mode
+   */
+  getEncryptionMode(): 'symmetric' | 'asymmetric' {
+    return this.encryptionMode
+  }
+
+  /**
+   * Get the asymmetric algorithm (only relevant in asymmetric mode)
+   */
+  getAsymmetricAlgorithm(): AsymmetricAlgorithm {
+    return this.asymmetricAlgorithm
   }
 }
 

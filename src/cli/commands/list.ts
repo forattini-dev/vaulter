@@ -41,7 +41,7 @@ export async function runList(context: ListContext): Promise<void> {
 
   ui.verbose(`Listing variables for ${project}/${service || '(no service)'}/${environment}`, verbose)
 
-  const client = await createClientFromConfig({ args, config, verbose })
+  const client = await createClientFromConfig({ args, config, project, verbose })
 
   try {
     await ui.withSpinner('Connecting...', () => client.connect(), {
@@ -49,7 +49,7 @@ export async function runList(context: ListContext): Promise<void> {
     })
 
     // --all-envs lists across all environments (different from --all which is for monorepo services)
-    const allEnvs = (args as unknown as Record<string, unknown>)['all-envs'] as boolean | undefined
+    const allEnvs = args['all-envs']
     const vars = await client.list({
       project,
       service,

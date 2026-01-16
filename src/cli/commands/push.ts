@@ -107,7 +107,7 @@ export async function runPush(context: PushContext): Promise<void> {
     console.error(`Found ${varCount} variables to push`)
   }
 
-  const client = await createClientFromConfig({ args, config, verbose })
+  const client = await createClientFromConfig({ args, config, project, verbose })
 
   try {
     await client.connect()

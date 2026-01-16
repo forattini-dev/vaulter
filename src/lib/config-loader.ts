@@ -18,6 +18,137 @@ const CONFIG_LOCAL_FILE = 'config.local.yaml'
 const MAX_SEARCH_DEPTH = 5
 const MAX_EXTENDS_DEPTH = 10
 
+// ============================================================================
+// ~/.vaulter Home Directory Structure
+// ============================================================================
+
+/**
+ * Get the vaulter home directory (~/.vaulter)
+ */
+export function getVaulterHome(): string {
+  return path.join(process.env.HOME || '/tmp', '.vaulter')
+}
+
+/**
+ * Get the keys directory for a specific project
+ * ~/.vaulter/projects/<project>/keys/
+ */
+export function getProjectKeysDir(projectName: string): string {
+  return path.join(getVaulterHome(), 'projects', projectName, 'keys')
+}
+
+/**
+ * Get the store directory for a specific project (filesystem backend)
+ * ~/.vaulter/projects/<project>/store/
+ */
+export function getProjectStoreDir(projectName: string): string {
+  return path.join(getVaulterHome(), 'projects', projectName, 'store')
+}
+
+/**
+ * Get the global keys directory
+ * ~/.vaulter/global/keys/
+ */
+export function getGlobalKeysDir(): string {
+  return path.join(getVaulterHome(), 'global', 'keys')
+}
+
+/**
+ * Parse a key name to determine scope and actual name
+ * - "master" → { scope: 'project', name: 'master' }
+ * - "global:master" → { scope: 'global', name: 'master' }
+ */
+export function parseKeyName(keyName: string): { scope: 'project' | 'global'; name: string } {
+  if (!keyName || typeof keyName !== 'string') {
+    throw new Error(`Invalid key name: expected string, got ${typeof keyName}`)
+  }
+  if (keyName.startsWith('global:')) {
+    return { scope: 'global', name: keyName.slice(7) }
+  }
+  // Also support explicit project: prefix
+  if (keyName.startsWith('project:')) {
+    return { scope: 'project', name: keyName.slice(8) }
+  }
+  return { scope: 'project', name: keyName }
+}
+
+/**
+ * Resolve a key name to its file path
+ * - "master" with project "myapp" → ~/.vaulter/projects/myapp/keys/master
+ * - "global:master" → ~/.vaulter/global/keys/master
+ *
+ * @param keyName - Key name (e.g., "master", "global:master")
+ * @param projectName - Project name for project-scoped keys
+ * @param isPublic - If true, adds .pub extension
+ * @returns Full path to the key file
+ */
+export function resolveKeyPath(
+  keyName: string,
+  projectName: string,
+  isPublic: boolean = false
+): string {
+  const { scope, name } = parseKeyName(keyName)
+  const ext = isPublic ? '.pub' : ''
+
+  if (scope === 'global') {
+    return path.join(getGlobalKeysDir(), name + ext)
+  }
+  return path.join(getProjectKeysDir(projectName), name + ext)
+}
+
+/**
+ * Get both public and private key paths for a key name
+ */
+export function resolveKeyPaths(
+  keyName: string,
+  projectName: string
+): { publicKey: string; privateKey: string } {
+  return {
+    publicKey: resolveKeyPath(keyName, projectName, true),
+    privateKey: resolveKeyPath(keyName, projectName, false)
+  }
+}
+
+/**
+ * Check if a key exists (both public and private)
+ */
+export function keyExists(keyName: string, projectName: string): {
+  exists: boolean
+  publicKey: boolean
+  privateKey: boolean
+} {
+  const paths = resolveKeyPaths(keyName, projectName)
+  const pubExists = fs.existsSync(paths.publicKey)
+  const privExists = fs.existsSync(paths.privateKey)
+  return {
+    exists: pubExists || privExists,
+    publicKey: pubExists,
+    privateKey: privExists
+  }
+}
+
+/**
+ * Load public key by key_name
+ */
+export function loadPublicKeyByName(keyName: string, projectName: string): string | null {
+  const keyPath = resolveKeyPath(keyName, projectName, true)
+  if (fs.existsSync(keyPath)) {
+    return fs.readFileSync(keyPath, 'utf-8')
+  }
+  return null
+}
+
+/**
+ * Load private key by key_name
+ */
+export function loadPrivateKeyByName(keyName: string, projectName: string): string | null {
+  const keyPath = resolveKeyPath(keyName, projectName, false)
+  if (fs.existsSync(keyPath)) {
+    return fs.readFileSync(keyPath, 'utf-8')
+  }
+  return null
+}
+
 /**
  * Expand environment variables in a string
  * Supports: ${VAR}, ${VAR:-default}, $VAR
@@ -413,6 +544,123 @@ export async function loadEncryptionKey(config: VaulterConfig): Promise<string |
 }
 
 /**
+ * Load a key from asymmetric key sources
+ * @param sources - Array of key sources to try in order
+ * @returns The key content or null if not found
+ */
+async function loadKeyFromSources(
+  sources: Array<{ env?: string; file?: string; s3?: string }>
+): Promise<string | null> {
+  for (const source of sources) {
+    if ('env' in source && source.env) {
+      const value = process.env[source.env]
+      if (value) return value
+    } else if ('file' in source && source.file) {
+      const filePath = path.resolve(source.file)
+      if (fs.existsSync(filePath)) {
+        return fs.readFileSync(filePath, 'utf-8')
+      }
+    } else if ('s3' in source && source.s3) {
+      try {
+        const key = await loadKeyFromS3(source.s3)
+        if (key) return key
+      } catch (err: any) {
+        if (process.env.VAULTER_VERBOSE) {
+          console.warn(`Failed to load key from S3: ${err.message}`)
+        }
+      }
+    }
+  }
+  return null
+}
+
+/**
+ * Load the public key for asymmetric encryption
+ * Resolution order:
+ * 1. key_name → ~/.vaulter/projects/<project>/keys/<name>.pub or ~/.vaulter/global/keys/<name>.pub
+ * 2. public_key sources (env, file, s3)
+ * 3. VAULTER_PUBLIC_KEY environment variable
+ *
+ * @param config - Vaulter configuration
+ * @param projectName - Project name for key_name resolution (optional if using explicit sources)
+ * @returns The public key PEM string or null if not found
+ */
+export async function loadPublicKey(config: VaulterConfig, projectName?: string): Promise<string | null> {
+  const asymmetricConfig = config.encryption?.asymmetric
+
+  // 1. Try key_name first (requires projectName for non-global keys)
+  if (asymmetricConfig?.key_name) {
+    const resolvedProjectName = projectName || config.project || 'default'
+    const key = loadPublicKeyByName(asymmetricConfig.key_name, resolvedProjectName)
+    if (key) return key
+  }
+
+  // 2. Try explicit public_key sources
+  if (asymmetricConfig?.public_key) {
+    const key = await loadKeyFromSources(asymmetricConfig.public_key)
+    if (key) return key
+  }
+
+  // 3. Fallback to VAULTER_PUBLIC_KEY environment variable
+  if (process.env.VAULTER_PUBLIC_KEY) {
+    return process.env.VAULTER_PUBLIC_KEY
+  }
+
+  return null
+}
+
+/**
+ * Load the private key for asymmetric encryption
+ * Resolution order:
+ * 1. key_name → ~/.vaulter/projects/<project>/keys/<name> or ~/.vaulter/global/keys/<name>
+ * 2. private_key sources (env, file, s3)
+ * 3. VAULTER_PRIVATE_KEY environment variable
+ *
+ * @param config - Vaulter configuration
+ * @param projectName - Project name for key_name resolution (optional if using explicit sources)
+ * @returns The private key PEM string or null if not found
+ */
+export async function loadPrivateKey(config: VaulterConfig, projectName?: string): Promise<string | null> {
+  const asymmetricConfig = config.encryption?.asymmetric
+
+  // 1. Try key_name first (requires projectName for non-global keys)
+  if (asymmetricConfig?.key_name) {
+    const resolvedProjectName = projectName || config.project || 'default'
+    const key = loadPrivateKeyByName(asymmetricConfig.key_name, resolvedProjectName)
+    if (key) return key
+  }
+
+  // 2. Try explicit private_key sources
+  if (asymmetricConfig?.private_key) {
+    const key = await loadKeyFromSources(asymmetricConfig.private_key)
+    if (key) return key
+  }
+
+  // 3. Fallback to VAULTER_PRIVATE_KEY environment variable
+  if (process.env.VAULTER_PRIVATE_KEY) {
+    return process.env.VAULTER_PRIVATE_KEY
+  }
+
+  return null
+}
+
+/**
+ * Get the encryption mode from config
+ * Returns 'symmetric' (default) or 'asymmetric'
+ */
+export function getEncryptionMode(config: VaulterConfig): 'symmetric' | 'asymmetric' {
+  return config.encryption?.mode || 'symmetric'
+}
+
+/**
+ * Get the asymmetric algorithm from config
+ * Returns the configured algorithm or 'rsa-4096' as default
+ */
+export function getAsymmetricAlgorithm(config: VaulterConfig): string {
+  return config.encryption?.asymmetric?.algorithm || 'rsa-4096'
+}
+
+/**
  * Create a default config file
  */
 export function createDefaultConfig(
@@ -502,14 +750,10 @@ encryption:
 
 # Available environments
 environments:
-  - dev
-  - stg
-  - prd
-  - sbx
-  - dr
+${DEFAULT_ENVIRONMENTS.map(e => `  - ${e}`).join('\n')}
 
 # Default environment
-default_environment: dev
+default_environment: ${DEFAULT_ENVIRONMENT}
 ${directoriesSection}
 
 # Sync behavior

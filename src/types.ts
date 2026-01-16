@@ -106,8 +106,88 @@ export interface KeySourceS3 {
 
 export type KeySource = KeySourceEnv | KeySourceFile | KeySourceS3
 
+// ============================================================================
+// Asymmetric Encryption Types
+// ============================================================================
+
+/**
+ * Encryption mode
+ * - symmetric: Single passphrase (AES-256-GCM) - default, uses s3db.js built-in
+ * - asymmetric: RSA/EC key pair with hybrid encryption
+ */
+export type EncryptionMode = 'symmetric' | 'asymmetric'
+
+/**
+ * Asymmetric key algorithm
+ * - rsa-4096: RSA 4096-bit (widely compatible)
+ * - rsa-2048: RSA 2048-bit (faster, less secure)
+ * - ec-p256: Elliptic Curve P-256 (modern, fast)
+ * - ec-p384: Elliptic Curve P-384 (stronger EC)
+ */
+export type AsymmetricAlgorithm = 'rsa-4096' | 'rsa-2048' | 'ec-p256' | 'ec-p384'
+
+/**
+ * Key source for asymmetric keys
+ */
+export interface AsymmetricKeySourceEnv {
+  env: string
+}
+
+export interface AsymmetricKeySourceFile {
+  file: string
+}
+
+export interface AsymmetricKeySourceS3 {
+  s3: string
+}
+
+export type AsymmetricKeySource = AsymmetricKeySourceEnv | AsymmetricKeySourceFile | AsymmetricKeySourceS3
+
+/**
+ * Asymmetric encryption configuration
+ */
+export interface AsymmetricEncryptionConfig {
+  /** Key algorithm */
+  algorithm?: AsymmetricAlgorithm
+  /**
+   * Key name for automatic resolution
+   * - "master" → ~/.vaulter/projects/<project>/keys/master[.pub]
+   * - "global:master" → ~/.vaulter/global/keys/master[.pub]
+   */
+  key_name?: string
+  /** Public key source (required for encryption) - alternative to key_name */
+  public_key?: AsymmetricKeySource[]
+  /** Private key source (required for decryption) - alternative to key_name */
+  private_key?: AsymmetricKeySource[]
+}
+
+/**
+ * Hybrid-encrypted data format
+ * Uses asymmetric encryption for key exchange, symmetric for data
+ */
+export interface HybridEncryptedData {
+  /** Version for future compatibility */
+  v: 1
+  /** Algorithm used (e.g., 'rsa-4096+aes-256-gcm') */
+  alg: string
+  /** RSA/EC encrypted AES key (base64) */
+  key: string
+  /** AES-GCM initialization vector (base64) */
+  iv: string
+  /** AES-GCM encrypted data (base64) */
+  data: string
+  /** AES-GCM auth tag (base64) */
+  tag: string
+}
+
 export interface EncryptionConfig {
+  /** Encryption mode: symmetric (default) or asymmetric */
+  mode?: EncryptionMode
+  /** Symmetric key sources (passphrase) - used when mode is 'symmetric' */
   key_source?: KeySource[]
+  /** Asymmetric encryption config - used when mode is 'asymmetric' */
+  asymmetric?: AsymmetricEncryptionConfig
+  /** @deprecated Use mode instead */
   algorithm?: 'aes-256-gcm'
   rotation?: {
     enabled: boolean
@@ -234,6 +314,15 @@ export interface CLIArgs {
   format?: string
   // Init command flags
   split?: boolean
+  // Key command flags
+  asymmetric?: boolean
+  asym?: boolean
+  algorithm?: string
+  alg?: string
+  name?: string
+  global?: boolean
+  // List command flags
+  'all-envs'?: boolean
 }
 
 export interface CommandContext {
@@ -255,8 +344,16 @@ export interface VaulterClientOptions {
   connectionString?: string
   /** Multiple connection strings with fallback (tries in order) */
   connectionStrings?: string[]
-  /** Encryption passphrase */
+  /** Encryption passphrase (symmetric mode) */
   passphrase?: string
+  /** Encryption mode: symmetric (default) or asymmetric */
+  encryptionMode?: EncryptionMode
+  /** Public key PEM string (asymmetric mode - for encryption) */
+  publicKey?: string
+  /** Private key PEM string (asymmetric mode - for decryption) */
+  privateKey?: string
+  /** Asymmetric algorithm (default: rsa-4096) */
+  asymmetricAlgorithm?: AsymmetricAlgorithm
   /** Full config object */
   config?: VaulterConfig
   /** Enable verbose logging */
@@ -290,9 +387,9 @@ export interface SyncResult {
 // Output Formats
 // ============================================================================
 
-export type ExportFormat = 'shell' | 'json' | 'yaml' | 'env' | 'tfvars'
+export type ExportFormat = 'shell' | 'json' | 'yaml' | 'env' | 'tfvars' | 'docker-args'
 
-export const EXPORT_FORMATS: ExportFormat[] = ['shell', 'json', 'yaml', 'env', 'tfvars']
+export const EXPORT_FORMATS: ExportFormat[] = ['shell', 'json', 'yaml', 'env', 'tfvars', 'docker-args']
 
 // ============================================================================
 // Secret Detection Patterns

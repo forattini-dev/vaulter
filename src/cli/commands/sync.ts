@@ -102,7 +102,7 @@ async function syncSingleService(
     runHook(effectiveConfig?.hooks?.pre_sync, 'pre_sync', verbose)
   }
 
-  const client = await createClientFromConfig({ args, config: effectiveConfig, verbose })
+  const client = await createClientFromConfig({ args, config: effectiveConfig, project: effectiveProject, verbose })
 
   try {
     await client.connect()

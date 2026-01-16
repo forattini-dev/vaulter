@@ -4,34 +4,39 @@
 
 import { describe, it, expect } from 'vitest'
 import {
-  ENVIRONMENTS,
-  ENVIRONMENT_NAMES,
+  DEFAULT_ENVIRONMENTS,
+  DEFAULT_ENVIRONMENT,
+  COMMON_ENVIRONMENT_NAMES,
   EXPORT_FORMATS,
   DEFAULT_SECRET_PATTERNS
 } from '../src/types.js'
 
 describe('types', () => {
-  describe('ENVIRONMENTS', () => {
-    it('should have all 5 environments', () => {
-      expect(ENVIRONMENTS).toHaveLength(5)
+  describe('DEFAULT_ENVIRONMENTS', () => {
+    it('should have default environments', () => {
+      expect(DEFAULT_ENVIRONMENTS).toHaveLength(3)
     })
 
-    it('should contain dev, stg, prd, sbx, dr', () => {
-      expect(ENVIRONMENTS).toContain('dev')
-      expect(ENVIRONMENTS).toContain('stg')
-      expect(ENVIRONMENTS).toContain('prd')
-      expect(ENVIRONMENTS).toContain('sbx')
-      expect(ENVIRONMENTS).toContain('dr')
+    it('should contain dev, stg, prd', () => {
+      expect(DEFAULT_ENVIRONMENTS).toContain('dev')
+      expect(DEFAULT_ENVIRONMENTS).toContain('stg')
+      expect(DEFAULT_ENVIRONMENTS).toContain('prd')
+    })
+
+    it('should have dev as default environment', () => {
+      expect(DEFAULT_ENVIRONMENT).toBe('dev')
     })
   })
 
-  describe('ENVIRONMENT_NAMES', () => {
-    it('should have full names for all environments', () => {
-      expect(ENVIRONMENT_NAMES.dev).toBe('development')
-      expect(ENVIRONMENT_NAMES.stg).toBe('staging')
-      expect(ENVIRONMENT_NAMES.prd).toBe('production')
-      expect(ENVIRONMENT_NAMES.sbx).toBe('sandbox')
-      expect(ENVIRONMENT_NAMES.dr).toBe('disaster-recovery')
+  describe('COMMON_ENVIRONMENT_NAMES', () => {
+    it('should have full names for common environments', () => {
+      expect(COMMON_ENVIRONMENT_NAMES.dev).toBe('development')
+      expect(COMMON_ENVIRONMENT_NAMES.stg).toBe('staging')
+      expect(COMMON_ENVIRONMENT_NAMES.prd).toBe('production')
+      expect(COMMON_ENVIRONMENT_NAMES.sbx).toBe('sandbox')
+      expect(COMMON_ENVIRONMENT_NAMES.dr).toBe('disaster-recovery')
+      expect(COMMON_ENVIRONMENT_NAMES.qa).toBe('quality assurance')
+      expect(COMMON_ENVIRONMENT_NAMES.uat).toBe('user acceptance testing')
     })
   })
 
@@ -42,10 +47,11 @@ describe('types', () => {
       expect(EXPORT_FORMATS).toContain('yaml')
       expect(EXPORT_FORMATS).toContain('env')
       expect(EXPORT_FORMATS).toContain('tfvars')
+      expect(EXPORT_FORMATS).toContain('docker-args')
     })
 
-    it('should have 5 formats', () => {
-      expect(EXPORT_FORMATS).toHaveLength(5)
+    it('should have 6 formats', () => {
+      expect(EXPORT_FORMATS).toHaveLength(6)
     })
   })
 

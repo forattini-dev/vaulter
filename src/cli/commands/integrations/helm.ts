@@ -33,7 +33,7 @@ export async function runHelmValues(context: HelmContext): Promise<void> {
     console.error(`Generating Helm values for ${project}/${environment}`)
   }
 
-  const client = await createClientFromConfig({ args, config, verbose })
+  const client = await createClientFromConfig({ args, config, project, verbose })
 
   try {
     await client.connect()

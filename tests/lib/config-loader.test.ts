@@ -87,7 +87,7 @@ describe('config-loader', () => {
     it('should return default config when no config found', () => {
       const config = loadConfig(tempDir)
       expect(config.version).toBe('1')
-      expect(config.environments).toEqual(['dev', 'stg', 'prd', 'sbx', 'dr'])
+      expect(config.environments).toEqual(['dev', 'stg', 'prd'])
       expect(config.default_environment).toBe('dev')
     })
 

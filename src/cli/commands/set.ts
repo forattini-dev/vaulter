@@ -266,7 +266,7 @@ export async function runSet(context: SetContext): Promise<void> {
     }
 
     // Sync secrets to backend
-    const client = await createClientFromConfig({ args, config, verbose })
+    const client = await createClientFromConfig({ args, config, project, verbose })
 
     try {
       await client.connect()
@@ -328,7 +328,7 @@ export async function runSet(context: SetContext): Promise<void> {
       writeToEnvFile(envFilePath, configs, verbose)
 
       // Also sync to backend in unified mode
-      const client = await createClientFromConfig({ args, config, verbose })
+      const client = await createClientFromConfig({ args, config, project, verbose })
 
       try {
         await client.connect()
