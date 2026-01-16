@@ -112,6 +112,32 @@ jobs:
           draft: false
           prerelease: false
           generate_release_notes: true
+          body: |
+            ## Installation
+
+            ### Quick Install (Linux/macOS)
+            ```bash
+            curl -fsSL https://raw.githubusercontent.com/forattini-dev/vaulter/main/install.sh | sh
+            ```
+
+            ### npm
+            ```bash
+            npm install -g vaulter
+            ```
+
+            ### Manual Download
+            Download the binary for your platform below and add it to your PATH.
+
+            | Platform | Binary |
+            |----------|--------|
+            | Linux x64 | `vaulter-linux-x64` |
+            | Linux ARM64 | `vaulter-linux-arm64` |
+            | macOS x64 | `vaulter-macos-x64` |
+            | macOS ARM64 | `vaulter-macos-arm64` |
+            | Windows x64 | `vaulter-win-x64.exe` |
+
+            ---
+
           files: |
             releases/vaulter-linux-x64
             releases/vaulter-linux-arm64
