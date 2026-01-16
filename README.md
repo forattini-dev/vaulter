@@ -18,9 +18,11 @@ npm install -g vaulter
 # Initialize project
 vaulter init
 
-# Set some secrets
-vaulter set DATABASE_URL "postgres://localhost/mydb" -e dev
-vaulter set API_KEY "sk-secret-key" -e dev
+# Set secrets (encrypted, synced to backend)
+vaulter set DATABASE_URL="postgres://localhost/mydb" API_KEY="sk-secret-key" -e dev
+
+# Set configs (plain text, file only in split mode)
+vaulter set PORT:3000 LOG_LEVEL:debug -e dev
 
 # Export to shell
 eval $(vaulter export -e dev)
@@ -57,6 +59,7 @@ MCP server for Claude AI. Zero config for dev, production-ready.
 - [Highlights](#highlights)
 - [Commands](#commands)
 - [Configuration](#configuration)
+  - [Directory Modes](#directory-modes)
 - [Backend URLs](#backend-urls)
 - [Encryption](#encryption)
 - [Running Commands](#running-commands)
@@ -82,8 +85,8 @@ MCP server for Claude AI. Zero config for dev, production-ready.
 | Category | Features |
 |:---------|:---------|
 | **Backends** | AWS S3, MinIO, Cloudflare R2, DigitalOcean Spaces, Backblaze B2, FileSystem, Memory |
-| **Encryption** | AES-256-GCM via s3db.js, field-level encryption, key rotation |
-| **Environments** | dev, stg, prd, sbx, dr (fully customizable) |
+| **Encryption** | AES-256-GCM via s3db.js, field-level encryption |
+| **Environments** | dev, stg, prd, sbx, dr (configurable subset) |
 | **Integrations** | Kubernetes Secret/ConfigMap, Helm values.yaml, Terraform tfvars |
 | **Monorepo** | Service discovery, batch operations, config inheritance |
 | **MCP Server** | Claude AI integration via Model Context Protocol |
@@ -168,7 +171,8 @@ loader({ path: '.env.local', override: true })
 |:--------|:------------|:--------|
 | `init` | Initialize project | `vaulter init` |
 | `get <key>` | Get a variable | `vaulter get DATABASE_URL -e prd` |
-| `set <key> <value>` | Set a variable | `vaulter set API_KEY "sk-..." -e prd` |
+| `set KEY=val ...` | Set secrets (batch) | `vaulter set KEY1=v1 KEY2=v2 -e prd` |
+| `set KEY:val ...` | Set configs (plain) | `vaulter set PORT:3000 HOST:0.0.0.0 -e dev` |
 | `delete <key>` | Delete a variable | `vaulter delete OLD_KEY -e dev` |
 | `list` | List all variables | `vaulter list -e prd` |
 | `export` | Export for shell | `eval $(vaulter export -e dev)` |
@@ -198,6 +202,33 @@ loader({ path: '.env.local', override: true })
 | `key generate` | Generate encryption key | `vaulter key generate` |
 | `services` | List monorepo services | `vaulter services` |
 | `mcp` | Start MCP server | `vaulter mcp` |
+
+### Set Command Syntax
+
+HTTPie-style separators for differentiating secrets from configs:
+
+```bash
+# Secrets (encrypted, synced to backend)
+vaulter set KEY=value                    # Single secret
+vaulter set A=1 B=2 C=3 -e dev           # Batch secrets
+vaulter set KEY:=123                     # Typed secret (number/boolean)
+
+# Configs (plain text, file only in split mode)
+vaulter set PORT:3000 HOST:localhost     # Configs (not synced to backend)
+
+# With metadata
+vaulter set DB_URL=postgres://... @tag:database,sensitive @owner:backend -e prd
+
+# Legacy syntax (still works)
+vaulter set KEY "value" -e dev           # Treated as secret
+```
+
+| Separator | Type | Backend Sync | Encryption |
+|:----------|:-----|:-------------|:-----------|
+| `=` | Secret | ✓ | ✓ |
+| `:=` | Secret (typed) | ✓ | ✓ |
+| `:` | Config | Split: ✗ / Unified: ✓ | ✗ |
+| `@` | Metadata | — | — |
 
 ## Global Options
 
@@ -254,7 +285,7 @@ Sync merges local and remote variables. Conflicts are resolved by `sync.conflict
 
 ```yaml
 sync:
-  conflict: local   # local | remote | prompt | error
+  conflict: local   # local | remote | error
   ignore:
     - "PUBLIC_*"
   required:
@@ -263,8 +294,69 @@ sync:
 ```
 
 Notes:
-- `prompt` and `error` will stop the sync if conflicts are detected.
+- `local` (default): Local values win on conflict, remote-only keys are pulled to local
+- `remote`: Remote values win on conflict
+- `error`: Stop sync if any conflicts are detected
 - When reading from stdin, sync only updates the backend (local file is not changed).
+
+### Directory Modes
+
+Vaulter supports two directory structures for organizing environment files:
+
+#### Unified Mode (Default)
+
+All environment files in a single directory:
+
+```
+my-project/
+├── .vaulter/
+│   ├── config.yaml
+│   └── environments/
+│       ├── dev.env        # All vars (secrets + configs)
+│       ├── stg.env
+│       └── prd.env
+```
+
+#### Split Mode
+
+Separate directories for configs (committable) and secrets (gitignored):
+
+```
+my-project/
+├── .vaulter/
+│   └── config.yaml
+└── deploy/
+    ├── configs/           # ✅ Committable (non-sensitive)
+    │   ├── dev.env        # NODE_ENV, PORT, LOG_LEVEL
+    │   ├── stg.env
+    │   └── prd.env
+    └── secrets/           # ❌ Gitignored (sensitive)
+        ├── dev.env        # DATABASE_URL, JWT_SECRET
+        ├── stg.env
+        └── prd.env
+```
+
+Configure split mode in `config.yaml`:
+
+```yaml
+directories:
+  mode: split              # "unified" (default) or "split"
+  configs: deploy/configs  # Non-sensitive vars (committable)
+  secrets: deploy/secrets  # Sensitive vars (gitignored)
+```
+
+Tip: scaffold split mode with `vaulter init --split`.
+
+**Behavior in split mode:**
+- `sync`, `pull`, `push` operate on the **secrets** directory
+- `k8s:secret` reads from local **secrets** file (no backend fetch)
+- `k8s:configmap` reads from local **configs** file (no backend fetch)
+- Configs are managed via git, secrets via vaulter
+
+**When to use split mode:**
+- Monorepos with deploy directories per service
+- Teams that want configs reviewed in PRs
+- Environments where non-sensitive configs should be in git
 
 ### Hooks
 
@@ -742,6 +834,7 @@ deploy:
 .vaulter/.key
 .vaulter/config.local.yaml
 **/config.local.yaml
+deploy/secrets/
 .env
 .env.*
 ```
