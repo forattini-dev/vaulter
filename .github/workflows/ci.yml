@@ -64,7 +64,7 @@ jobs:
         run: pnpm build:bundle
 
       - name: Test CLI help
-        run: node dist/bin/minienv.cjs --help
+        run: node dist/bin/vaulter.cjs --help
 
       - name: Test CLI version
-        run: node dist/bin/minienv.cjs --version
+        run: node dist/bin/vaulter.cjs --version
