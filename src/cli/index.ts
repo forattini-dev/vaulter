@@ -131,11 +131,6 @@ const cliSchema: CLISchema = {
       default: false,
       description: 'Output in JSON format'
     },
-    'no-color': {
-      type: 'boolean',
-      default: false,
-      description: 'Disable colored output'
-    },
     force: {
       type: 'boolean',
       default: false,
@@ -292,7 +287,6 @@ function toCliArgs(result: CommandParseResult): CLIArgs {
     v: opts.verbose as boolean | undefined,
     'dry-run': opts['dry-run'] as boolean | undefined,
     json: opts.json as boolean | undefined,
-    'no-color': opts['no-color'] as boolean | undefined,
     force: opts.force as boolean | undefined,
     all: opts.all as boolean | undefined,
     file: opts.file as string | undefined,
@@ -326,7 +320,6 @@ function buildContext(result: CommandParseResult, config: VaulterConfig | null) 
   const verbose = (opts.verbose || false) as boolean
   const dryRun = (opts['dry-run'] || false) as boolean
   const jsonOutput = (opts.json || false) as boolean
-  const noColor = (opts['no-color'] || false) as boolean
 
   // Separator buckets (from KEY=value, KEY::value, @tag:value syntax)
   const secrets = (result as Record<string, unknown>).secrets as Record<string, SeparatorValue> | undefined
@@ -342,7 +335,6 @@ function buildContext(result: CommandParseResult, config: VaulterConfig | null) 
     verbose,
     dryRun,
     jsonOutput,
-    noColor,
     // Separator buckets
     secrets: secrets ?? {},
     configs: configs ?? {},

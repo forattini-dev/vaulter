@@ -187,7 +187,6 @@ export interface CLIArgs {
   v?: boolean
   'dry-run'?: boolean
   json?: boolean
-  'no-color'?: boolean
   help?: boolean
   h?: boolean
   version?: boolean
@@ -213,7 +212,6 @@ export interface CommandContext {
   verbose: boolean
   dryRun: boolean
   jsonOutput: boolean
-  noColor: boolean
 }
 
 // ============================================================================
