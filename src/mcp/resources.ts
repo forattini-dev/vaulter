@@ -6,6 +6,8 @@
  * Resources:
  *   vaulter://config               → Current project configuration
  *   vaulter://services             → List of services in monorepo
+ *   vaulter://keys                 → List all encryption keys
+ *   vaulter://keys/<name>          → Show specific key info
  *   vaulter://project/env          → Environment variables for project/env
  *   vaulter://project/env/service  → Environment variables for service
  *   vaulter://compare/env1/env2    → Comparison between two environments
@@ -15,14 +17,25 @@ import type { Resource } from '@modelcontextprotocol/sdk/types.js'
 import fs from 'node:fs'
 import path from 'node:path'
 import { VaulterClient } from '../client.js'
-import { loadConfig, loadEncryptionKey, findConfigDir } from '../lib/config-loader.js'
-import type { Environment, VaulterConfig } from '../types.js'
+import {
+  loadConfig,
+  loadEncryptionKey,
+  loadPublicKey,
+  loadPrivateKey,
+  getEncryptionMode,
+  getAsymmetricAlgorithm,
+  findConfigDir,
+  getProjectKeysDir,
+  getGlobalKeysDir
+} from '../lib/config-loader.js'
+import { detectAlgorithm } from '../lib/crypto.js'
+import type { Environment, VaulterConfig, AsymmetricAlgorithm } from '../types.js'
+import { DEFAULT_ENVIRONMENTS } from '../types.js'
 import { resolveBackendUrls } from '../index.js'
-
-const ENVIRONMENTS: Environment[] = ['dev', 'stg', 'prd', 'sbx', 'dr']
 
 /**
  * Get current config and client
+ * Supports both symmetric and asymmetric encryption modes
  */
 async function getClientAndConfig(): Promise<{ client: VaulterClient; config: VaulterConfig | null }> {
   let config: VaulterConfig | null = null
@@ -33,10 +46,33 @@ async function getClientAndConfig(): Promise<{ client: VaulterClient; config: Va
   }
 
   const connectionStrings = config ? resolveBackendUrls(config) : []
+
+  // Determine encryption mode
+  const encryptionMode = config ? getEncryptionMode(config) : 'symmetric'
+
+  // For asymmetric mode, load public/private keys
+  if (encryptionMode === 'asymmetric' && config) {
+    const publicKey = await loadPublicKey(config, config.project)
+    const privateKey = await loadPrivateKey(config, config.project)
+    const algorithm = getAsymmetricAlgorithm(config) as AsymmetricAlgorithm
+
+    const client = new VaulterClient({
+      connectionStrings: connectionStrings.length > 0 ? connectionStrings : undefined,
+      encryptionMode: 'asymmetric',
+      publicKey: publicKey || undefined,
+      privateKey: privateKey || undefined,
+      asymmetricAlgorithm: algorithm
+    })
+
+    return { client, config }
+  }
+
+  // Symmetric mode (default)
   const passphrase = config ? await loadEncryptionKey(config) : undefined
 
   const client = new VaulterClient({
     connectionStrings: connectionStrings.length > 0 ? connectionStrings : undefined,
+    encryptionMode: 'symmetric',
     passphrase: passphrase || undefined
   })
 
@@ -49,6 +85,8 @@ async function getClientAndConfig(): Promise<{ client: VaulterClient; config: Va
  * Formats:
  *   vaulter://config
  *   vaulter://services
+ *   vaulter://keys
+ *   vaulter://keys/<name>
  *   vaulter://project/environment
  *   vaulter://project/environment/service
  *   vaulter://compare/env1/env2
@@ -56,6 +94,8 @@ async function getClientAndConfig(): Promise<{ client: VaulterClient; config: Va
 type ParsedUri =
   | { type: 'config' }
   | { type: 'services' }
+  | { type: 'keys' }
+  | { type: 'key'; name: string; global?: boolean }
   | { type: 'env'; project: string; environment: Environment; service?: string }
   | { type: 'compare'; env1: Environment; env2: Environment }
   | null
@@ -71,27 +111,36 @@ function parseResourceUri(uri: string): ParsedUri {
     return { type: 'services' }
   }
 
+  // vaulter://keys (list all)
+  if (uri === 'vaulter://keys') {
+    return { type: 'keys' }
+  }
+
+  // vaulter://keys/<name> or vaulter://keys/global/<name>
+  const keyMatch = uri.match(/^vaulter:\/\/keys\/(?:(global)\/)?([^/]+)$/)
+  if (keyMatch) {
+    const [, isGlobal, name] = keyMatch
+    return { type: 'key', name, global: isGlobal === 'global' }
+  }
+
   // vaulter://compare/env1/env2
+  // Accept any environment names (custom envs supported)
   const compareMatch = uri.match(/^vaulter:\/\/compare\/([^/]+)\/([^/]+)$/)
   if (compareMatch) {
     const [, env1, env2] = compareMatch
-    if (ENVIRONMENTS.includes(env1 as Environment) && ENVIRONMENTS.includes(env2 as Environment)) {
-      return { type: 'compare', env1: env1 as Environment, env2: env2 as Environment }
-    }
-    return null
+    return { type: 'compare', env1: env1 as Environment, env2: env2 as Environment }
   }
 
   // vaulter://project/environment[/service]
+  // Accept any environment name (custom envs supported)
   const envMatch = uri.match(/^vaulter:\/\/([^/]+)\/([^/]+)(?:\/([^/]+))?$/)
   if (envMatch) {
     const [, project, env, service] = envMatch
-    if (ENVIRONMENTS.includes(env as Environment)) {
-      return {
-        type: 'env',
-        project,
-        environment: env as Environment,
-        service
-      }
+    return {
+      type: 'env',
+      project,
+      environment: env as Environment,
+      service
     }
   }
 
@@ -166,12 +215,20 @@ export async function listResources(): Promise<Resource[]> {
     mimeType: 'application/json'
   })
 
+  // Always include keys resource
+  resources.push({
+    uri: 'vaulter://keys',
+    name: 'Encryption Keys',
+    description: 'List all encryption keys (project and global)',
+    mimeType: 'application/json'
+  })
+
   if (!config?.project) {
     return resources
   }
 
   const project = config.project
-  const environments = config.environments || ENVIRONMENTS
+  const environments = config.environments || DEFAULT_ENVIRONMENTS
   const service = config.service
 
   // Add environment resources
@@ -224,6 +281,10 @@ export async function handleResourceRead(uri: string): Promise<{ contents: Array
       return handleConfigRead(uri)
     case 'services':
       return handleServicesRead(uri)
+    case 'keys':
+      return handleKeysRead(uri)
+    case 'key':
+      return handleKeyRead(uri, parsed.name, parsed.global)
     case 'compare':
       return handleCompareRead(uri, parsed.env1, parsed.env2)
     case 'env':
@@ -304,6 +365,261 @@ async function handleServicesRead(uri: string): Promise<{ contents: Array<{ uri:
           path: s.path,
           configured: s.hasVaulterConfig
         }))
+      }, null, 2)
+    }]
+  }
+}
+
+/**
+ * Read keys resource - list all encryption keys
+ */
+async function handleKeysRead(uri: string): Promise<{ contents: Array<{ uri: string; mimeType: string; text: string }> }> {
+  let config: VaulterConfig | null = null
+  try {
+    config = loadConfig()
+  } catch {
+    // Config not found is OK
+  }
+
+  const projectKeysDir = config?.project ? getProjectKeysDir(config.project) : null
+  const globalKeysDir = getGlobalKeysDir()
+
+  interface KeyInfo {
+    name: string
+    scope: 'project' | 'global'
+    type: 'symmetric' | 'asymmetric'
+    algorithm?: string
+    path: string
+  }
+
+  const keys: KeyInfo[] = []
+
+  // Scan project keys
+  if (projectKeysDir && fs.existsSync(projectKeysDir)) {
+    try {
+      const files = fs.readdirSync(projectKeysDir)
+      for (const file of files) {
+        if (file.endsWith('.key') || file.endsWith('.pub') || file.endsWith('.pem')) {
+          const keyPath = path.join(projectKeysDir, file)
+          const baseName = file.replace(/\.(key|pub|pem)$/, '')
+
+          // Skip if already added (e.g., .key and .pub for same key)
+          if (keys.some(k => k.name === baseName && k.scope === 'project')) continue
+
+          try {
+            const content = fs.readFileSync(keyPath, 'utf-8')
+            const isAsymmetric = content.includes('BEGIN') && content.includes('KEY')
+            const algorithm = isAsymmetric ? (detectAlgorithm(content) || undefined) : undefined
+
+            keys.push({
+              name: baseName,
+              scope: 'project',
+              type: isAsymmetric ? 'asymmetric' : 'symmetric',
+              algorithm,
+              path: keyPath
+            })
+          } catch {
+            // Skip unreadable keys
+          }
+        }
+      }
+    } catch {
+      // Skip inaccessible directories
+    }
+  }
+
+  // Scan global keys
+  if (fs.existsSync(globalKeysDir)) {
+    try {
+      const files = fs.readdirSync(globalKeysDir)
+      for (const file of files) {
+        if (file.endsWith('.key') || file.endsWith('.pub') || file.endsWith('.pem')) {
+          const keyPath = path.join(globalKeysDir, file)
+          const baseName = file.replace(/\.(key|pub|pem)$/, '')
+
+          // Skip if already added
+          if (keys.some(k => k.name === baseName && k.scope === 'global')) continue
+
+          try {
+            const content = fs.readFileSync(keyPath, 'utf-8')
+            const isAsymmetric = content.includes('BEGIN') && content.includes('KEY')
+            const algorithm = isAsymmetric ? (detectAlgorithm(content) || undefined) : undefined
+
+            keys.push({
+              name: baseName,
+              scope: 'global',
+              type: isAsymmetric ? 'asymmetric' : 'symmetric',
+              algorithm,
+              path: keyPath
+            })
+          } catch {
+            // Skip unreadable keys
+          }
+        }
+      }
+    } catch {
+      // Skip inaccessible directories
+    }
+  }
+
+  if (keys.length === 0) {
+    return {
+      contents: [{
+        uri,
+        mimeType: 'application/json',
+        text: JSON.stringify({
+          found: false,
+          message: 'No encryption keys found',
+          projectKeysDir,
+          globalKeysDir,
+          hint: 'Use vaulter_key_generate tool to create a new key'
+        }, null, 2)
+      }]
+    }
+  }
+
+  return {
+    contents: [{
+      uri,
+      mimeType: 'application/json',
+      text: JSON.stringify({
+        found: true,
+        count: keys.length,
+        project: config?.project || null,
+        projectKeysDir,
+        globalKeysDir,
+        keys: keys.map(k => ({
+          name: k.name,
+          scope: k.scope,
+          type: k.type,
+          algorithm: k.algorithm,
+          uri: k.scope === 'global'
+            ? `vaulter://keys/global/${k.name}`
+            : `vaulter://keys/${k.name}`
+        }))
+      }, null, 2)
+    }]
+  }
+}
+
+/**
+ * Read specific key resource
+ */
+async function handleKeyRead(
+  uri: string,
+  name: string,
+  global?: boolean
+): Promise<{ contents: Array<{ uri: string; mimeType: string; text: string }> }> {
+  let config: VaulterConfig | null = null
+  try {
+    config = loadConfig()
+  } catch {
+    // Config not found is OK for global keys
+  }
+
+  // Determine key directory
+  let keyDir: string
+  if (global) {
+    keyDir = getGlobalKeysDir()
+  } else {
+    if (!config?.project) {
+      return {
+        contents: [{
+          uri,
+          mimeType: 'application/json',
+          text: JSON.stringify({
+            error: 'No project configured',
+            hint: 'Use --global flag for global keys or run vaulter init to configure a project'
+          }, null, 2)
+        }]
+      }
+    }
+    keyDir = getProjectKeysDir(config.project)
+  }
+
+  // Check if key exists (try different extensions)
+  const extensions = ['.key', '.pem', '.pub']
+  let keyPath: string | null = null
+  let keyContent: string | null = null
+
+  for (const ext of extensions) {
+    const tryPath = path.join(keyDir, `${name}${ext}`)
+    if (fs.existsSync(tryPath)) {
+      keyPath = tryPath
+      try {
+        keyContent = fs.readFileSync(tryPath, 'utf-8')
+      } catch {
+        // Continue to next extension
+      }
+      break
+    }
+  }
+
+  if (!keyPath || !keyContent) {
+    return {
+      contents: [{
+        uri,
+        mimeType: 'application/json',
+        text: JSON.stringify({
+          error: `Key not found: ${name}`,
+          scope: global ? 'global' : 'project',
+          searchedDir: keyDir,
+          hint: 'Use vaulter://keys to list available keys'
+        }, null, 2)
+      }]
+    }
+  }
+
+  // Analyze key
+  const isAsymmetric = keyContent.includes('BEGIN') && keyContent.includes('KEY')
+  const keyType = isAsymmetric ? 'asymmetric' : 'symmetric'
+  const algorithm = isAsymmetric ? (detectAlgorithm(keyContent) || undefined) : undefined
+  const stats = fs.statSync(keyPath)
+
+  // For asymmetric keys, check for public key pair
+  let publicKeyPath: string | null = null
+  let hasPublicKey = false
+  if (isAsymmetric) {
+    const pubPath = path.join(keyDir, `${name}.pub`)
+    if (fs.existsSync(pubPath)) {
+      publicKeyPath = pubPath
+      hasPublicKey = true
+    }
+  }
+
+  // Mask the key content for security (show only structure)
+  let maskedContent: string
+  if (!isAsymmetric) {
+    // For symmetric keys, show length and hash info
+    const keyLength = keyContent.trim().length
+    maskedContent = `[Symmetric key: ${keyLength} characters]`
+  } else {
+    // For asymmetric keys, show header/footer only
+    const lines = keyContent.trim().split('\n')
+    if (lines.length > 2) {
+      maskedContent = `${lines[0]}\n[... ${lines.length - 2} lines ...]\n${lines[lines.length - 1]}`
+    } else {
+      maskedContent = '[Asymmetric key content]'
+    }
+  }
+
+  return {
+    contents: [{
+      uri,
+      mimeType: 'application/json',
+      text: JSON.stringify({
+        name,
+        scope: global ? 'global' : 'project',
+        project: global ? null : config?.project,
+        type: keyType,
+        algorithm: algorithm || 'aes-256-gcm',
+        path: keyPath,
+        publicKeyPath: hasPublicKey ? publicKeyPath : undefined,
+        hasPublicKey,
+        size: stats.size,
+        created: stats.birthtime.toISOString(),
+        modified: stats.mtime.toISOString(),
+        preview: maskedContent
       }, null, 2)
     }]
   }

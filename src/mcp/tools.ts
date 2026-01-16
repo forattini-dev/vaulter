@@ -2,7 +2,7 @@
  * Vaulter MCP Tools
  *
  * Comprehensive tool definitions and handlers for the MCP server
- * Provides 14 tools for environment and secrets management
+ * Provides 19 tools for environment, secrets, and key management
  */
 
 import type { Tool } from '@modelcontextprotocol/sdk/types.js'
@@ -10,27 +10,40 @@ import { VaulterClient } from '../client.js'
 import {
   loadConfig,
   loadEncryptionKey,
+  loadPublicKey,
+  loadPrivateKey,
+  getEncryptionMode,
+  getAsymmetricAlgorithm,
   findConfigDir,
   getEnvFilePath,
   getEnvFilePathForConfig,
   getSecretsFilePath,
   getConfigsFilePath,
   isSplitMode,
-  getValidEnvironments
+  getValidEnvironments,
+  getProjectKeysDir,
+  getGlobalKeysDir,
+  resolveKeyPath,
+  resolveKeyPaths,
+  keyExists,
+  parseKeyName
 } from '../lib/config-loader.js'
 import { parseEnvFile, serializeEnv } from '../lib/env-parser.js'
 import { discoverServices } from '../lib/monorepo.js'
 import { scanMonorepo, formatScanResult } from '../lib/monorepo-detect.js'
 import { getSecretPatterns, splitVarsBySecret } from '../lib/secret-patterns.js'
-import type { VaulterConfig, Environment } from '../types.js'
+import { generateKeyPair, generatePassphrase, detectAlgorithm } from '../lib/crypto.js'
+import type { VaulterConfig, Environment, AsymmetricAlgorithm } from '../types.js'
 import { DEFAULT_ENVIRONMENTS } from '../types.js'
 import { resolveBackendUrls } from '../index.js'
 import fs from 'node:fs'
 import path from 'node:path'
+import crypto from 'node:crypto'
 import YAML from 'yaml'
 
 /**
  * Get current config and client
+ * Supports both symmetric and asymmetric encryption modes
  */
 async function getClientAndConfig(): Promise<{ client: VaulterClient; config: VaulterConfig | null }> {
   let config: VaulterConfig | null = null
@@ -41,10 +54,33 @@ async function getClientAndConfig(): Promise<{ client: VaulterClient; config: Va
   }
 
   const connectionStrings = config ? resolveBackendUrls(config) : []
+
+  // Determine encryption mode
+  const encryptionMode = config ? getEncryptionMode(config) : 'symmetric'
+
+  // For asymmetric mode, load public/private keys
+  if (encryptionMode === 'asymmetric' && config) {
+    const publicKey = await loadPublicKey(config, config.project)
+    const privateKey = await loadPrivateKey(config, config.project)
+    const algorithm = getAsymmetricAlgorithm(config) as AsymmetricAlgorithm
+
+    const client = new VaulterClient({
+      connectionStrings: connectionStrings.length > 0 ? connectionStrings : undefined,
+      encryptionMode: 'asymmetric',
+      publicKey: publicKey || undefined,
+      privateKey: privateKey || undefined,
+      asymmetricAlgorithm: algorithm
+    })
+
+    return { client, config }
+  }
+
+  // Symmetric mode (default)
   const passphrase = config ? await loadEncryptionKey(config) : undefined
 
   const client = new VaulterClient({
     connectionStrings: connectionStrings.length > 0 ? connectionStrings : undefined,
+    encryptionMode: 'symmetric',
     passphrase: passphrase || undefined
   })
 
@@ -287,6 +323,76 @@ export function registerTools(): Tool[] {
         },
         required: ['project']
       }
+    },
+
+    // === KEY MANAGEMENT TOOLS ===
+    {
+      name: 'vaulter_key_generate',
+      description: 'Generate a new encryption key. Supports symmetric (AES-256) and asymmetric (RSA/EC) keys. Keys are stored in ~/.vaulter/',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          name: { type: 'string', description: 'Key name (e.g., master, deploy)' },
+          project: { type: 'string', description: 'Project name (auto-detected from config if omitted)' },
+          global: { type: 'boolean', description: 'Store in global scope (~/.vaulter/global/) instead of project scope', default: false },
+          asymmetric: { type: 'boolean', description: 'Generate asymmetric key pair instead of symmetric', default: false },
+          algorithm: { type: 'string', description: 'Algorithm for asymmetric keys', enum: ['rsa-4096', 'rsa-2048', 'ec-p256', 'ec-p384'], default: 'rsa-4096' },
+          force: { type: 'boolean', description: 'Overwrite existing key', default: false }
+        },
+        required: ['name']
+      }
+    },
+    {
+      name: 'vaulter_key_list',
+      description: 'List all encryption keys (project and global). Shows key type, algorithm, and status.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          project: { type: 'string', description: 'Project name (auto-detected from config if omitted)' }
+        }
+      }
+    },
+    {
+      name: 'vaulter_key_show',
+      description: 'Show detailed information about a specific key.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          name: { type: 'string', description: 'Key name to show' },
+          project: { type: 'string', description: 'Project name' },
+          global: { type: 'boolean', description: 'Look in global scope', default: false }
+        },
+        required: ['name']
+      }
+    },
+    {
+      name: 'vaulter_key_export',
+      description: 'Export a key to an encrypted bundle file. Use VAULTER_EXPORT_PASSPHRASE env var to set encryption passphrase.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          name: { type: 'string', description: 'Key name to export' },
+          output: { type: 'string', description: 'Output file path for the encrypted bundle' },
+          project: { type: 'string', description: 'Project name' },
+          global: { type: 'boolean', description: 'Export from global scope', default: false }
+        },
+        required: ['name', 'output']
+      }
+    },
+    {
+      name: 'vaulter_key_import',
+      description: 'Import a key from an encrypted bundle file. Use VAULTER_EXPORT_PASSPHRASE env var to decrypt.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          file: { type: 'string', description: 'Input bundle file path' },
+          name: { type: 'string', description: 'New name for the imported key (optional, uses original name from bundle)' },
+          project: { type: 'string', description: 'Project name' },
+          global: { type: 'boolean', description: 'Import to global scope', default: false },
+          force: { type: 'boolean', description: 'Overwrite existing key', default: false }
+        },
+        required: ['file']
+      }
     }
   ]
 }
@@ -303,7 +409,7 @@ export async function handleToolCall(
   const environment = (args.environment as Environment) || config?.default_environment || 'dev'
   const service = args.service as string | undefined
 
-  // Tools that don't need project
+  // Tools that don't need backend connection
   if (name === 'vaulter_scan') {
     return handleScanCall(args)
   }
@@ -314,6 +420,27 @@ export async function handleToolCall(
 
   if (name === 'vaulter_init') {
     return handleInitCall(args)
+  }
+
+  // Key management tools - don't need backend, but need project for scoping
+  if (name === 'vaulter_key_generate') {
+    return handleKeyGenerateCall(args, config)
+  }
+
+  if (name === 'vaulter_key_list') {
+    return handleKeyListCall(args, config)
+  }
+
+  if (name === 'vaulter_key_show') {
+    return handleKeyShowCall(args, config)
+  }
+
+  if (name === 'vaulter_key_export') {
+    return handleKeyExportCall(args, config)
+  }
+
+  if (name === 'vaulter_key_import') {
+    return handleKeyImportCall(args, config)
   }
 
   if (!project && !['vaulter_services', 'vaulter_init'].includes(name)) {
@@ -1070,6 +1197,475 @@ async function handleK8sConfigMapCall(
     } else {
       lines.push(`  ${key}: ${value}`)
     }
+  }
+
+  return { content: [{ type: 'text', text: lines.join('\n') }] }
+}
+
+// === KEY MANAGEMENT HANDLERS ===
+
+/**
+ * Get project name for key operations
+ */
+function getKeyProjectName(args: Record<string, unknown>, config: VaulterConfig | null): string {
+  return (args.project as string) || config?.project || 'default'
+}
+
+/**
+ * Handle key generate
+ */
+async function handleKeyGenerateCall(
+  args: Record<string, unknown>,
+  config: VaulterConfig | null
+): Promise<{ content: Array<{ type: 'text'; text: string }> }> {
+  const keyName = args.name as string
+  const isGlobal = args.global as boolean || false
+  const isAsymmetric = args.asymmetric as boolean || false
+  const algorithm = (args.algorithm as AsymmetricAlgorithm) || 'rsa-4096'
+  const force = args.force as boolean || false
+  const projectName = getKeyProjectName(args, config)
+
+  if (!keyName) {
+    return { content: [{ type: 'text', text: 'Error: name is required' }] }
+  }
+
+  // Validate algorithm if asymmetric
+  const validAlgorithms: AsymmetricAlgorithm[] = ['rsa-4096', 'rsa-2048', 'ec-p256', 'ec-p384']
+  if (isAsymmetric && !validAlgorithms.includes(algorithm)) {
+    return { content: [{ type: 'text', text: `Error: Invalid algorithm: ${algorithm}. Valid: ${validAlgorithms.join(', ')}` }] }
+  }
+
+  const fullKeyName = isGlobal ? `global:${keyName}` : keyName
+
+  // Check if key already exists
+  const existing = keyExists(fullKeyName, projectName)
+  if (existing.exists && !force) {
+    return { content: [{ type: 'text', text: `Error: Key '${keyName}' already exists${isGlobal ? ' (global)' : ''}. Use force=true to overwrite` }] }
+  }
+
+  if (isAsymmetric) {
+    // Generate asymmetric key pair
+    const paths = resolveKeyPaths(fullKeyName, projectName)
+    const keyPair = generateKeyPair(algorithm)
+
+    // Ensure directory exists
+    const dir = path.dirname(paths.privateKey)
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true })
+    }
+
+    // Write keys
+    fs.writeFileSync(paths.privateKey, keyPair.privateKey, { mode: 0o600 })
+    fs.writeFileSync(paths.publicKey, keyPair.publicKey, { mode: 0o644 })
+
+    const { scope, name } = parseKeyName(fullKeyName)
+    return {
+      content: [{
+        type: 'text',
+        text: [
+          `✓ Generated ${algorithm} key pair: ${name}${scope === 'global' ? ' (global)' : ''}`,
+          `  Private: ${paths.privateKey}`,
+          `  Public:  ${paths.publicKey}`,
+          '',
+          'To use in config.yaml:',
+          '  encryption:',
+          '    mode: asymmetric',
+          '    asymmetric:',
+          `      algorithm: ${algorithm}`,
+          `      key_name: ${fullKeyName}`
+        ].join('\n')
+      }]
+    }
+  } else {
+    // Generate symmetric key
+    const keyPath = resolveKeyPath(fullKeyName, projectName, false)
+    const key = generatePassphrase(32)
+
+    // Ensure directory exists
+    const dir = path.dirname(keyPath)
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true })
+    }
+
+    // Write key
+    fs.writeFileSync(keyPath, key + '\n', { mode: 0o600 })
+
+    const { scope, name } = parseKeyName(fullKeyName)
+    return {
+      content: [{
+        type: 'text',
+        text: [
+          `✓ Generated symmetric key: ${name}${scope === 'global' ? ' (global)' : ''}`,
+          `  Path: ${keyPath}`,
+          '',
+          'To use in config.yaml:',
+          '  encryption:',
+          '    mode: symmetric',
+          '    key_source:',
+          `      - file: ${keyPath}`
+        ].join('\n')
+      }]
+    }
+  }
+}
+
+/**
+ * Handle key list
+ */
+async function handleKeyListCall(
+  args: Record<string, unknown>,
+  config: VaulterConfig | null
+): Promise<{ content: Array<{ type: 'text'; text: string }> }> {
+  const projectName = getKeyProjectName(args, config)
+  const projectKeysDir = getProjectKeysDir(projectName)
+  const globalKeysDir = getGlobalKeysDir()
+
+  const keys: Array<{
+    name: string
+    scope: 'project' | 'global'
+    type: 'symmetric' | 'asymmetric'
+    algorithm?: string
+    hasPrivateKey: boolean
+    hasPublicKey: boolean
+  }> = []
+
+  // List project keys
+  if (fs.existsSync(projectKeysDir)) {
+    const files = fs.readdirSync(projectKeysDir)
+    const keyNames = new Set<string>()
+
+    for (const file of files) {
+      const name = file.replace(/\.pub$/, '')
+      keyNames.add(name)
+    }
+
+    for (const name of keyNames) {
+      const pubPath = path.join(projectKeysDir, name + '.pub')
+      const privPath = path.join(projectKeysDir, name)
+      const hasPublicKey = fs.existsSync(pubPath)
+      const hasPrivateKey = fs.existsSync(privPath) && !privPath.endsWith('.pub')
+
+      let type: 'symmetric' | 'asymmetric' = 'symmetric'
+      let algorithm: string | undefined
+
+      if (hasPublicKey) {
+        type = 'asymmetric'
+        const content = fs.readFileSync(pubPath, 'utf-8')
+        algorithm = detectAlgorithm(content) || undefined
+      } else if (hasPrivateKey) {
+        const content = fs.readFileSync(privPath, 'utf-8')
+        if (content.includes('BEGIN') && content.includes('KEY')) {
+          type = 'asymmetric'
+          algorithm = detectAlgorithm(content) || undefined
+        }
+      }
+
+      keys.push({
+        name,
+        scope: 'project',
+        type,
+        algorithm,
+        hasPrivateKey: fs.existsSync(privPath) && fs.statSync(privPath).isFile(),
+        hasPublicKey
+      })
+    }
+  }
+
+  // List global keys
+  if (fs.existsSync(globalKeysDir)) {
+    const files = fs.readdirSync(globalKeysDir)
+    const keyNames = new Set<string>()
+
+    for (const file of files) {
+      const name = file.replace(/\.pub$/, '')
+      keyNames.add(name)
+    }
+
+    for (const name of keyNames) {
+      const pubPath = path.join(globalKeysDir, name + '.pub')
+      const privPath = path.join(globalKeysDir, name)
+      const hasPublicKey = fs.existsSync(pubPath)
+      const hasPrivateKey = fs.existsSync(privPath) && !privPath.endsWith('.pub')
+
+      let type: 'symmetric' | 'asymmetric' = 'symmetric'
+      let algorithm: string | undefined
+
+      if (hasPublicKey) {
+        type = 'asymmetric'
+        const content = fs.readFileSync(pubPath, 'utf-8')
+        algorithm = detectAlgorithm(content) || undefined
+      } else if (hasPrivateKey) {
+        const content = fs.readFileSync(privPath, 'utf-8')
+        if (content.includes('BEGIN') && content.includes('KEY')) {
+          type = 'asymmetric'
+          algorithm = detectAlgorithm(content) || undefined
+        }
+      }
+
+      keys.push({
+        name,
+        scope: 'global',
+        type,
+        algorithm,
+        hasPrivateKey: fs.existsSync(privPath) && fs.statSync(privPath).isFile(),
+        hasPublicKey
+      })
+    }
+  }
+
+  const lines = [
+    `Keys for project: ${projectName}`,
+    `  Project keys: ${projectKeysDir}`,
+    `  Global keys:  ${globalKeysDir}`,
+    ''
+  ]
+
+  if (keys.length === 0) {
+    lines.push('No keys found')
+    lines.push('')
+    lines.push('Generate a new key:')
+    lines.push('  vaulter_key_generate({ name: "master", asymmetric: true })')
+  } else {
+    for (const key of keys) {
+      const scopeLabel = key.scope === 'global' ? ' (global)' : ''
+      const typeLabel = key.type === 'asymmetric' ? ` [${key.algorithm || 'asymmetric'}]` : ' [symmetric]'
+      const privLabel = key.hasPrivateKey ? '✓' : '✗'
+      const pubLabel = key.hasPublicKey ? '✓' : '✗'
+      lines.push(`  ${key.name}${scopeLabel}${typeLabel}`)
+      lines.push(`    Private: ${privLabel}  Public: ${pubLabel}`)
+    }
+  }
+
+  return { content: [{ type: 'text', text: lines.join('\n') }] }
+}
+
+/**
+ * Handle key show
+ */
+async function handleKeyShowCall(
+  args: Record<string, unknown>,
+  config: VaulterConfig | null
+): Promise<{ content: Array<{ type: 'text'; text: string }> }> {
+  const keyName = args.name as string
+  const isGlobal = args.global as boolean || false
+  const projectName = getKeyProjectName(args, config)
+
+  if (!keyName) {
+    return { content: [{ type: 'text', text: 'Error: name is required' }] }
+  }
+
+  const fullKeyName = isGlobal ? `global:${keyName}` : keyName
+  const paths = resolveKeyPaths(fullKeyName, projectName)
+  const existing = keyExists(fullKeyName, projectName)
+
+  if (!existing.exists) {
+    return { content: [{ type: 'text', text: `Error: Key '${keyName}' not found${isGlobal ? ' (global)' : ''}` }] }
+  }
+
+  let algorithm: string | null = null
+  if (existing.publicKey) {
+    const content = fs.readFileSync(paths.publicKey, 'utf-8')
+    algorithm = detectAlgorithm(content)
+  } else if (existing.privateKey) {
+    const content = fs.readFileSync(paths.privateKey, 'utf-8')
+    algorithm = detectAlgorithm(content)
+  }
+
+  const { scope, name } = parseKeyName(fullKeyName)
+  const lines = [
+    `Key: ${name}${scope === 'global' ? ' (global)' : ''}`,
+    `  Algorithm: ${algorithm || 'symmetric'}`,
+    `  Private key: ${existing.privateKey ? paths.privateKey : '(not found)'}`,
+    `  Public key:  ${existing.publicKey ? paths.publicKey : '(not found)'}`
+  ]
+
+  return { content: [{ type: 'text', text: lines.join('\n') }] }
+}
+
+/**
+ * Handle key export
+ */
+async function handleKeyExportCall(
+  args: Record<string, unknown>,
+  config: VaulterConfig | null
+): Promise<{ content: Array<{ type: 'text'; text: string }> }> {
+  const keyName = args.name as string
+  const outputPath = args.output as string
+  const isGlobal = args.global as boolean || false
+  const projectName = getKeyProjectName(args, config)
+
+  if (!keyName) {
+    return { content: [{ type: 'text', text: 'Error: name is required' }] }
+  }
+
+  if (!outputPath) {
+    return { content: [{ type: 'text', text: 'Error: output path is required' }] }
+  }
+
+  const fullKeyName = isGlobal ? `global:${keyName}` : keyName
+  const paths = resolveKeyPaths(fullKeyName, projectName)
+  const existing = keyExists(fullKeyName, projectName)
+
+  if (!existing.exists) {
+    return { content: [{ type: 'text', text: `Error: Key '${keyName}' not found${isGlobal ? ' (global)' : ''}` }] }
+  }
+
+  // Read keys
+  const bundle: {
+    version: number
+    keyName: string
+    projectName: string
+    algorithm?: string
+    publicKey?: string
+    privateKey?: string
+    createdAt: string
+  } = {
+    version: 1,
+    keyName: fullKeyName,
+    projectName,
+    createdAt: new Date().toISOString()
+  }
+
+  if (existing.publicKey) {
+    const content = fs.readFileSync(paths.publicKey, 'utf-8')
+    bundle.publicKey = content
+    const alg = detectAlgorithm(content)
+    if (alg) bundle.algorithm = alg
+  }
+
+  if (existing.privateKey) {
+    const content = fs.readFileSync(paths.privateKey, 'utf-8')
+    bundle.privateKey = content
+    if (!bundle.algorithm) {
+      const alg = detectAlgorithm(content)
+      if (alg) bundle.algorithm = alg
+    }
+  }
+
+  // Encrypt bundle
+  const passphrase = process.env.VAULTER_EXPORT_PASSPHRASE || 'vaulter-export-key'
+  const plaintext = JSON.stringify(bundle)
+  const salt = crypto.randomBytes(16)
+  const key = crypto.pbkdf2Sync(passphrase, salt, 100000, 32, 'sha256')
+  const iv = crypto.randomBytes(12)
+  const cipher = crypto.createCipheriv('aes-256-gcm', key, iv)
+  const encrypted = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()])
+  const authTag = cipher.getAuthTag()
+
+  // Package: salt (16) + iv (12) + authTag (16) + encrypted
+  const output = Buffer.concat([salt, iv, authTag, encrypted])
+
+  // Write to file
+  const absPath = path.resolve(outputPath)
+  fs.writeFileSync(absPath, output)
+
+  return {
+    content: [{
+      type: 'text',
+      text: [
+        `✓ Exported key '${keyName}' to ${absPath}`,
+        '',
+        'To import on another machine:',
+        `  vaulter_key_import({ file: "${outputPath}" })`,
+        '',
+        process.env.VAULTER_EXPORT_PASSPHRASE
+          ? 'Note: Set VAULTER_EXPORT_PASSPHRASE to the same value when importing'
+          : 'Note: Using default passphrase. Set VAULTER_EXPORT_PASSPHRASE for better security'
+      ].join('\n')
+    }]
+  }
+}
+
+/**
+ * Handle key import
+ */
+async function handleKeyImportCall(
+  args: Record<string, unknown>,
+  config: VaulterConfig | null
+): Promise<{ content: Array<{ type: 'text'; text: string }> }> {
+  const inputPath = args.file as string
+  const targetName = args.name as string | undefined
+  const isGlobal = args.global as boolean || false
+  const force = args.force as boolean || false
+  const projectName = getKeyProjectName(args, config)
+
+  if (!inputPath) {
+    return { content: [{ type: 'text', text: 'Error: file path is required' }] }
+  }
+
+  const absPath = path.resolve(inputPath)
+  if (!fs.existsSync(absPath)) {
+    return { content: [{ type: 'text', text: `Error: File not found: ${absPath}` }] }
+  }
+
+  // Read and decrypt bundle
+  const input = fs.readFileSync(absPath)
+
+  // Extract: salt (16) + iv (12) + authTag (16) + encrypted
+  const salt = input.subarray(0, 16)
+  const iv = input.subarray(16, 28)
+  const authTag = input.subarray(28, 44)
+  const encrypted = input.subarray(44)
+
+  const passphrase = process.env.VAULTER_EXPORT_PASSPHRASE || 'vaulter-export-key'
+  const key = crypto.pbkdf2Sync(passphrase, salt, 100000, 32, 'sha256')
+
+  let bundle: {
+    version: number
+    keyName: string
+    projectName: string
+    algorithm?: string
+    publicKey?: string
+    privateKey?: string
+    createdAt: string
+  }
+
+  try {
+    const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv)
+    decipher.setAuthTag(authTag)
+    const decrypted = Buffer.concat([decipher.update(encrypted), decipher.final()])
+    bundle = JSON.parse(decrypted.toString('utf8'))
+  } catch {
+    return { content: [{ type: 'text', text: 'Error: Failed to decrypt bundle. Check VAULTER_EXPORT_PASSPHRASE' }] }
+  }
+
+  // Determine target key name
+  let fullKeyName = targetName || parseKeyName(bundle.keyName).name
+  if (isGlobal) {
+    fullKeyName = `global:${fullKeyName}`
+  }
+
+  const paths = resolveKeyPaths(fullKeyName, projectName)
+
+  // Check if keys already exist
+  const existing = keyExists(fullKeyName, projectName)
+  if (existing.exists && !force) {
+    return { content: [{ type: 'text', text: `Error: Key '${fullKeyName}' already exists. Use force=true to overwrite` }] }
+  }
+
+  // Ensure directory exists
+  const dir = path.dirname(paths.privateKey)
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true })
+  }
+
+  // Write keys
+  if (bundle.privateKey) {
+    fs.writeFileSync(paths.privateKey, bundle.privateKey, { mode: 0o600 })
+  }
+  if (bundle.publicKey) {
+    fs.writeFileSync(paths.publicKey, bundle.publicKey, { mode: 0o644 })
+  }
+
+  const { scope, name } = parseKeyName(fullKeyName)
+  const lines = [
+    `✓ Imported key: ${name}${scope === 'global' ? ' (global)' : ''}`
+  ]
+  if (bundle.privateKey) {
+    lines.push(`  Private: ${paths.privateKey}`)
+  }
+  if (bundle.publicKey) {
+    lines.push(`  Public:  ${paths.publicKey}`)
   }
 
   return { content: [{ type: 'text', text: lines.join('\n') }] }
