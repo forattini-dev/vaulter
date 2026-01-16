@@ -47,7 +47,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: bundle
-          path: dist/bin/minienv.cjs
+          path: dist/bin/vaulter.cjs
 
   build-binaries:
     name: Build Binaries
@@ -78,18 +78,18 @@ jobs:
       - name: Build binaries
         run: |
           mkdir -p releases
-          npx pkg dist/bin/minienv.cjs \
-            --output releases/minienv \
+          npx pkg dist/bin/vaulter.cjs \
+            --output releases/vaulter \
             --targets node22-linux-x64,node22-linux-arm64,node22-macos-x64,node22-macos-arm64,node22-win-x64
 
       - name: Rename binaries
         run: |
           cd releases
-          mv minienv-linux-x64 minienv-linux || true
-          mv minienv-linux-arm64 minienv-linux-arm64 || true
-          mv minienv-macos-x64 minienv-macos || true
-          mv minienv-macos-arm64 minienv-macos-arm64 || true
-          mv minienv-win-x64.exe minienv-win.exe || true
+          mv vaulter-linux-x64 vaulter-linux || true
+          mv vaulter-linux-arm64 vaulter-linux-arm64 || true
+          mv vaulter-macos-x64 vaulter-macos || true
+          mv vaulter-macos-arm64 vaulter-macos-arm64 || true
+          mv vaulter-win-x64.exe vaulter-win.exe || true
 
       - name: Upload binary artifacts
         uses: actions/upload-artifact@v4
@@ -129,11 +129,11 @@ jobs:
           prerelease: false
           generate_release_notes: true
           files: |
-            releases/minienv-linux
-            releases/minienv-linux-arm64
-            releases/minienv-macos
-            releases/minienv-macos-arm64
-            releases/minienv-win.exe
+            releases/vaulter-linux
+            releases/vaulter-linux-arm64
+            releases/vaulter-macos
+            releases/vaulter-macos-arm64
+            releases/vaulter-win.exe
             releases/checksums.txt
 
   publish-npm:
