@@ -7,6 +7,7 @@
  */
 
 import { S3db } from 's3db.js/lite'
+import os from 'node:os'
 import type {
   EnvVar,
   EnvVarInput,
@@ -24,7 +25,7 @@ import {
 } from './lib/crypto.js'
 
 // Default connection string for local development (FileSystem backend)
-const DEFAULT_CONNECTION_STRING = `file://${process.env.HOME || '/tmp'}/.vaulter/store`
+const DEFAULT_CONNECTION_STRING = `file://${os.homedir()}/.vaulter/store`
 const DEFAULT_PASSPHRASE = 'vaulter-default-dev-key'
 
 /**

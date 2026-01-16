@@ -37,9 +37,49 @@ import type { VaulterConfig, Environment, AsymmetricAlgorithm } from '../types.j
 import { DEFAULT_ENVIRONMENTS } from '../types.js'
 import { resolveBackendUrls } from '../index.js'
 import fs from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 import crypto from 'node:crypto'
 import YAML from 'yaml'
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MCP Server Options (set by server.ts when CLI args are passed)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface McpServerOptions {
+  /** Backend URL override from CLI --backend flag */
+  backend?: string
+  /** Working directory (where to look for .vaulter/config.yaml) */
+  cwd?: string
+  /** Verbose mode */
+  verbose?: boolean
+}
+
+let mcpOptions: McpServerOptions = {}
+
+/**
+ * Set MCP server options (called by server.ts with CLI args)
+ * If cwd is specified, changes the working directory so config can be found
+ */
+export function setMcpOptions(options: McpServerOptions): void {
+  mcpOptions = options
+
+  // Change working directory if specified (so loadConfig finds .vaulter/config.yaml)
+  if (options.cwd) {
+    try {
+      process.chdir(options.cwd)
+    } catch {
+      // Ignore if directory doesn't exist - tools will handle missing config
+    }
+  }
+}
+
+/**
+ * Get current MCP server options
+ */
+export function getMcpOptions(): McpServerOptions {
+  return mcpOptions
+}
 
 /**
  * Get current config and client
@@ -53,7 +93,18 @@ async function getClientAndConfig(): Promise<{ client: VaulterClient; config: Va
     // Config not found is OK
   }
 
-  const connectionStrings = config ? resolveBackendUrls(config) : []
+  // CLI --backend flag takes precedence over config file
+  const backendOverride = mcpOptions.backend
+
+  // Determine connection strings: CLI --backend > config > default
+  let connectionStrings: string[]
+  if (backendOverride) {
+    connectionStrings = [backendOverride]
+  } else if (config) {
+    connectionStrings = resolveBackendUrls(config)
+  } else {
+    connectionStrings = []
+  }
 
   // Determine encryption mode
   const encryptionMode = config ? getEncryptionMode(config) : 'symmetric'
@@ -1057,7 +1108,7 @@ async function handleInitCall(
   if (backend) {
     config.backend = { url: backend }
   } else {
-    config.backend = { url: 'file://${HOME}/.vaulter-store' }
+    config.backend = { url: `file://${os.homedir()}/.vaulter/store` }
   }
 
   if (mode === 'split') {

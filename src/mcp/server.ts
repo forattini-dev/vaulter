@@ -42,7 +42,7 @@ import {
   ErrorCode,
   McpError
 } from '@modelcontextprotocol/sdk/types.js'
-import { registerTools, handleToolCall } from './tools.js'
+import { registerTools, handleToolCall, setMcpOptions, type McpServerOptions } from './tools.js'
 import { handleResourceRead, listResources } from './resources.js'
 import { registerPrompts, getPrompt } from './prompts.js'
 import fs from 'node:fs'
@@ -156,8 +156,13 @@ export function createServer(): Server {
 
 /**
  * Start the MCP server with stdio transport
+ *
+ * @param options - Server options from CLI args (e.g., --backend flag)
  */
-export async function startServer(): Promise<void> {
+export async function startServer(options: McpServerOptions = {}): Promise<void> {
+  // Set options so tools can access them (e.g., backend override)
+  setMcpOptions(options)
+
   const server = createServer()
   const transport = new StdioServerTransport()
 

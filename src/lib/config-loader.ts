@@ -6,6 +6,7 @@
  */
 
 import fs from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 import { parse as parseYaml } from 'yaml'
 import type { VaulterConfig } from '../types.js'
@@ -26,7 +27,7 @@ const MAX_EXTENDS_DEPTH = 10
  * Get the vaulter home directory (~/.vaulter)
  */
 export function getVaulterHome(): string {
-  return path.join(process.env.HOME || '/tmp', '.vaulter')
+  return path.join(os.homedir(), '.vaulter')
 }
 
 /**

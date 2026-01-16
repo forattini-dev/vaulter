@@ -347,7 +347,14 @@ const cliSchema: CLISchema = {
     },
 
     mcp: {
-      description: 'Start MCP server for Claude integration'
+      description: 'Start MCP server for Claude integration',
+      options: {
+        cwd: {
+          type: 'string' as const,
+          description: 'Working directory (where to look for .vaulter/config.yaml)',
+          aliases: ['C']
+        }
+      }
     },
 
     config: {
@@ -697,7 +704,12 @@ async function main(): Promise<void> {
           process.exit(1)
         }
         const { startServer } = await import('../mcp/server.js')
-        await startServer()
+        // Pass CLI options to MCP server (e.g., --backend, --cwd flags)
+        await startServer({
+          backend: opts.backend as string | undefined,
+          cwd: opts.cwd as string | undefined,
+          verbose: opts.verbose as boolean | undefined
+        })
         break
 
       case 'config':
