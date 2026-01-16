@@ -411,36 +411,53 @@ The MCP will automatically read \`.vaulter/config.yaml\` from that directory.
 }
 \`\`\`
 
-### Option 3: Global MCP Config (No CLI args needed)
+### Option 3: Project MCP Config (Recommended for teams)
 
-Create \`~/.vaulter/config.yaml\` with MCP defaults:
+Add \`mcp:\` section to your project's \`.vaulter/config.yaml\`:
 
 \`\`\`yaml
-# ~/.vaulter/config.yaml
+# .vaulter/config.yaml (in your project)
+version: "1"
+project: apps-lair
+
+mcp:
+  default_backend: s3://tetis-vaulter
+  default_project: apps-lair
+  default_environment: dev
+\`\`\`
+
+Then configure MCP with \`cwd\` pointing to your project:
+
+\`\`\`json
+{
+  "vaulter": {
+    "command": "npx",
+    "args": ["vaulter", "mcp"],
+    "cwd": "/path/to/your/project"
+  }
+}
+\`\`\`
+
+### Option 4: Global MCP Config (User-level defaults)
+
+Create \`~/.vaulter/config.yaml\` with global MCP defaults:
+
+\`\`\`yaml
+# ~/.vaulter/config.yaml (global)
 mcp:
   default_backend: s3://your-bucket
   default_project: your-project
   default_environment: dev
 \`\`\`
 
-Then configure MCP without any args:
-
-\`\`\`json
-{
-  "vaulter": {
-    "command": "npx",
-    "args": ["vaulter", "mcp"]
-  }
-}
-\`\`\`
-
 ### Priority Order
 
 Backend resolution priority (first match wins):
 1. CLI \`--backend\` flag
-2. Project config (\`.vaulter/config.yaml\`)
-3. Global MCP config (\`~/.vaulter/config.yaml\` → \`mcp.default_backend\`)
-4. Default (\`file://$HOME/.vaulter/store\`)
+2. Project config backend (\`.vaulter/config.yaml\` → \`backend.url\`)
+3. Project MCP config (\`.vaulter/config.yaml\` → \`mcp.default_backend\`)
+4. Global MCP config (\`~/.vaulter/config.yaml\` → \`mcp.default_backend\`)
+5. Default (\`file://$HOME/.vaulter/store\`)
 `
 
   return {

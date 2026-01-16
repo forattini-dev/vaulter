@@ -106,12 +106,19 @@ async function getClientAndConfig(): Promise<{ client: VaulterClient; config: Va
   // CLI --backend flag takes precedence over config file
   const backendOverride = mcpOptions.backend
 
-  // Determine connection strings: CLI --backend > project config > global MCP config > default
+  // Determine connection strings with priority:
+  // 1. CLI --backend flag
+  // 2. Project config backend (config.backend)
+  // 3. Project MCP config (config.mcp.default_backend)
+  // 4. Global MCP config (~/.vaulter/config.yaml → mcp.default_backend)
+  // 5. Default (file://$HOME/.vaulter/store)
   let connectionStrings: string[]
   if (backendOverride) {
     connectionStrings = [backendOverride]
-  } else if (config) {
+  } else if (config?.backend) {
     connectionStrings = resolveBackendUrls(config)
+  } else if (config?.mcp?.default_backend) {
+    connectionStrings = [config.mcp.default_backend]
   } else if (mcpConfig?.default_backend) {
     connectionStrings = [mcpConfig.default_backend]
   } else {

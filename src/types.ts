@@ -281,6 +281,8 @@ export interface VaulterConfig {
   directories?: DirectoriesConfig
   /** Audit logging configuration */
   audit?: AuditConfig
+  /** MCP server configuration (defaults when running in this project) */
+  mcp?: McpConfig
 }
 
 // ============================================================================
