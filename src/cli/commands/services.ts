@@ -6,7 +6,7 @@
 
 import path from 'node:path'
 import type { CLIArgs, VaulterConfig } from '../../types.js'
-import { discoverServices, findMonorepoRoot, formatServiceList } from '../../lib/monorepo.js'
+import { discoverServices, findMonorepoRoot } from '../../lib/monorepo.js'
 
 interface ServicesContext {
   args: CLIArgs
@@ -19,7 +19,7 @@ interface ServicesContext {
  * Run the services command
  */
 export async function runServices(context: ServicesContext): Promise<void> {
-  const { args, verbose, jsonOutput } = context
+  const { args } = context
 
   const subcommand = args._[1]
 

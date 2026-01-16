@@ -8,7 +8,6 @@ import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import type { CLIArgs, VaulterConfig } from '../../types.js'
-import { findConfigDir } from '../../lib/config-loader.js'
 
 interface KeyContext {
   args: CLIArgs
@@ -31,7 +30,7 @@ function generateKey(): string {
  * Run the key command
  */
 export async function runKey(context: KeyContext): Promise<void> {
-  const { args, config, verbose, dryRun, jsonOutput } = context
+  const { args } = context
 
   const subcommand = args._[1]
 

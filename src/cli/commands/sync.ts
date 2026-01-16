@@ -237,7 +237,7 @@ async function syncSingleService(
  * Run the sync command
  */
 export async function runSync(context: SyncContext): Promise<void> {
-  const { args, config, project, service, environment, verbose, dryRun, jsonOutput } = context
+  const { args, config, project, service, environment, dryRun, jsonOutput } = context
 
   // Check for batch mode (--all or multiple services with -s)
   const allServices = args.all
@@ -339,7 +339,7 @@ export async function runSync(context: SyncContext): Promise<void> {
  * Run batch sync across multiple services
  */
 async function runBatchSync(context: SyncContext): Promise<void> {
-  const { args, environment, verbose, dryRun, jsonOutput } = context
+  const { args, environment, verbose, jsonOutput } = context
 
   // Find monorepo root
   const root = findMonorepoRoot()
@@ -389,7 +389,7 @@ async function runBatchSync(context: SyncContext): Promise<void> {
   const batchResult = await runBatch<SyncResult>(
     services,
     environment,
-    async (service, env) => {
+    async (service) => {
       return syncSingleService({ ...context, config: service.config }, service)
     },
     {

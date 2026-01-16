@@ -69,7 +69,7 @@ export async function runTfVars(context: TerraformContext): Promise<void> {
  * Generate Terraform JSON variables file
  */
 export async function runTfJson(context: TerraformContext): Promise<void> {
-  const { args, config, project, service, environment, verbose, jsonOutput } = context
+  const { args, config, project, service, environment, verbose } = context
 
   if (!project) {
     console.error('Error: Project not specified')

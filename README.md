@@ -231,12 +231,14 @@ vaulter set DB_URL=postgres://... @tag:database,sensitive @owner:backend -e prd
 vaulter set KEY "value" -e dev           # Treated as secret
 ```
 
-| Separator | Type | Backend Sync | Encryption |
+| Separator | Type | Backend Sync | Encryption (backend) |
 |:----------|:-----|:-------------|:-----------|
 | `=` | Secret | ✓ | ✓ |
 | `:=` | Secret (typed) | ✓ | ✓ |
-| `::` | Config | Split: ✗ / Unified: ✓ | ✗ |
+| `::` | Config | Split: ✗ / Unified: ✓ | ✓ |
 | `@key:value` | Metadata | — | — |
+
+Note: Config files remain plain text; backend storage is encrypted for all values.
 
 ## Global Options
 
