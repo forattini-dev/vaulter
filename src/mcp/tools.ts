@@ -61,14 +61,20 @@ let mcpOptions: McpServerOptions = {}
 /**
  * Set MCP server options (called by server.ts with CLI args)
  * If cwd is specified, changes the working directory so config can be found
+ *
+ * Priority for cwd:
+ * 1. CLI --cwd flag
+ * 2. VAULTER_CWD environment variable
  */
 export function setMcpOptions(options: McpServerOptions): void {
   mcpOptions = options
 
   // Change working directory if specified (so loadConfig finds .vaulter/config.yaml)
-  if (options.cwd) {
+  // Priority: CLI --cwd > VAULTER_CWD env var
+  const cwd = options.cwd || process.env.VAULTER_CWD
+  if (cwd) {
     try {
-      process.chdir(options.cwd)
+      process.chdir(cwd)
     } catch {
       // Ignore if directory doesn't exist - tools will handle missing config
     }

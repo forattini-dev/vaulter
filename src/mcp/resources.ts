@@ -426,14 +426,27 @@ mcp:
   default_environment: dev
 \`\`\`
 
-Then configure MCP with \`cwd\` pointing to your project:
+Then configure MCP with \`VAULTER_CWD\` environment variable:
 
 \`\`\`json
 {
   "vaulter": {
     "command": "npx",
     "args": ["vaulter", "mcp"],
-    "cwd": "/path/to/your/project"
+    "env": {
+      "VAULTER_CWD": "/path/to/your/project"
+    }
+  }
+}
+\`\`\`
+
+Or use CLI \`--cwd\` flag:
+
+\`\`\`json
+{
+  "vaulter": {
+    "command": "npx",
+    "args": ["vaulter", "mcp", "--cwd", "/path/to/your/project"]
   }
 }
 \`\`\`
