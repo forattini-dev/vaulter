@@ -124,9 +124,29 @@ Funciona para ambos cenários. O campo `service` é opcional:
 
 - **Single repo:** input `project|env||key` → base64url
 - **Monorepo:** input `project|env|service|key` → base64url
-- **Shared vars:** sempre sem service `project|env||key` → base64url
+- **Shared vars:** `service: '__shared__'` → aplica a todos os services
 
 O formato base64url é **S3 path safe** (usa `-` e `_` ao invés de `+` e `/`).
+
+### Herança de Shared Vars
+
+Ao exportar variáveis de um service, as **shared vars são automaticamente herdadas**:
+
+```typescript
+// Export com herança (default)
+await client.export('project', 'dev', 'api')
+// Retorna: shared vars + api vars (merged, api sobrescreve)
+
+// Export sem herança
+await client.export('project', 'dev', 'api', { includeShared: false })
+// Retorna: apenas api vars
+
+// Export só shared
+await client.export('project', 'dev', '__shared__')
+// Retorna: apenas shared vars
+```
+
+**MCP Tool:** `vaulter_export` aceita `includeShared: boolean` (default: `true`)
 
 ---
 

@@ -19,6 +19,8 @@ interface ExportContext {
   jsonOutput: boolean
   /** Target shared variables scope */
   shared?: boolean
+  /** Disable shared vars inheritance when exporting service */
+  noShared?: boolean
 }
 
 /**
@@ -119,6 +121,10 @@ export async function runExport(context: ExportContext): Promise<void> {
   const isShared = args.shared || context.shared
   const effectiveService = isShared ? SHARED_SERVICE : service
 
+  // Check for --no-shared flag (disable inheritance)
+  const noShared = args['no-shared'] || args.noShared || context.noShared
+  const includeShared = !noShared
+
   if (!project) {
     console.error('Error: Project not specified and no config found')
     console.error('Run "vaulter init" or specify --project')
@@ -149,7 +155,7 @@ export async function runExport(context: ExportContext): Promise<void> {
   try {
     await client.connect()
 
-    const vars = await client.export(project, environment, effectiveService)
+    const vars = await client.export(project, environment, effectiveService, { includeShared })
 
     // Format output
     let output: string

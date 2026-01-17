@@ -193,6 +193,11 @@ const cliSchema: CLISchema = {
       type: 'boolean',
       default: false,
       description: 'Target shared variables in monorepo'
+    },
+    'no-shared': {
+      type: 'boolean',
+      default: false,
+      description: 'Disable shared vars inheritance when exporting service'
     }
   },
 

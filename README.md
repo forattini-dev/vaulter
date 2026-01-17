@@ -259,7 +259,24 @@ Auto-detects NX, Turborepo, Lerna, pnpm, Yarn workspaces, Rush.
 vaulter service list                       # List discovered services
 vaulter sync push -e dev -s api            # Push specific service
 vaulter sync push -e dev --shared          # Push shared variables
-vaulter export shell -e dev --shared       # Export shared variables
+vaulter export shell -e dev -s api         # Export with shared inheritance
+vaulter export shell -e dev --shared       # Export only shared variables
+```
+
+### Shared Variables Inheritance
+
+When exporting for a specific service, **shared variables are automatically included**:
+
+```bash
+# Shared vars: NODE_ENV=development, LOG_LEVEL=debug
+# API service vars: PORT=3000, LOG_LEVEL=info
+
+vaulter export shell -e dev -s api
+# Output: NODE_ENV=development, LOG_LEVEL=info, PORT=3000
+# (service vars override shared vars with same key)
+
+# To export without inheritance:
+vaulter export shell -e dev -s api --no-shared
 ```
 
 ---
