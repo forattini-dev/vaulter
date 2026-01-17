@@ -1571,6 +1571,61 @@ Or use the `VAULTER_CWD` environment variable:
 }
 ```
 
+### Debugging MCP Configuration
+
+With multiple config levels (project, global, CLI), it can be confusing to know WHERE each setting comes from. Use the `vaulter://mcp-config` resource to see exactly which config file provided each value:
+
+```bash
+# In MCP client, read the resource:
+vaulter://mcp-config
+```
+
+**Example output:**
+```json
+{
+  "summary": "MCP Configuration Sources - shows WHERE each setting was loaded from",
+  "settings": {
+    "backend": {
+      "value": "s3://my-bucket/envs",
+      "source": "project",
+      "sourceDescription": "Project config (.vaulter/config.yaml)"
+    },
+    "project": {
+      "value": "my-project",
+      "source": "project.mcp",
+      "sourceDescription": "Project MCP defaults (.vaulter/config.yaml → mcp section)"
+    },
+    "environment": {
+      "value": "dev",
+      "source": "global.mcp",
+      "sourceDescription": "Global MCP defaults (~/.vaulter/config.yaml → mcp section)"
+    }
+  },
+  "configFiles": {
+    "projectConfig": "/home/user/project/.vaulter/config.yaml",
+    "globalConfig": "/home/user/.vaulter/config.yaml"
+  }
+}
+```
+
+**Config Sources:**
+
+| Source | Description |
+|:-------|:------------|
+| `cli` | CLI flag (`--backend`, `--project`, etc.) |
+| `project` | Project config (`.vaulter/config.yaml`) |
+| `project.mcp` | Project MCP defaults (`.vaulter/config.yaml` → `mcp:` section) |
+| `global.mcp` | Global MCP defaults (`~/.vaulter/config.yaml` → `mcp:` section) |
+| `default` | Built-in default value |
+
+**Verbose Startup:**
+
+For CLI debugging, use the `--verbose` flag to see config sources on startup:
+
+```bash
+vaulter mcp --verbose
+```
+
 ### Available Tools (22)
 
 #### Core Operations
@@ -1615,11 +1670,12 @@ Or use the `VAULTER_CWD` environment variable:
 | `vaulter_key_export` | Export key to encrypted bundle |
 | `vaulter_key_import` | Import key from encrypted bundle |
 
-### Resources (9)
+### Resources (10)
 
 | URI Pattern | Description |
 |:------------|:------------|
 | `vaulter://instructions` | ⚠️ **CRITICAL**: How vaulter stores data (read first!) |
+| `vaulter://mcp-config` | 🔍 Shows WHERE each MCP setting comes from |
 | `vaulter://config` | Project configuration |
 | `vaulter://services` | Monorepo services |
 | `vaulter://keys` | List all encryption keys |
