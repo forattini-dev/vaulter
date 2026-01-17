@@ -418,17 +418,151 @@ export class VaulterClient {
   }
 
   /**
-   * Bulk insert environment variables
+   * Bulk insert environment variables (legacy - uses sequential set)
+   * @deprecated Use setMany for better performance
    */
   async insertMany(inputs: EnvVarInput[]): Promise<EnvVar[]> {
+    return this.setMany(inputs)
+  }
+
+  /**
+   * Set multiple environment variables efficiently
+   * Uses a single list query + parallel operations for better performance
+   */
+  async setMany(inputs: EnvVarInput[]): Promise<EnvVar[]> {
     this.ensureConnected()
 
-    const results: EnvVar[] = []
+    if (inputs.length === 0) return []
+
+    // Group inputs by project/environment/service for efficient querying
+    const groups = new Map<string, { inputs: EnvVarInput[], existing: Map<string, EnvVar> }>()
+
     for (const input of inputs) {
-      const result = await this.set(input)
-      results.push(result)
+      const groupKey = `${input.project}:${input.environment}:${input.service || ''}`
+      if (!groups.has(groupKey)) {
+        groups.set(groupKey, { inputs: [], existing: new Map() })
+      }
+      groups.get(groupKey)!.inputs.push(input)
     }
+
+    // Fetch existing vars for each group (one query per group)
+    for (const [groupKey, group] of groups) {
+      const [project, environment, service] = groupKey.split(':')
+      const existingVars = await this.list({
+        project,
+        environment: environment as Environment,
+        service: service || undefined
+      })
+      for (const v of existingVars) {
+        group.existing.set(v.key, v)
+      }
+    }
+
+    // Process all inputs in parallel
+    const results = await Promise.all(inputs.map(async (input) => {
+      const groupKey = `${input.project}:${input.environment}:${input.service || ''}`
+      const existing = groups.get(groupKey)!.existing.get(input.key)
+      const encryptedValue = this.encryptValue(input.value)
+
+      if (existing) {
+        // Update existing
+        const filteredInputMeta = input.metadata
+          ? Object.fromEntries(Object.entries(input.metadata).filter(([, v]) => v !== undefined))
+          : {}
+
+        const result = await this.resource.update(existing.id, {
+          value: encryptedValue,
+          tags: input.tags,
+          metadata: {
+            ...existing.metadata,
+            ...filteredInputMeta,
+            source: input.metadata?.source || existing.metadata?.source || 'manual'
+          }
+        })
+        return { ...result, value: input.value } as EnvVar
+      } else {
+        // Insert new
+        const result = await this.resource.insert({
+          ...input,
+          value: encryptedValue,
+          metadata: {
+            ...input.metadata,
+            source: input.metadata?.source || 'manual'
+          }
+        })
+        return { ...result, value: input.value } as EnvVar
+      }
+    }))
+
     return results
+  }
+
+  /**
+   * Get multiple environment variables efficiently
+   * Uses a single list query instead of multiple get calls
+   */
+  async getMany(
+    keys: string[],
+    project: string,
+    environment: Environment,
+    service?: string
+  ): Promise<Map<string, EnvVar | null>> {
+    this.ensureConnected()
+
+    // Single query to get all vars in the partition
+    const allVars = await this.list({ project, environment, service })
+    const varMap = new Map(allVars.map(v => [v.key, v]))
+
+    // Build result map
+    const result = new Map<string, EnvVar | null>()
+    for (const key of keys) {
+      result.set(key, varMap.get(key) || null)
+    }
+
+    return result
+  }
+
+  /**
+   * Delete multiple environment variables efficiently
+   * Uses a single list query + native deleteMany from s3db.js
+   */
+  async deleteManyByKeys(
+    keys: string[],
+    project: string,
+    environment: Environment,
+    service?: string
+  ): Promise<{ deleted: string[], notFound: string[] }> {
+    this.ensureConnected()
+
+    // Single query to get all vars in the partition
+    const allVars = await this.list({ project, environment, service })
+    const varMap = new Map(allVars.map(v => [v.key, v]))
+
+    const idsToDelete: string[] = []
+    const deleted: string[] = []
+    const notFound: string[] = []
+
+    for (const key of keys) {
+      const existing = varMap.get(key)
+      if (existing) {
+        idsToDelete.push(existing.id)
+        deleted.push(key)
+      } else {
+        notFound.push(key)
+      }
+    }
+
+    // Use native deleteMany if available (s3db.js)
+    if (idsToDelete.length > 0) {
+      if (typeof this.resource.deleteMany === 'function') {
+        await this.resource.deleteMany(idsToDelete)
+      } else {
+        // Fallback to parallel deletes
+        await Promise.all(idsToDelete.map(id => this.resource.delete(id)))
+      }
+    }
+
+    return { deleted, notFound }
   }
 
   /**

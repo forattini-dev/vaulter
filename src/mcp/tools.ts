@@ -1129,15 +1129,19 @@ async function handleMultiGetCall(
     }
   }
 
-  // Process in parallel for better performance
-  const getPromises = keys.map(async (key) => {
-    const envVar = await client.get(key, project, environment, service)
-    return { key, value: envVar?.value ?? null }
-  })
+  // Use optimized getMany - single list query instead of N get queries
+  const resultMap = await client.getMany(keys, project, environment, service)
 
-  const results = await Promise.all(getPromises)
-  const found = results.filter(r => r.value !== null)
-  const notFound = results.filter(r => r.value === null).map(r => r.key)
+  const found: Array<{ key: string, value: string }> = []
+  const notFound: string[] = []
+
+  for (const [key, envVar] of resultMap) {
+    if (envVar !== null) {
+      found.push({ key, value: envVar.value })
+    } else {
+      notFound.push(key)
+    }
+  }
 
   const location = `${project}/${environment}${service ? `/${service}` : ''}`
   const lines = [
@@ -1218,45 +1222,46 @@ async function handleMultiSetCall(
     }
   }
 
-  // Process in parallel for better performance
-  const setPromises = varsArray
-    .filter(({ key, value }) => key && value !== undefined)
-    .map(async ({ key, value, tags }) => {
-      try {
-        await client.set({
-          key,
-          value: String(value),
-          project,
-          environment,
-          service: effectiveService,
-          tags,
-          metadata: { source: 'manual' }
-        })
-        return { key, success: true }
-      } catch (err) {
-        return { key, success: false, error: (err as Error).message }
-      }
-    })
+  // Filter valid entries and prepare inputs for setMany
+  const validEntries = varsArray.filter(({ key, value }) => key && value !== undefined)
+  const skipped = varsArray.length - validEntries.length
 
-  const results = await Promise.all(setPromises)
-  const skipped = varsArray.filter(({ key, value }) => !key || value === undefined).length
-  const succeeded = results.filter(r => r.success).map(r => r.key)
-  const failed = results.filter(r => !r.success)
+  // Use optimized setMany - single list query + parallel insert/update
+  const inputs = validEntries.map(({ key, value, tags }) => ({
+    key,
+    value: String(value),
+    project,
+    environment,
+    service: effectiveService,
+    tags,
+    metadata: { source: 'manual' as const }
+  }))
 
-  const location = shared
-    ? `${project}/${environment} (shared)`
-    : `${project}/${environment}${service ? `/${service}` : ''}`
+  try {
+    const results = await client.setMany(inputs)
+    const succeeded = results.map(r => r.key)
 
-  const lines = [`Set ${succeeded.length}/${varsArray.length} variable(s) in ${location}:`]
-  if (succeeded.length > 0) lines.push(`✓ ${succeeded.join(', ')}`)
-  if (failed.length > 0) lines.push(`✗ Failed: ${failed.map(f => `${f.key} (${f.error})`).join(', ')}`)
-  if (skipped > 0) lines.push(`⚠ Skipped ${skipped} invalid entries`)
+    const location = shared
+      ? `${project}/${environment} (shared)`
+      : `${project}/${environment}${service ? `/${service}` : ''}`
 
-  return {
-    content: [{
-      type: 'text',
-      text: lines.join('\n')
-    }]
+    const lines = [`Set ${succeeded.length}/${varsArray.length} variable(s) in ${location}:`]
+    if (succeeded.length > 0) lines.push(`✓ ${succeeded.join(', ')}`)
+    if (skipped > 0) lines.push(`⚠ Skipped ${skipped} invalid entries`)
+
+    return {
+      content: [{
+        type: 'text',
+        text: lines.join('\n')
+      }]
+    }
+  } catch (err) {
+    return {
+      content: [{
+        type: 'text',
+        text: `Error setting variables: ${(err as Error).message}`
+      }]
+    }
   }
 }
 
@@ -1278,15 +1283,8 @@ async function handleMultiDeleteCall(
     }
   }
 
-  // Process in parallel for better performance
-  const deletePromises = keys.map(async (key) => {
-    const wasDeleted = await client.delete(key, project, environment, service)
-    return { key, deleted: wasDeleted }
-  })
-
-  const results = await Promise.all(deletePromises)
-  const deleted = results.filter(r => r.deleted).map(r => r.key)
-  const notFound = results.filter(r => !r.deleted).map(r => r.key)
+  // Use optimized deleteManyByKeys - single list query + batch delete
+  const { deleted, notFound } = await client.deleteManyByKeys(keys, project, environment, service)
 
   const location = `${project}/${environment}${service ? `/${service}` : ''}`
   const lines = [`Deleted from ${location}:`]
