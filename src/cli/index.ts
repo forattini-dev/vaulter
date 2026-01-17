@@ -186,27 +186,6 @@ const cliSchema: CLISchema = {
       type: 'boolean',
       default: false,
       description: 'Target shared variables in monorepo'
-    },
-    override: {
-      type: 'boolean',
-      default: false,
-      description: 'Override shared variable for specific service'
-    },
-    repo: {
-      type: 'string',
-      description: 'GitHub repository (for github-actions export)'
-    },
-    yes: {
-      short: 'y',
-      type: 'boolean',
-      default: false,
-      description: 'Skip confirmations (CI/CD mode)'
-    },
-    quiet: {
-      short: 'q',
-      type: 'boolean',
-      default: false,
-      description: 'Minimal output (errors only)'
     }
   },
 
@@ -652,15 +631,9 @@ function toCliArgs(result: CommandParseResult): CLIArgs {
     // Rotation run options
     overdue: opts.overdue as boolean | undefined,
     fail: opts.fail as boolean | undefined,
-    // New v1.1 options
+    // Sync options
     prune: opts.prune as boolean | undefined,
-    shared: opts.shared as boolean | undefined,
-    override: opts.override as boolean | undefined,
-    repo: opts.repo as string | undefined,
-    yes: opts.yes as boolean | undefined,
-    y: opts.yes as boolean | undefined,
-    quiet: opts.quiet as boolean | undefined,
-    q: opts.quiet as boolean | undefined
+    shared: opts.shared as boolean | undefined
   }
 }
 
@@ -754,59 +727,15 @@ async function main(): Promise<void> {
         await runInit(context)
         break
 
-      // Hierarchical var command group
       case 'var':
         await runVar(context)
         break
 
-      // ========== LEGACY ALIASES: var commands ==========
-      case 'set':
-      case 'get':
-      case 'delete':
-      case 'rm':
-      case 'remove':
-      case 'list':
-      case 'ls':
-        // Rewrite args to hierarchical format: vaulter set → vaulter var set
-        context.args._.unshift('var')
-        await runVar(context)
-        break
-
-      // Hierarchical export command group
       case 'export':
         await runExportGroup(context)
         break
 
-      // ========== LEGACY ALIASES: export commands ==========
-      case 'k8s:secret':
-        context.args._ = ['export', 'k8s-secret', ...context.args._.slice(1)]
-        await runExportGroup(context)
-        break
-      case 'k8s:configmap':
-        context.args._ = ['export', 'k8s-configmap', ...context.args._.slice(1)]
-        await runExportGroup(context)
-        break
-      case 'helm:values':
-        context.args._ = ['export', 'helm', ...context.args._.slice(1)]
-        await runExportGroup(context)
-        break
-      case 'tf:vars':
-        context.args._ = ['export', 'terraform', ...context.args._.slice(1)]
-        await runExportGroup(context)
-        break
-
-      // Hierarchical sync command group
       case 'sync':
-        await runSyncGroup(context)
-        break
-
-      // ========== LEGACY ALIASES: sync commands ==========
-      case 'push':
-        context.args._ = ['sync', 'push', ...context.args._.slice(1)]
-        await runSyncGroup(context)
-        break
-      case 'pull':
-        context.args._ = ['sync', 'pull', ...context.args._.slice(1)]
         await runSyncGroup(context)
         break
 
@@ -814,15 +743,8 @@ async function main(): Promise<void> {
         await runKey(context)
         break
 
-      // Hierarchical service command group
       case 'service':
       case 'svc':
-        await runServiceGroup(context)
-        break
-
-      // ========== LEGACY ALIAS: scan ==========
-      case 'scan':
-        context.args._ = ['service', 'scan', ...context.args._.slice(1)]
         await runServiceGroup(context)
         break
 

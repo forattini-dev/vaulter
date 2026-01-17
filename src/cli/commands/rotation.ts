@@ -505,6 +505,28 @@ async function runRotationRun(context: RotationContext): Promise<void> {
     console.error(`  Environments: ${environments.join(', ')}`)
   }
 
+  // If rotation is disabled in config, exit successfully (don't fail CI)
+  if (!rotationEnabled) {
+    if (jsonOutput) {
+      console.log(JSON.stringify({
+        project,
+        service,
+        environments,
+        rotationEnabled: false,
+        message: 'Rotation is disabled in config',
+        total: 0,
+        overdue: 0,
+        secrets: []
+      }))
+    } else {
+      console.log(`Rotation workflow: ${project}`)
+      console.log('')
+      console.log('⏭️  Rotation is disabled in config (encryption.rotation.enabled: false)')
+      console.log('   CI/CD gate passed - no secrets checked.')
+    }
+    return
+  }
+
   const client = await createClientFromConfig({ args, config, project, verbose })
 
   interface RotationCandidate {

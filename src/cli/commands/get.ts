@@ -8,7 +8,7 @@
 import type { CLIArgs, VaulterConfig, Environment } from '../../types.js'
 import { createClientFromConfig } from '../lib/create-client.js'
 import { c, symbols, colorEnv, print } from '../lib/colors.js'
-import { SHARED_SERVICE, resolveVariables, formatSource } from '../../lib/shared.js'
+import { SHARED_SERVICE, formatSource } from '../../lib/shared.js'
 
 interface GetContext {
   args: CLIArgs

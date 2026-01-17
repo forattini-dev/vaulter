@@ -9,7 +9,7 @@
  */
 
 import type { CLIArgs, VaulterConfig, Environment } from '../../../types.js'
-import { c, symbols, box, colorEnv, print, header } from '../../lib/colors.js'
+import { c, symbols, box, colorEnv, print } from '../../lib/colors.js'
 
 export interface SyncContext {
   args: CLIArgs

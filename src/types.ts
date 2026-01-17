@@ -357,15 +357,11 @@ export interface CLIArgs {
   until?: string
   limit?: number
   source?: string
-  // v1.1 - New hierarchical CLI flags
+  // Export options
+  repo?: string
+  // Sync options
   prune?: boolean
   shared?: boolean
-  override?: boolean
-  repo?: string
-  yes?: boolean
-  y?: boolean
-  quiet?: boolean
-  q?: boolean
 }
 
 export interface CommandContext {

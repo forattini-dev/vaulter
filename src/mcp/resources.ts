@@ -220,19 +220,19 @@ NOT in the object body. This is crucial to understand before using any tools.
 
 \`\`\`bash
 # Push local .env to backend
-npx vaulter push -e dev
+npx vaulter sync push -e dev
 
 # Pull from backend to local .env
-npx vaulter pull -e dev
+npx vaulter sync pull -e dev
 
 # Set individual variable
-npx vaulter set DATABASE_URL="postgres://..." -e dev
+npx vaulter var set DATABASE_URL="postgres://..." -e dev
 
 # Bidirectional sync
-npx vaulter sync -e dev
+npx vaulter sync merge -e dev
 
 # List variables
-npx vaulter list -e dev
+npx vaulter var list -e dev
 \`\`\`
 
 ## How s3db.js Stores Data
@@ -255,9 +255,9 @@ This means the data was uploaded WRONG (manually), not through vaulter.
 
 1. **Initialize project**: \`npx vaulter init\`
 2. **Generate key**: \`npx vaulter key generate\`
-3. **Set variables**: \`npx vaulter set KEY=value -e dev\`
-4. **Or push existing .env**: \`npx vaulter push -e dev\`
-5. **Pull to new machine**: \`npx vaulter pull -e dev\`
+3. **Set variables**: \`npx vaulter var set KEY=value -e dev\`
+4. **Or push existing .env**: \`npx vaulter sync push -e dev\`
+5. **Pull to new machine**: \`npx vaulter sync pull -e dev\`
 
 Never bypass the CLI. The CLI handles encryption, metadata formatting, and s3db.js protocol.
 

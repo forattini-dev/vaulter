@@ -27,11 +27,11 @@ curl -fsSL https://raw.githubusercontent.com/forattini-dev/vaulter/main/install.
 ## Quick Start
 
 ```bash
-vaulter init                                      # Initialize project
-vaulter key generate --name master                # Generate encryption key
-vaulter set DATABASE_URL="postgres://..." -e dev  # Set secret
-vaulter set PORT::3000 -e dev                     # Set config (plain)
-eval $(vaulter export -e dev)                     # Export to shell
+vaulter init                                          # Initialize project
+vaulter key generate --name master                    # Generate encryption key
+vaulter var set DATABASE_URL="postgres://..." -e dev  # Set secret
+vaulter var set PORT::3000 -e dev                     # Set config (plain)
+eval $(vaulter export shell -e dev)                   # Export to shell
 ```
 
 ---
@@ -41,8 +41,8 @@ eval $(vaulter export -e dev)                     # Export to shell
 | Problem | Solution |
 |:--------|:---------|
 | Secrets in plaintext `.env` | Encrypted at rest (AES-256-GCM) |
-| Manual sync between devs | `vaulter pull` / `vaulter push` |
-| Copy-paste to CI/CD | `eval $(vaulter export -e prd)` |
+| Manual sync between devs | `vaulter sync pull` / `vaulter sync push` |
+| Copy-paste to CI/CD | `eval $(vaulter export shell -e prd)` |
 | No audit trail | Full history via audit log |
 | Different files per machine | Single source of truth |
 
@@ -52,18 +52,23 @@ eval $(vaulter export -e dev)                     # Export to shell
 
 ## Commands
 
-### Core
+### Setup
 
 | Command | Description |
 |:--------|:------------|
-| `init` | Initialize project |
-| `get <key> -e <env>` | Get a variable |
-| `set KEY=val -e <env>` | Set secret (encrypted) |
-| `set KEY::val -e <env>` | Set config (plain text) |
-| `set KEY:=123 -e <env>` | Set typed secret (number/boolean) |
-| `delete <key> -e <env>` | Delete a variable |
-| `list -e <env>` | List all variables |
-| `export -e <env>` | Export for shell |
+| `init` | Initialize project config |
+| `init --split` | Initialize with split mode (configs/secrets dirs) |
+
+### Variables (`var`)
+
+| Command | Description |
+|:--------|:------------|
+| `var get <key> -e <env>` | Get a variable |
+| `var set KEY=val -e <env>` | Set secret (encrypted) |
+| `var set KEY::val -e <env>` | Set config (plain text) |
+| `var set KEY:=123 -e <env>` | Set typed secret (number/boolean) |
+| `var delete <key> -e <env>` | Delete a variable |
+| `var list -e <env>` | List all variables |
 
 **Set syntax**: `=` encrypted secret · `::` plain config · `:=` typed secret
 
@@ -71,18 +76,32 @@ eval $(vaulter export -e dev)                     # Export to shell
 
 | Command | Description |
 |:--------|:------------|
-| `sync -e <env>` | Bidirectional merge |
-| `pull -e <env>` | Download from backend |
-| `push -e <env>` | Upload to backend |
+| `sync merge -e <env>` | Bidirectional merge (default) |
+| `sync pull -e <env>` | Download from backend |
+| `sync pull --prune -e <env>` | Download, delete local-only vars |
+| `sync push -e <env>` | Upload to backend |
+| `sync push --prune -e <env>` | Upload, delete remote-only vars |
+| `sync diff -e <env>` | Show differences without changes |
 
-### Integrations
+### Export
 
 | Command | Description |
 |:--------|:------------|
-| `k8s:secret -e <env>` | Generate Kubernetes Secret |
-| `k8s:configmap -e <env>` | Generate Kubernetes ConfigMap |
-| `helm:values -e <env>` | Generate Helm values.yaml |
-| `tf:vars -e <env>` | Generate Terraform .tfvars |
+| `export shell -e <env>` | Export for shell `eval $(...)` |
+| `export k8s-secret -e <env>` | Generate Kubernetes Secret |
+| `export k8s-configmap -e <env>` | Generate Kubernetes ConfigMap |
+| `export helm -e <env>` | Generate Helm values.yaml |
+| `export terraform -e <env>` | Generate Terraform .tfvars |
+| `export docker -e <env>` | Docker env-file format |
+| `export vercel -e <env>` | Vercel environment JSON |
+| `export github-actions -e <env>` | GitHub Actions secrets |
+
+### Services (monorepo)
+
+| Command | Description |
+|:--------|:------------|
+| `service list` | List discovered services |
+| `service init` | Add service to config |
 
 ### Audit & Rotation
 
@@ -211,23 +230,23 @@ jobs:
           VAULTER_KEY: ${{ secrets.VAULTER_KEY }}
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        run: npx vaulter k8s:secret -e prd | kubectl apply -f -
+        run: npx vaulter export k8s-secret -e prd | kubectl apply -f -
 ```
 
 ### Other Platforms
 
 ```bash
 # GitLab CI
-npx vaulter k8s:secret -e ${CI_ENVIRONMENT_NAME} | kubectl apply -f -
+npx vaulter export k8s-secret -e ${CI_ENVIRONMENT_NAME} | kubectl apply -f -
 
 # Docker
-vaulter export -e prd --format=env > .env.prd && docker run --env-file .env.prd myapp
+vaulter export docker -e prd > .env.prd && docker run --env-file .env.prd myapp
 
 # Terraform
-vaulter tf:vars -e prd > secrets.auto.tfvars
+vaulter export terraform -e prd > secrets.auto.tfvars
 
 # Helm
-vaulter helm:values -e prd | helm upgrade myapp ./chart -f -
+vaulter export helm -e prd | helm upgrade myapp ./chart -f -
 ```
 
 ---
@@ -237,9 +256,10 @@ vaulter helm:values -e prd | helm upgrade myapp ./chart -f -
 Auto-detects NX, Turborepo, Lerna, pnpm, Yarn workspaces, Rush.
 
 ```bash
-vaulter scan                    # Discover packages
-vaulter sync -e dev --all       # Sync all services
-vaulter sync -e dev -s api,web  # Sync specific services
+vaulter service list                       # List discovered services
+vaulter sync push -e dev -s api            # Push specific service
+vaulter sync push -e dev --shared          # Push shared variables
+vaulter export shell -e dev --shared       # Export shared variables
 ```
 
 ---
@@ -288,14 +308,17 @@ vaulter mcp
 }
 ```
 
-### Tools (22)
+### Tools
 
 | Category | Tools |
 |:---------|:------|
-| **Core** | `get`, `set`, `delete`, `list`, `export`, `sync`, `pull`, `push` |
-| **Discovery** | `compare`, `search`, `scan`, `services`, `init` |
-| **Integrations** | `k8s_secret`, `k8s_configmap`, `helm_values`, `tf_vars` |
+| **Variables** | `var_get`, `var_set`, `var_delete`, `var_list` |
+| **Sync** | `sync_push`, `sync_pull`, `sync_merge`, `sync_diff` |
+| **Export** | `export_shell`, `export_k8s_secret`, `export_k8s_configmap`, `export_helm`, `export_terraform` |
+| **Discovery** | `compare`, `search`, `services`, `init` |
 | **Keys** | `key_generate`, `key_list`, `key_show`, `key_export`, `key_import` |
+| **Audit** | `audit_list`, `audit_stats` |
+| **Rotation** | `rotation_list`, `rotation_run` |
 
 ### Resources (4)
 

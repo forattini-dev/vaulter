@@ -20,7 +20,10 @@ import {
   tokyoNightTheme,
 } from 'tuiuiu.js'
 import type { VaulterConfig, Environment } from '../../types.js'
-import { loadConfig, getProjectName, getValidEnvironments } from '../../lib/config-loader.js'
+import { loadConfig, getProjectName } from '../../lib/config-loader.js'
+import { Dashboard } from './dashboard.js'
+import { AuditViewer } from './audit-viewer.js'
+import { KeyManager } from './key-manager.js'
 
 // Screen types
 type Screen = 'menu' | 'dashboard' | 'audit' | 'keys'
@@ -139,22 +142,6 @@ function MainMenu(props: {
   )
 }
 
-// Import screen components dynamically
-async function loadDashboard() {
-  const { startDashboard } = await import('./dashboard.js')
-  return startDashboard
-}
-
-async function loadAuditViewer() {
-  const { startAuditViewer } = await import('./audit-viewer.js')
-  return startAuditViewer
-}
-
-async function loadKeyManager() {
-  const { startKeyManager } = await import('./key-manager.js')
-  return startKeyManager
-}
-
 /**
  * Main Launcher component
  */
@@ -215,34 +202,28 @@ function Launcher(props: LauncherProps) {
       break
 
     case 'dashboard':
-      // Inline dashboard
-      content = Box(
-        { flexDirection: 'column', gap: 1, height: '100%' },
-        Text({ color: 'warning' }, '📊 Secrets Dashboard'),
-        Text({ color: 'muted' }, 'Press ESC to return to menu'),
-        Text({ color: 'muted', dim: true }, ''),
-        Text({ color: 'muted', dim: true }, 'Tip: Run `vaulter tui dashboard` for full dashboard')
-      )
+      content = Dashboard({
+        config: props.config,
+        environment: props.environment,
+        service: props.service,
+        verbose: props.verbose
+      })
       break
 
     case 'audit':
-      content = Box(
-        { flexDirection: 'column', gap: 1, height: '100%' },
-        Text({ color: 'warning' }, '📋 Audit Log Viewer'),
-        Text({ color: 'muted' }, 'Press ESC to return to menu'),
-        Text({ color: 'muted', dim: true }, ''),
-        Text({ color: 'muted', dim: true }, 'Tip: Run `vaulter tui audit` for full viewer')
-      )
+      content = AuditViewer({
+        config: props.config,
+        environment: props.environment,
+        service: props.service,
+        verbose: props.verbose
+      })
       break
 
     case 'keys':
-      content = Box(
-        { flexDirection: 'column', gap: 1, height: '100%' },
-        Text({ color: 'warning' }, '🔐 Key Manager'),
-        Text({ color: 'muted' }, 'Press ESC to return to menu'),
-        Text({ color: 'muted', dim: true }, ''),
-        Text({ color: 'muted', dim: true }, 'Tip: Run `vaulter tui keys` for full manager')
-      )
+      content = KeyManager({
+        config: props.config,
+        verbose: props.verbose
+      })
       break
   }
 

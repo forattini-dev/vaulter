@@ -22,6 +22,7 @@ import {
   useApp,
   setTheme,
   tokyoNightTheme,
+  untrack,
 } from 'tuiuiu.js'
 import type { VaulterConfig, Environment, AuditEntry, AuditOperation, AuditSource } from '../../types.js'
 import { loadConfig, getProjectName } from '../../lib/config-loader.js'
@@ -39,7 +40,7 @@ interface AuditRow {
   id: string
 }
 
-interface AuditViewerProps {
+export interface AuditViewerProps {
   config: VaulterConfig
   environment: Environment
   service?: string
@@ -163,9 +164,17 @@ function entryToRow(entry: AuditEntry): AuditRow {
 }
 
 /**
+ * Mask sensitive value for display
+ */
+function maskValue(value: string): string {
+  if (value.length <= 8) return '••••••••'
+  return value.substring(0, 3) + '••••' + value.substring(value.length - 3)
+}
+
+/**
  * Detail Panel for selected entry
  */
-function DetailPanel(props: { entry: AuditEntry | null }) {
+function DetailPanel(props: { entry: AuditEntry | null; showValues: boolean }) {
   if (!props.entry) {
     return Box(
       { padding: 1, borderStyle: 'round', borderColor: 'border' },
@@ -174,6 +183,8 @@ function DetailPanel(props: { entry: AuditEntry | null }) {
   }
 
   const e = props.entry
+  const displayValue = (val: string) => props.showValues ? val : maskValue(val)
+
   return Box(
     { flexDirection: 'column', padding: 1, borderStyle: 'round', borderColor: 'border', gap: 0 },
     Box(
@@ -204,13 +215,14 @@ function DetailPanel(props: { entry: AuditEntry | null }) {
     e.previousValue ? Box(
       { flexDirection: 'row', gap: 1 },
       Text({ color: 'muted' }, 'Previous:'),
-      Text({ color: 'error', dim: true }, e.previousValue)
+      Text({ color: 'error', dim: true }, displayValue(e.previousValue))
     ) : null,
     e.newValue ? Box(
       { flexDirection: 'row', gap: 1 },
       Text({ color: 'muted' }, 'New:'),
-      Text({ color: 'success' }, e.newValue)
-    ) : null
+      Text({ color: 'success' }, displayValue(e.newValue))
+    ) : null,
+    !props.showValues ? Text({ color: 'muted', dim: true }, '(Press v to reveal values)') : null
   )
 }
 
@@ -299,8 +311,9 @@ function FilterBar(props: {
 
 /**
  * Main Audit Viewer component
+ * Exported for use in launcher
  */
-function AuditViewer(props: AuditViewerProps) {
+export function AuditViewer(props: AuditViewerProps) {
   const app = useApp()
   const [loading, setLoading] = useState(true)
   const [entries, setEntries] = useState<AuditEntry[]>([])
@@ -314,9 +327,20 @@ function AuditViewer(props: AuditViewerProps) {
   const [opFilter, setOpFilter] = useState<AuditOperation | 'all'>('all')
   const [srcFilter, setSrcFilter] = useState<AuditSource | 'all'>('all')
   const [searchQuery, setSearchQuery] = useState('')
+  const [showValues, setShowValues] = useState(false)
 
   const project = getProjectName(props.config)
   const isFilterActive = activeFilter() !== 'none'
+
+  // Cleanup on unmount - disconnect logger
+  useEffect(() => {
+    return () => {
+      const lg = logger()
+      if (lg) {
+        lg.disconnect().catch(() => {}) // Ignore errors during cleanup
+      }
+    }
+  })
 
   // Register hotkeys (disabled when filter is open)
   useHotkeys('q', () => app.exit(), { description: 'Quit' })
@@ -332,6 +356,7 @@ function AuditViewer(props: AuditViewerProps) {
     }
   }, { description: 'Clear filters' })
   useHotkeys('escape', () => setActiveFilter('none'), { description: 'Close filter' })
+  useHotkeys('v', () => { if (!isFilterActive) setShowValues(v => !v) }, { description: 'Toggle values' })
 
   // Navigation
   useHotkeys('j', () => {
@@ -361,13 +386,18 @@ function AuditViewer(props: AuditViewerProps) {
     return newLogger
   }
 
-  // Load entries
-  async function loadEntries() {
+  // Load entries with specific filters (called from effect with tracked dependencies)
+  async function loadEntriesWithFilters(
+    op: AuditOperation | 'all',
+    src: AuditSource | 'all',
+    search: string
+  ) {
     setLoading(true)
     setError(null)
 
     try {
-      let lg = logger()
+      // Use untrack to prevent logger changes from re-triggering the effect
+      let lg = untrack(() => logger())
       if (!lg) {
         lg = await initLogger()
       }
@@ -379,14 +409,14 @@ function AuditViewer(props: AuditViewerProps) {
         limit: 100
       }
 
-      if (opFilter() !== 'all') {
-        queryOpts.operation = opFilter()
+      if (op !== 'all') {
+        queryOpts.operation = op
       }
-      if (srcFilter() !== 'all') {
-        queryOpts.source = srcFilter()
+      if (src !== 'all') {
+        queryOpts.source = src
       }
-      if (searchQuery()) {
-        queryOpts.key = searchQuery()
+      if (search) {
+        queryOpts.key = search
       }
 
       const result = await lg.query(queryOpts as any)
@@ -400,9 +430,20 @@ function AuditViewer(props: AuditViewerProps) {
     }
   }
 
-  // Reload when filters change
+  // Legacy function for manual refresh
+  function loadEntries() {
+    loadEntriesWithFilters(opFilter(), srcFilter(), searchQuery())
+  }
+
+  // Reload when filters change - explicitly track filter signals
   useEffect(() => {
-    loadEntries()
+    // Read filter signals to track them as dependencies
+    const op = opFilter()
+    const src = srcFilter()
+    const search = searchQuery()
+
+    // Load with current filters
+    loadEntriesWithFilters(op, src, search)
   })
 
   // Get selected entry
@@ -412,7 +453,7 @@ function AuditViewer(props: AuditViewerProps) {
   const statusBar = StatusBar({
     left: Text({ color: 'muted' }, `${rows().length} entries`),
     center: error() ? Text({ color: 'error' }, error()!) : undefined,
-    right: Text({ color: 'muted', dim: true }, 'q:quit  r:refresh  o:op  s:src  /:search  c:clear')
+    right: Text({ color: 'muted', dim: true }, 'q:quit  r:refresh  v:values  o:op  s:src  /:search  c:clear')
   })
 
   // Table columns
@@ -468,7 +509,7 @@ function AuditViewer(props: AuditViewerProps) {
           ),
           Box(
             { width: 40 },
-            DetailPanel({ entry: selectedEntry })
+            DetailPanel({ entry: selectedEntry, showValues: showValues() })
           )
         )
       )

@@ -7,6 +7,7 @@
 import type { CLIArgs, VaulterConfig, Environment, ExportFormat } from '../../types.js'
 import { createClientFromConfig } from '../lib/create-client.js'
 import { serializeEnv } from '../../lib/env-parser.js'
+import { SHARED_SERVICE } from '../../lib/shared.js'
 
 interface ExportContext {
   args: CLIArgs
@@ -16,6 +17,8 @@ interface ExportContext {
   environment: Environment
   verbose: boolean
   jsonOutput: boolean
+  /** Target shared variables scope */
+  shared?: boolean
 }
 
 /**
@@ -112,6 +115,10 @@ function formatDockerArgs(vars: Record<string, string>): string {
 export async function runExport(context: ExportContext): Promise<void> {
   const { args, config, project, service, environment, verbose, jsonOutput } = context
 
+  // Check for --shared flag
+  const isShared = args.shared || context.shared
+  const effectiveService = isShared ? SHARED_SERVICE : service
+
   if (!project) {
     console.error('Error: Project not specified and no config found')
     console.error('Run "vaulter init" or specify --project')
@@ -133,7 +140,8 @@ export async function runExport(context: ExportContext): Promise<void> {
   }
 
   if (verbose) {
-    console.error(`Exporting ${project}/${service || '(no service)'}/${environment} as ${format}`)
+    const scope = isShared ? '__shared__' : (effectiveService || '(no service)')
+    console.error(`Exporting ${project}/${scope}/${environment} as ${format}`)
   }
 
   const client = await createClientFromConfig({ args, config, project, verbose })
@@ -141,7 +149,7 @@ export async function runExport(context: ExportContext): Promise<void> {
   try {
     await client.connect()
 
-    const vars = await client.export(project, environment, service)
+    const vars = await client.export(project, environment, effectiveService)
 
     // Format output
     let output: string

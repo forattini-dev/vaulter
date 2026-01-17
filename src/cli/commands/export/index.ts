@@ -15,6 +15,7 @@
  */
 
 import type { CLIArgs, VaulterConfig, Environment } from '../../../types.js'
+import { SHARED_SERVICE } from '../../../lib/shared.js'
 
 export interface ExportContext {
   args: CLIArgs
@@ -151,7 +152,11 @@ export async function runExportGroup(context: ExportContext): Promise<void> {
  * Export to Docker --env-file format
  */
 async function runDockerExport(context: ExportContext): Promise<void> {
-  const { args, config, project, service, environment, verbose } = context
+  const { args, config, project, service, environment, verbose, shared } = context
+
+  // Check for --shared flag
+  const isShared = args.shared || shared
+  const effectiveService = isShared ? SHARED_SERVICE : service
 
   if (!project) {
     console.error('Error: Project not specified and no config found')
@@ -163,7 +168,7 @@ async function runDockerExport(context: ExportContext): Promise<void> {
 
   try {
     await client.connect()
-    const vars = await client.export(project, environment, service)
+    const vars = await client.export(project, environment, effectiveService)
 
     // Docker env-file format: KEY=value (no quotes, no export)
     for (const [key, value] of Object.entries(vars)) {
@@ -178,7 +183,11 @@ async function runDockerExport(context: ExportContext): Promise<void> {
  * Export to Vercel environment JSON format
  */
 async function runVercelExport(context: ExportContext): Promise<void> {
-  const { args, config, project, service, environment, verbose } = context
+  const { args, config, project, service, environment, verbose, shared } = context
+
+  // Check for --shared flag
+  const isShared = args.shared || shared
+  const effectiveService = isShared ? SHARED_SERVICE : service
 
   if (!project) {
     console.error('Error: Project not specified and no config found')
@@ -190,7 +199,7 @@ async function runVercelExport(context: ExportContext): Promise<void> {
 
   try {
     await client.connect()
-    const vars = await client.export(project, environment, service)
+    const vars = await client.export(project, environment, effectiveService)
 
     // Vercel env format
     const vercelEnv = Object.entries(vars).map(([key, value]) => ({
@@ -225,7 +234,11 @@ function mapEnvironmentToVercel(env: Environment): string[] {
  * Export to Railway CLI format
  */
 async function runRailwayExport(context: ExportContext): Promise<void> {
-  const { args, config, project, service, environment, verbose } = context
+  const { args, config, project, service, environment, verbose, shared } = context
+
+  // Check for --shared flag
+  const isShared = args.shared || shared
+  const effectiveService = isShared ? SHARED_SERVICE : service
 
   if (!project) {
     console.error('Error: Project not specified and no config found')
@@ -237,7 +250,7 @@ async function runRailwayExport(context: ExportContext): Promise<void> {
 
   try {
     await client.connect()
-    const vars = await client.export(project, environment, service)
+    const vars = await client.export(project, environment, effectiveService)
 
     // Railway format: KEY=value (can be piped to railway variables set)
     for (const [key, value] of Object.entries(vars)) {
@@ -256,7 +269,11 @@ async function runRailwayExport(context: ExportContext): Promise<void> {
  * Export to Fly.io secrets format
  */
 async function runFlyExport(context: ExportContext): Promise<void> {
-  const { args, config, project, service, environment, verbose } = context
+  const { args, config, project, service, environment, verbose, shared } = context
+
+  // Check for --shared flag
+  const isShared = args.shared || shared
+  const effectiveService = isShared ? SHARED_SERVICE : service
 
   if (!project) {
     console.error('Error: Project not specified and no config found')
@@ -268,7 +285,7 @@ async function runFlyExport(context: ExportContext): Promise<void> {
 
   try {
     await client.connect()
-    const vars = await client.export(project, environment, service)
+    const vars = await client.export(project, environment, effectiveService)
 
     // Fly.io format: KEY=value (can be piped to fly secrets import)
     for (const [key, value] of Object.entries(vars)) {
@@ -283,7 +300,11 @@ async function runFlyExport(context: ExportContext): Promise<void> {
  * Export to GitHub Actions secrets format
  */
 async function runGitHubActionsExport(context: ExportContext): Promise<void> {
-  const { args, config, project, service, environment, verbose } = context
+  const { args, config, project, service, environment, verbose, shared } = context
+
+  // Check for --shared flag
+  const isShared = args.shared || shared
+  const effectiveService = isShared ? SHARED_SERVICE : service
 
   if (!project) {
     console.error('Error: Project not specified and no config found')
@@ -297,7 +318,7 @@ async function runGitHubActionsExport(context: ExportContext): Promise<void> {
 
   try {
     await client.connect()
-    const vars = await client.export(project, environment, service)
+    const vars = await client.export(project, environment, effectiveService)
 
     // GitHub Actions format: gh secret set commands
     console.log('# GitHub Actions secrets')

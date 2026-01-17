@@ -20,10 +20,10 @@
  * ❌ NEVER modify S3 objects outside of vaulter
  *
  * ✅ ALWAYS use vaulter CLI commands:
- *    - npx vaulter push -e <env>     → Push local .env to backend
- *    - npx vaulter pull -e <env>     → Pull from backend to local
- *    - npx vaulter set KEY=value     → Set individual variable
- *    - npx vaulter sync -e <env>     → Bidirectional sync
+ *    - npx vaulter sync push -e <env>   → Push local .env to backend
+ *    - npx vaulter sync pull -e <env>   → Pull from backend to local
+ *    - npx vaulter var set KEY=value    → Set individual variable
+ *    - npx vaulter sync merge -e <env>  → Bidirectional sync
  *
  * If you see empty {} metadata in S3 objects, the data was uploaded wrong!
  * The correct structure stores encrypted values in x-amz-meta-* headers.

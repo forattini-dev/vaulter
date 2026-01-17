@@ -20,6 +20,7 @@ import {
   useApp,
   setTheme,
   tokyoNightTheme,
+  untrack,
 } from 'tuiuiu.js'
 import type { VaulterConfig, Environment, CLIArgs, EnvVar } from '../../types.js'
 import { loadConfig, getProjectName, getValidEnvironments } from '../../lib/config-loader.js'
@@ -34,7 +35,7 @@ interface SecretRow {
   updatedAt: string
 }
 
-interface DashboardProps {
+export interface DashboardProps {
   config: VaulterConfig
   environment: Environment
   service?: string
@@ -94,8 +95,9 @@ function maskValue(value: string, isSecret: boolean): string {
 
 /**
  * Main Dashboard component
+ * Exported for use in launcher
  */
-function Dashboard(props: DashboardProps) {
+export function Dashboard(props: DashboardProps) {
   const app = useApp()
   const [loading, setLoading] = useState(true)
   const [secrets, setSecrets] = useState<SecretRow[]>([])
@@ -106,6 +108,16 @@ function Dashboard(props: DashboardProps) {
 
   const project = getProjectName(props.config)
   const environments = getValidEnvironments(props.config)
+
+  // Cleanup on unmount - disconnect client
+  useEffect(() => {
+    return () => {
+      const c = client()
+      if (c) {
+        c.disconnect().catch(() => {}) // Ignore errors during cleanup
+      }
+    }
+  })
 
   // Register hotkeys
   useHotkeys('q', () => app.exit(), { description: 'Quit' })
@@ -133,13 +145,14 @@ function Dashboard(props: DashboardProps) {
     return newClient
   }
 
-  // Load secrets
-  async function loadSecrets() {
+  // Load secrets for specific environment (called from effect with tracked dependency)
+  async function loadSecretsForEnv(env: Environment) {
     setLoading(true)
     setError(null)
 
     try {
-      let c = client()
+      // Use untrack to prevent client changes from re-triggering the effect
+      let c = untrack(() => client())
       if (!c) {
         c = await initClient()
       }
@@ -147,14 +160,16 @@ function Dashboard(props: DashboardProps) {
       const vars = await c.list({
         project,
         service: props.service,
-        environment: environment()
+        environment: env
       })
 
+      // Read showValues without tracking (UI state, not a dependency)
+      const shouldShowValues = untrack(() => showValues())
       const rows: SecretRow[] = vars.map((v: EnvVar) => {
         const isSecret = isSecretKey(v.key)
         return {
           key: v.key,
-          value: showValues() ? v.value : maskValue(v.value, isSecret),
+          value: shouldShowValues ? v.value : maskValue(v.value, isSecret),
           type: isSecret ? '🔒' : '📄',
           updatedAt: v.updatedAt ? formatDate(v.updatedAt) : '-'
         }
@@ -170,9 +185,15 @@ function Dashboard(props: DashboardProps) {
     }
   }
 
-  // Reload when environment changes
+  // Legacy function for manual refresh
+  function loadSecrets() {
+    loadSecretsForEnv(environment())
+  }
+
+  // Reload when environment changes - explicitly track environment signal
   useEffect(() => {
-    loadSecrets()
+    const env = environment()
+    loadSecretsForEnv(env)
   })
 
   // Status bar content
@@ -207,7 +228,7 @@ function Dashboard(props: DashboardProps) {
     ? Box(
         { justifyContent: 'center', alignItems: 'center', height: '100%', flexDirection: 'column', gap: 1 },
         Text({ color: 'muted' }, 'No variables found'),
-        Text({ color: 'muted', dim: true }, `Try: vaulter set MY_VAR=value -e ${environment()}`)
+        Text({ color: 'muted', dim: true }, `Try: vaulter var set MY_VAR=value -e ${environment()}`)
       )
     : Table({
         columns,

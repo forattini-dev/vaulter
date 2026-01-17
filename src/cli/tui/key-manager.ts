@@ -20,6 +20,7 @@ import {
   useApp,
   setTheme,
   tokyoNightTheme,
+  untrack,
 } from 'tuiuiu.js'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -41,7 +42,7 @@ interface KeyInfo {
   publicKeySize?: number
 }
 
-interface KeyManagerProps {
+export interface KeyManagerProps {
   config: VaulterConfig
   verbose?: boolean
 }
@@ -241,8 +242,9 @@ function ConfigPanel(props: { config: VaulterConfig }) {
 
 /**
  * Main Key Manager component
+ * Exported for use in launcher
  */
-function KeyManager(props: KeyManagerProps) {
+export function KeyManager(props: KeyManagerProps) {
   const app = useApp()
   const [loading, setLoading] = useState(true)
   const [keys, setKeys] = useState<KeyInfo[]>([])
@@ -283,7 +285,7 @@ function KeyManager(props: KeyManagerProps) {
         }
 
         for (const name of keyNames) {
-          const keyInfo = await loadKeyInfo(name, 'project', project, projectKeysDir)
+          const keyInfo = await loadKeyInfo(name, 'project', project)
           if (keyInfo) keyList.push(keyInfo)
         }
       }
@@ -299,7 +301,7 @@ function KeyManager(props: KeyManagerProps) {
         }
 
         for (const name of keyNames) {
-          const keyInfo = await loadKeyInfo(name, 'global', project, globalKeysDir)
+          const keyInfo = await loadKeyInfo(name, 'global', project)
           if (keyInfo) keyList.push(keyInfo)
         }
       }
@@ -322,8 +324,7 @@ function KeyManager(props: KeyManagerProps) {
   async function loadKeyInfo(
     name: string,
     scope: 'project' | 'global',
-    projectName: string,
-    keysDir: string
+    projectName: string
   ): Promise<KeyInfo | null> {
     const fullName = scope === 'global' ? `global:${name}` : name
     const paths = resolveKeyPaths(fullName, projectName)
@@ -371,9 +372,11 @@ function KeyManager(props: KeyManagerProps) {
     }
   }
 
-  // Load on mount
+  // Load on mount - use untrack to ensure this only runs once
   useEffect(() => {
-    loadKeys()
+    // The effect has no tracked dependencies, so it runs only on mount
+    // Use untrack wrapper for safety in case any signals are added later
+    untrack(() => loadKeys())
   })
 
   // Get selected key
