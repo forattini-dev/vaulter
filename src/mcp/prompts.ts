@@ -161,6 +161,32 @@ export function registerPrompts(): Prompt[] {
           required: false
         }
       ]
+    },
+    {
+      name: 'batch_operations',
+      description: 'Perform batch operations on multiple environment variables at once. Supports multi-set, multi-get, and multi-delete.',
+      arguments: [
+        {
+          name: 'operation',
+          description: 'Operation type: "set" (create/update multiple), "get" (read multiple), "delete" (remove multiple)',
+          required: true
+        },
+        {
+          name: 'environment',
+          description: 'Environment: dev, stg, prd, sbx, or dr',
+          required: true
+        },
+        {
+          name: 'variables',
+          description: 'For "set": JSON object like {"VAR1": "val1", "VAR2": "val2"}. For "get"/"delete": comma-separated keys like "VAR1,VAR2,VAR3"',
+          required: true
+        },
+        {
+          name: 'shared',
+          description: 'For "set" only: set as shared variables (true/false)',
+          required: false
+        }
+      ]
     }
   ]
 }
@@ -184,6 +210,8 @@ export function getPrompt(name: string, args: Record<string, string>): GetPrompt
       return getRotationWorkflowPrompt(args)
     case 'shared_vars_workflow':
       return getSharedVarsWorkflowPrompt(args)
+    case 'batch_operations':
+      return getBatchOperationsPrompt(args)
     default:
       throw new Error(`Unknown prompt: ${name}`)
   }
@@ -728,6 +756,138 @@ Please perform a shared variables audit:
    # Promote to shared
    vaulter set KEY "value" -e ${environment} --shared
    \`\`\`` : ''}`
+        }
+      }
+    ]
+  }
+}
+
+function getBatchOperationsPrompt(args: Record<string, string>): GetPromptResult {
+  const operation = args.operation || 'set'
+  const environment = args.environment || 'dev'
+  const variables = args.variables || ''
+  const shared = args.shared === 'true'
+
+  const operationDescriptions: Record<string, string> = {
+    set: 'create/update',
+    get: 'retrieve',
+    delete: 'remove'
+  }
+
+  return {
+    description: `Batch ${operationDescriptions[operation] || operation} variables in ${environment}`,
+    messages: [
+      {
+        role: 'user',
+        content: {
+          type: 'text',
+          text: `Help me perform batch operations on environment variables:
+
+**Operation:** ${operation}
+**Environment:** ${environment}
+**Variables:** ${variables}
+${operation === 'set' && shared ? '**Shared:** Yes (applies to all services)' : ''}
+
+## Batch Operations Overview
+
+Vaulter supports three batch operations to reduce round-trips:
+
+| Tool | Purpose | Input Format |
+|------|---------|--------------|
+| \`vaulter_multi_get\` | Read multiple vars | \`keys: ["VAR1", "VAR2"]\` |
+| \`vaulter_multi_set\` | Set multiple vars | \`variables: {"VAR1": "val1"}\` or \`[{key, value}]\` |
+| \`vaulter_multi_delete\` | Delete multiple vars | \`keys: ["VAR1", "VAR2"]\` |
+
+${operation === 'set' ? `## Batch Set Operation
+
+Please:
+
+1. **Parse the variables** from: \`${variables}\`
+   - Expected format: JSON object like \`{"VAR1": "val1", "VAR2": "val2"}\`
+   - Or comma-separated: \`VAR1=val1,VAR2=val2\`
+
+2. **Validate the variables:**
+   - Check for empty keys or values
+   - Verify key naming conventions (uppercase, underscores)
+   - Identify potential secrets vs configs
+
+3. **Execute batch set** using \`vaulter_multi_set\`:
+   \`\`\`json
+   {
+     "variables": ${variables || '{"VAR1": "value1", "VAR2": "value2"}'},
+     "environment": "${environment}"${shared ? ',\n     "shared": true' : ''}
+   }
+   \`\`\`
+
+4. **Verify the results:**
+   - Show which variables were created/updated
+   - Confirm final state with \`vaulter_list\`
+
+5. **Recommendations:**
+   - Tag sensitive variables appropriately
+   - Consider if any should be shared variables` : ''}
+
+${operation === 'get' ? `## Batch Get Operation
+
+Please:
+
+1. **Parse the keys** from: \`${variables}\`
+   - Expected format: comma-separated like \`VAR1,VAR2,VAR3\`
+   - Or JSON array: \`["VAR1", "VAR2", "VAR3"]\`
+
+2. **Execute batch get** using \`vaulter_multi_get\`:
+   \`\`\`json
+   {
+     "keys": ${variables.startsWith('[') ? variables : `["${variables.split(',').join('", "')}"]`},
+     "environment": "${environment}"
+   }
+   \`\`\`
+
+3. **Display the results:**
+   | Key | Value | Status |
+   |-----|-------|--------|
+   | VAR1 | *** | Found |
+   | VAR2 | - | Not found |
+
+4. **Summary:**
+   - Total requested: X
+   - Found: X
+   - Not found: X (list them)` : ''}
+
+${operation === 'delete' ? `## Batch Delete Operation
+
+Please:
+
+1. **Parse the keys** from: \`${variables}\`
+   - Expected format: comma-separated like \`VAR1,VAR2,VAR3\`
+
+2. **Verify before deletion:**
+   - Use \`vaulter_multi_get\` to confirm these variables exist
+   - Show which will be deleted
+
+3. **⚠️ Confirm with user** before executing deletion
+
+4. **Execute batch delete** using \`vaulter_multi_delete\`:
+   \`\`\`json
+   {
+     "keys": ${variables.startsWith('[') ? variables : `["${variables.split(',').join('", "')}"]`},
+     "environment": "${environment}"
+   }
+   \`\`\`
+
+5. **Display results:**
+   - ✓ Deleted: VAR1, VAR2
+   - ⚠ Not found: VAR3
+
+6. **Verify cleanup:**
+   - Confirm variables are removed with \`vaulter_list\`` : ''}
+
+## Best Practices
+
+- **For large batches** (>50 variables): Consider using \`vaulter_push\` with a .env file
+- **For shared variables**: Use \`shared: true\` in multi_set to apply to all services
+- **For production**: Always preview with \`vaulter_list\` before and after
+- **For auditing**: Check \`vaulter_audit_list\` to see batch operation logs`
         }
       }
     ]

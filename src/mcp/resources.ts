@@ -134,7 +134,7 @@ export async function listResources(): Promise<Resource[]> {
   resources.push({
     uri: 'vaulter://tools-guide',
     name: 'Tools Guide',
-    description: 'Comprehensive guide on which vaulter tool to use for each scenario. Includes 27 tools organized by category.',
+    description: 'Comprehensive guide on which vaulter tool to use for each scenario. Includes 30 tools organized by category.',
     mimeType: 'text/markdown'
   })
 
@@ -366,7 +366,7 @@ Backend resolution priority (first match wins):
  * Read tools guide resource - Which tool to use for each scenario
  */
 async function handleToolsGuideRead(uri: string): Promise<{ contents: Array<{ uri: string; mimeType: string; text: string }> }> {
-  const guide = `# Vaulter MCP Tools Guide (27 tools)
+  const guide = `# Vaulter MCP Tools Guide (30 tools)
 
 ## Quick Reference
 
@@ -381,6 +381,9 @@ async function handleToolsGuideRead(uri: string): Promise<{ contents: Array<{ ur
 | Compare environments | \`vaulter_compare\` |
 | Search across envs | \`vaulter_search\` |
 | Check system status | \`vaulter_status\` |
+| **Batch: read multiple** | \`vaulter_multi_get\` |
+| **Batch: set multiple** | \`vaulter_multi_set\` |
+| **Batch: delete multiple** | \`vaulter_multi_delete\` |
 
 ---
 
@@ -443,6 +446,47 @@ environment: "dev"
 \`\`\`
 environment: "dev"
 \`\`\`
+
+---
+
+## ⚡ Batch Operations (3 tools)
+
+Batch tools reduce round-trips by operating on multiple variables at once.
+
+### \`vaulter_multi_get\`
+**Use for:** Retrieving multiple variables at once
+\`\`\`
+keys: ["DATABASE_URL", "API_KEY", "SECRET_TOKEN"]
+environment: "dev"
+\`\`\`
+
+### \`vaulter_multi_set\`
+**Use for:** Setting multiple variables in one call
+\`\`\`
+# Object format:
+variables: { "VAR1": "val1", "VAR2": "val2" }
+environment: "dev"
+
+# Or array format with tags:
+variables: [
+  { key: "VAR1", value: "val1", tags: ["api"] },
+  { key: "VAR2", value: "val2" }
+]
+shared: true  # optional, for monorepo shared vars
+\`\`\`
+
+### \`vaulter_multi_delete\`
+**Use for:** Deleting multiple variables at once
+\`\`\`
+keys: ["OLD_VAR1", "OLD_VAR2", "DEPRECATED"]
+environment: "dev"
+\`\`\`
+
+> **When to use batch tools:**
+> - Migrating multiple variables at once
+> - Cleaning up deprecated keys
+> - Setting up new environments
+> - Copying configs between services
 
 ---
 
@@ -600,6 +644,11 @@ mode: "split"  # or "unified"
 1. \`vaulter_shared_list\` - See shared vars
 2. \`vaulter_set shared=true\` - Add shared var
 3. \`vaulter_inheritance_info\` - Check service inheritance
+
+### 6. Batch operations
+1. \`vaulter_multi_set\` - Set multiple vars: \`{ "VAR1": "a", "VAR2": "b" }\`
+2. \`vaulter_multi_get\` - Get specific vars: \`["VAR1", "VAR2"]\`
+3. \`vaulter_multi_delete\` - Remove deprecated keys: \`["OLD1", "OLD2"]\`
 `
 
   return {

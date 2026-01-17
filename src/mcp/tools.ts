@@ -2,7 +2,7 @@
  * Vaulter MCP Tools
  *
  * Comprehensive tool definitions and handlers for the MCP server
- * Provides 27 tools for environment, secrets, and key management
+ * Provides 30 tools for environment, secrets, and key management
  */
 
 import type { Tool } from '@modelcontextprotocol/sdk/types.js'
@@ -499,6 +499,81 @@ export function registerTools(): Tool[] {
       }
     },
 
+    // === BATCH OPERATIONS ===
+    {
+      name: 'vaulter_multi_get',
+      description: 'Get multiple environment variables by keys in a single call. Returns key-value pairs for found variables.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          keys: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'Array of variable names to retrieve (e.g., ["DATABASE_URL", "API_KEY", "SECRET"])'
+          },
+          environment: { type: 'string', description: 'Environment name', default: 'dev' },
+          project: { type: 'string', description: 'Project name (auto-detected from config if omitted)' },
+          service: { type: 'string', description: 'Service name for monorepos' }
+        },
+        required: ['keys']
+      }
+    },
+    {
+      name: 'vaulter_multi_set',
+      description: 'Set multiple environment variables in a single call. Accepts an array of key-value pairs or an object with variables.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          variables: {
+            oneOf: [
+              {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: {
+                    key: { type: 'string', description: 'Variable name' },
+                    value: { type: 'string', description: 'Variable value' },
+                    tags: { type: 'array', items: { type: 'string' }, description: 'Optional tags' }
+                  },
+                  required: ['key', 'value']
+                },
+                description: 'Array of variables: [{ key: "VAR1", value: "val1" }, { key: "VAR2", value: "val2" }]'
+              },
+              {
+                type: 'object',
+                additionalProperties: { type: 'string' },
+                description: 'Object with key-value pairs: { "VAR1": "val1", "VAR2": "val2" }'
+              }
+            ],
+            description: 'Variables to set. Can be array of {key, value, tags?} objects or a simple {key: value} object'
+          },
+          environment: { type: 'string', description: 'Environment name', default: 'dev' },
+          project: { type: 'string', description: 'Project name' },
+          service: { type: 'string', description: 'Service name for monorepos' },
+          shared: { type: 'boolean', description: 'Set as shared variables (applies to all services in monorepo)', default: false }
+        },
+        required: ['variables']
+      }
+    },
+    {
+      name: 'vaulter_multi_delete',
+      description: 'Delete multiple environment variables by keys in a single call.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          keys: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'Array of variable names to delete (e.g., ["OLD_VAR1", "OLD_VAR2", "DEPRECATED_KEY"])'
+          },
+          environment: { type: 'string', description: 'Environment name', default: 'dev' },
+          project: { type: 'string', description: 'Project name' },
+          service: { type: 'string', description: 'Service name' }
+        },
+        required: ['keys']
+      }
+    },
+
     // === SYNC TOOLS ===
     {
       name: 'vaulter_sync',
@@ -897,6 +972,16 @@ export async function handleToolCall(
       case 'vaulter_export':
         return await handleExportCall(client, project, environment, service, args)
 
+      // === BATCH OPERATIONS ===
+      case 'vaulter_multi_get':
+        return await handleMultiGetCall(client, project, environment, service, args)
+
+      case 'vaulter_multi_set':
+        return await handleMultiSetCall(client, project, environment, service, args)
+
+      case 'vaulter_multi_delete':
+        return await handleMultiDeleteCall(client, project, environment, service, args)
+
       case 'vaulter_sync':
         return await handleSyncCall(client, config, project, environment, service, args)
 
@@ -1020,6 +1105,203 @@ async function handleDeleteCall(
     content: [{
       type: 'text',
       text: deleted ? `✓ Deleted ${key} from ${project}/${environment}` : `Variable ${key} not found`
+    }]
+  }
+}
+
+// === BATCH OPERATION HANDLERS ===
+
+async function handleMultiGetCall(
+  client: VaulterClient,
+  project: string,
+  environment: Environment,
+  service: string | undefined,
+  args: Record<string, unknown>
+): Promise<{ content: Array<{ type: 'text'; text: string }> }> {
+  const keys = args.keys as string[]
+
+  if (!keys || !Array.isArray(keys) || keys.length === 0) {
+    return {
+      content: [{
+        type: 'text',
+        text: 'Error: keys must be a non-empty array of variable names'
+      }]
+    }
+  }
+
+  const results: Record<string, string | null> = {}
+  const found: string[] = []
+  const notFound: string[] = []
+
+  for (const key of keys) {
+    const envVar = await client.get(key, project, environment, service)
+    if (envVar !== null) {
+      results[key] = envVar.value
+      found.push(key)
+    } else {
+      results[key] = null
+      notFound.push(key)
+    }
+  }
+
+  const location = `${project}/${environment}${service ? `/${service}` : ''}`
+  const lines = [
+    `Variables from ${location}:`,
+    '',
+    ...found.map(k => `${k}=${results[k]}`),
+    '',
+    `Found: ${found.length}/${keys.length}`
+  ]
+
+  if (notFound.length > 0) {
+    lines.push(`Not found: ${notFound.join(', ')}`)
+  }
+
+  return {
+    content: [{
+      type: 'text',
+      text: lines.join('\n')
+    }]
+  }
+}
+
+interface VariableInput {
+  key: string
+  value: string
+  tags?: string[]
+}
+
+async function handleMultiSetCall(
+  client: VaulterClient,
+  project: string,
+  environment: Environment,
+  service: string | undefined,
+  args: Record<string, unknown>
+): Promise<{ content: Array<{ type: 'text'; text: string }> }> {
+  const variables = args.variables
+  const shared = args.shared === true
+
+  // If shared flag is set, use __shared__ as service
+  const effectiveService = shared ? SHARED_SERVICE : service
+
+  if (!variables) {
+    return {
+      content: [{
+        type: 'text',
+        text: 'Error: variables is required. Provide an array of {key, value} objects or a {key: value} object'
+      }]
+    }
+  }
+
+  // Normalize to array of {key, value, tags?} objects
+  let varsArray: VariableInput[]
+
+  if (Array.isArray(variables)) {
+    // Already array format: [{ key: "VAR", value: "val", tags?: [...] }]
+    varsArray = variables as VariableInput[]
+  } else if (typeof variables === 'object') {
+    // Object format: { VAR1: "val1", VAR2: "val2" }
+    varsArray = Object.entries(variables as Record<string, string>).map(([key, value]) => ({
+      key,
+      value: String(value)
+    }))
+  } else {
+    return {
+      content: [{
+        type: 'text',
+        text: 'Error: variables must be an array of {key, value} objects or a {key: value} object'
+      }]
+    }
+  }
+
+  if (varsArray.length === 0) {
+    return {
+      content: [{
+        type: 'text',
+        text: 'Error: no variables provided'
+      }]
+    }
+  }
+
+  const results: string[] = []
+
+  for (const { key, value, tags } of varsArray) {
+    if (!key || value === undefined) {
+      results.push(`⚠ Skipped invalid entry (missing key or value)`)
+      continue
+    }
+
+    await client.set({
+      key,
+      value: String(value),
+      project,
+      environment,
+      service: effectiveService,
+      tags,
+      metadata: { source: 'manual' }
+    })
+    results.push(`✓ ${key}`)
+  }
+
+  const location = shared
+    ? `${project}/${environment} (shared)`
+    : `${project}/${environment}${service ? `/${service}` : ''}`
+
+  return {
+    content: [{
+      type: 'text',
+      text: `Set ${varsArray.length} variable(s) in ${location}:\n${results.join('\n')}`
+    }]
+  }
+}
+
+async function handleMultiDeleteCall(
+  client: VaulterClient,
+  project: string,
+  environment: Environment,
+  service: string | undefined,
+  args: Record<string, unknown>
+): Promise<{ content: Array<{ type: 'text'; text: string }> }> {
+  const keys = args.keys as string[]
+
+  if (!keys || !Array.isArray(keys) || keys.length === 0) {
+    return {
+      content: [{
+        type: 'text',
+        text: 'Error: keys must be a non-empty array of variable names'
+      }]
+    }
+  }
+
+  const deleted: string[] = []
+  const notFound: string[] = []
+
+  for (const key of keys) {
+    const wasDeleted = await client.delete(key, project, environment, service)
+    if (wasDeleted) {
+      deleted.push(key)
+    } else {
+      notFound.push(key)
+    }
+  }
+
+  const location = `${project}/${environment}${service ? `/${service}` : ''}`
+  const lines = [`Deleted from ${location}:`]
+
+  if (deleted.length > 0) {
+    lines.push(`✓ Deleted: ${deleted.join(', ')}`)
+  }
+
+  if (notFound.length > 0) {
+    lines.push(`⚠ Not found: ${notFound.join(', ')}`)
+  }
+
+  lines.push(`\nTotal: ${deleted.length}/${keys.length} deleted`)
+
+  return {
+    content: [{
+      type: 'text',
+      text: lines.join('\n')
     }]
   }
 }
