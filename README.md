@@ -27,11 +27,11 @@ curl -fsSL https://raw.githubusercontent.com/forattini-dev/vaulter/main/install.
 ## Quick Start
 
 ```bash
-vaulter init                                    # Initialize project
+vaulter init                                      # Initialize project
+vaulter key generate --name master                # Generate encryption key
 vaulter set DATABASE_URL="postgres://..." -e dev  # Set secret
-vaulter set PORT::3000 -e dev                   # Set config (plain)
-eval $(vaulter export -e dev)                   # Export to shell
-vaulter k8s:secret -e prd | kubectl apply -f -  # Deploy to K8s
+vaulter set PORT::3000 -e dev                     # Set config (plain)
+eval $(vaulter export -e dev)                     # Export to shell
 ```
 
 ---
