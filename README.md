@@ -297,15 +297,16 @@ vaulter mcp
 | **Integrations** | `k8s_secret`, `k8s_configmap`, `helm_values`, `tf_vars` |
 | **Keys** | `key_generate`, `key_list`, `key_show`, `key_export`, `key_import` |
 
-### Resources
+### Resources (4)
+
+Static data views (no input required). For actions with parameters, use tools.
 
 | URI | Description |
 |:----|:------------|
-| `vaulter://config` | Project configuration |
+| `vaulter://instructions` | **Read first!** How vaulter stores data |
 | `vaulter://mcp-config` | MCP settings sources |
-| `vaulter://keys` | Encryption keys |
-| `vaulter://project/env` | Environment variables |
-| `vaulter://compare/env1/env2` | Environment diff |
+| `vaulter://config` | Project configuration (YAML) |
+| `vaulter://services` | Monorepo services list |
 
 ---
 

@@ -2,7 +2,7 @@
  * Vaulter MCP Tools
  *
  * Comprehensive tool definitions and handlers for the MCP server
- * Provides 22 tools for environment, secrets, and key management
+ * Provides 27 tools for environment, secrets, and key management
  */
 
 import type { Tool } from '@modelcontextprotocol/sdk/types.js'
@@ -34,6 +34,15 @@ import { discoverServices } from '../lib/monorepo.js'
 import { scanMonorepo, formatScanResult } from '../lib/monorepo-detect.js'
 import { getSecretPatterns, splitVarsBySecret } from '../lib/secret-patterns.js'
 import { generateKeyPair, generatePassphrase, detectAlgorithm } from '../lib/crypto.js'
+import { createAuditLogger } from '../lib/audit.js'
+import {
+  SHARED_SERVICE,
+  resolveVariables,
+  calculateInheritanceStats,
+  toRecord,
+  formatSource
+} from '../lib/shared.js'
+import type { AuditOperation, AuditSource, AuditQueryOptions } from '../types.js'
 import type { VaulterConfig, Environment, AsymmetricAlgorithm } from '../types.js'
 import { DEFAULT_ENVIRONMENTS } from '../types.js'
 import { resolveBackendUrls } from '../index.js'
@@ -423,7 +432,7 @@ export function registerTools(): Tool[] {
     },
     {
       name: 'vaulter_set',
-      description: 'Set an environment variable in the backend (encrypted)',
+      description: 'Set an environment variable in the backend (encrypted). Use shared=true for monorepo variables that apply to all services.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -432,6 +441,7 @@ export function registerTools(): Tool[] {
           environment: { type: 'string', description: 'Environment name (as defined in config)', default: 'dev' },
           project: { type: 'string', description: 'Project name' },
           service: { type: 'string', description: 'Service name for monorepos' },
+          shared: { type: 'boolean', description: 'Set as shared variable (applies to all services in monorepo)', default: false },
           tags: { type: 'array', items: { type: 'string' }, description: 'Tags for categorization (e.g., ["database", "sensitive"])' }
         },
         required: ['key', 'value']
@@ -716,6 +726,88 @@ export function registerTools(): Tool[] {
         },
         required: ['file']
       }
+    },
+
+    // === AUDIT TOOLS ===
+    {
+      name: 'vaulter_audit_list',
+      description: 'List audit log entries showing who changed what and when. Supports filtering by user, operation, date range, and key pattern.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          environment: { type: 'string', description: 'Environment name', default: 'dev' },
+          project: { type: 'string', description: 'Project name' },
+          service: { type: 'string', description: 'Service name' },
+          user: { type: 'string', description: 'Filter by user name' },
+          operation: { type: 'string', description: 'Filter by operation type', enum: ['set', 'delete', 'sync', 'push', 'rotate', 'deleteAll'] },
+          key: { type: 'string', description: 'Filter by key pattern (supports * wildcards, e.g., "DATABASE_*")' },
+          since: { type: 'string', description: 'Filter entries after this date (ISO 8601 format)' },
+          until: { type: 'string', description: 'Filter entries before this date (ISO 8601 format)' },
+          limit: { type: 'number', description: 'Maximum number of entries to return (default: 50)', default: 50 }
+        }
+      }
+    },
+
+    // === CATEGORIZATION TOOLS ===
+    {
+      name: 'vaulter_categorize_vars',
+      description: 'Categorize variables by secret patterns. Shows which variables would be treated as secrets vs configs based on naming patterns.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          environment: { type: 'string', description: 'Environment name', default: 'dev' },
+          project: { type: 'string', description: 'Project name' },
+          service: { type: 'string', description: 'Service name' }
+        }
+      }
+    },
+
+    // === SHARED VARIABLES TOOLS (MONOREPO) ===
+    {
+      name: 'vaulter_shared_list',
+      description: 'List shared variables that apply to all services in a monorepo. Shared vars are inherited by all services unless overridden.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          environment: { type: 'string', description: 'Environment name', default: 'dev' },
+          project: { type: 'string', description: 'Project name' },
+          showValues: { type: 'boolean', description: 'Show actual values', default: false }
+        }
+      }
+    },
+    {
+      name: 'vaulter_inheritance_info',
+      description: 'Show inheritance information for a service. Displays which variables are inherited from shared, which are overridden, and which are service-only.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          service: { type: 'string', description: 'Service name (required)' },
+          environment: { type: 'string', description: 'Environment name', default: 'dev' },
+          project: { type: 'string', description: 'Project name' }
+        },
+        required: ['service']
+      }
+    },
+
+    // === STATUS TOOL (consolidated) ===
+    {
+      name: 'vaulter_status',
+      description: 'Get comprehensive status including encryption config, rotation status, and audit summary. Use include parameter to select sections.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          environment: { type: 'string', description: 'Environment name', default: 'dev' },
+          project: { type: 'string', description: 'Project name' },
+          service: { type: 'string', description: 'Service name' },
+          include: {
+            type: 'array',
+            items: { type: 'string', enum: ['encryption', 'rotation', 'audit', 'all'] },
+            description: 'Sections to include (default: all)',
+            default: ['all']
+          },
+          overdue_only: { type: 'boolean', description: 'For rotation: only show overdue secrets', default: false }
+        }
+      }
     }
   ]
 }
@@ -822,6 +914,25 @@ export async function handleToolCall(
       case 'vaulter_tf_vars':
         return await handleTfVarsCall(client, config, project, environment, service, args)
 
+      // === AUDIT TOOLS ===
+      case 'vaulter_audit_list':
+        return await handleAuditListCall(client, config, project, environment, service, args)
+
+      // === CATEGORIZATION TOOLS ===
+      case 'vaulter_categorize_vars':
+        return await handleCategorizeVarsCall(client, config, project, environment, service, args)
+
+      // === SHARED VARIABLES TOOLS ===
+      case 'vaulter_shared_list':
+        return await handleSharedListCall(client, project, environment, args)
+
+      case 'vaulter_inheritance_info':
+        return await handleInheritanceInfoCall(client, project, environment, args)
+
+      // === STATUS TOOL (consolidated) ===
+      case 'vaulter_status':
+        return await handleStatusCall(client, config, project, environment, service, args)
+
       default:
         return { content: [{ type: 'text', text: `Unknown tool: ${name}` }] }
     }
@@ -859,21 +970,29 @@ async function handleSetCall(
   const key = args.key as string
   const value = args.value as string
   const tags = args.tags as string[] | undefined
+  const shared = args.shared === true
+
+  // If shared flag is set, use __shared__ as service
+  const effectiveService = shared ? SHARED_SERVICE : service
 
   await client.set({
     key,
     value,
     project,
     environment,
-    service,
+    service: effectiveService,
     tags,
     metadata: { source: 'manual' }
   })
 
+  const location = shared
+    ? `${project}/${environment} (shared)`
+    : `${project}/${environment}${service ? `/${service}` : ''}`
+
   return {
     content: [{
       type: 'text',
-      text: `✓ Set ${key} in ${project}/${environment}${service ? `/${service}` : ''}`
+      text: `✓ Set ${key} in ${location}`
     }]
   }
 }
@@ -2160,4 +2279,392 @@ async function handleKeyImportCall(
   }
 
   return { content: [{ type: 'text', text: lines.join('\n') }] }
+}
+
+// === NEW TOOL HANDLERS ===
+
+/**
+ * Handle vaulter_audit_list call
+ */
+async function handleAuditListCall(
+  client: VaulterClient,
+  config: VaulterConfig | null,
+  project: string,
+  environment: Environment,
+  service: string | undefined,
+  args: Record<string, unknown>
+): Promise<{ content: Array<{ type: 'text'; text: string }> }> {
+  const auditLogger = createAuditLogger(config?.audit)
+
+  // Connect audit logger to same backend as client
+  if (!config) {
+    return { content: [{ type: 'text', text: 'Error: No configuration found' }] }
+  }
+  const urls = resolveBackendUrls(config)
+  if (urls.length === 0) {
+    return { content: [{ type: 'text', text: 'Error: No backend URL configured for audit logging' }] }
+  }
+
+  try {
+    await auditLogger.connect(urls[0])
+
+    const queryOptions: AuditQueryOptions = {
+      project,
+      environment,
+      service,
+      user: args.user as string | undefined,
+      operation: args.operation as AuditOperation | undefined,
+      key: args.key as string | undefined,
+      since: args.since ? new Date(args.since as string) : undefined,
+      until: args.until ? new Date(args.until as string) : undefined,
+      limit: (args.limit as number) || 50
+    }
+
+    const entries = await auditLogger.query(queryOptions)
+
+    if (entries.length === 0) {
+      return { content: [{ type: 'text', text: 'No audit entries found matching the criteria' }] }
+    }
+
+    const lines = [
+      `Audit Log for ${project}/${environment}${service ? `/${service}` : ''}`,
+      `Found ${entries.length} entries:`,
+      ''
+    ]
+
+    for (const entry of entries) {
+      const ts = new Date(entry.timestamp).toISOString()
+      const val = entry.newValue ? ` (value: ${entry.newValue})` : ''
+      lines.push(`[${ts}] ${entry.user} ${entry.operation} ${entry.key}${val} via ${entry.source}`)
+    }
+
+    return { content: [{ type: 'text', text: lines.join('\n') }] }
+  } finally {
+    await auditLogger.disconnect()
+  }
+}
+
+/**
+ * Handle vaulter_categorize_vars call
+ */
+async function handleCategorizeVarsCall(
+  client: VaulterClient,
+  config: VaulterConfig | null,
+  project: string,
+  environment: Environment,
+  service: string | undefined,
+  args: Record<string, unknown>
+): Promise<{ content: Array<{ type: 'text'; text: string }> }> {
+  const vars = await client.list({ project, environment, service })
+  const patterns = getSecretPatterns(config)
+
+  // Convert EnvVar[] to Record<string, string>
+  const varsRecord: Record<string, string> = {}
+  for (const v of vars) {
+    varsRecord[v.key] = v.value
+  }
+
+  const { secrets, plain } = splitVarsBySecret(varsRecord, patterns)
+  const secretKeys = Object.keys(secrets)
+  const plainKeys = Object.keys(plain)
+
+  const lines = [
+    `Variable Categorization for ${project}/${environment}${service ? `/${service}` : ''}`,
+    '',
+    `SECRETS (${secretKeys.length} variables):`,
+    '  (Should be encrypted and kept in secrets directory)'
+  ]
+
+  for (const key of secretKeys) {
+    lines.push(`  • ${key}`)
+  }
+
+  lines.push('')
+  lines.push(`CONFIGS (${plainKeys.length} variables):`)
+  lines.push('  (Can be committed to git)')
+
+  for (const key of plainKeys) {
+    lines.push(`  • ${key}`)
+  }
+
+  lines.push('')
+  lines.push('Based on patterns:')
+  for (const p of patterns.slice(0, 5)) {
+    lines.push(`  ${p}`)
+  }
+  if (patterns.length > 5) {
+    lines.push(`  ... and ${patterns.length - 5} more`)
+  }
+
+  return { content: [{ type: 'text', text: lines.join('\n') }] }
+}
+
+/**
+ * Handle vaulter_shared_list call
+ */
+async function handleSharedListCall(
+  client: VaulterClient,
+  project: string,
+  environment: Environment,
+  args: Record<string, unknown>
+): Promise<{ content: Array<{ type: 'text'; text: string }> }> {
+  const showValues = args.showValues === true
+
+  // List shared variables (service = '__shared__')
+  const sharedVars = await client.list({ project, environment, service: SHARED_SERVICE })
+
+  if (sharedVars.length === 0) {
+    return {
+      content: [{
+        type: 'text',
+        text: `No shared variables in ${project}/${environment}
+
+Shared variables apply to ALL services in a monorepo.
+Set one with: vaulter_set key=... value=... shared=true
+
+Example:
+  vaulter_set key=DATABASE_HOST value=db.example.com shared=true`
+      }]
+    }
+  }
+
+  const lines = [
+    `Shared Variables for ${project}/${environment}`,
+    `(Apply to all services unless overridden)`,
+    ''
+  ]
+
+  for (const v of sharedVars) {
+    if (showValues) {
+      lines.push(`  ${v.key}=${v.value}`)
+    } else {
+      lines.push(`  ${v.key}`)
+    }
+  }
+
+  lines.push('')
+  lines.push(`Total: ${sharedVars.length} shared variables`)
+
+  return { content: [{ type: 'text', text: lines.join('\n') }] }
+}
+
+/**
+ * Handle vaulter_inheritance_info call
+ */
+async function handleInheritanceInfoCall(
+  client: VaulterClient,
+  project: string,
+  environment: Environment,
+  args: Record<string, unknown>
+): Promise<{ content: Array<{ type: 'text'; text: string }> }> {
+  const service = args.service as string
+
+  // Get shared and service-specific variables
+  const sharedVars = await client.list({ project, environment, service: SHARED_SERVICE })
+  const serviceVars = await client.list({ project, environment, service })
+
+  // Convert to records
+  const sharedRecord: Record<string, string> = {}
+  for (const v of sharedVars) {
+    sharedRecord[v.key] = v.value
+  }
+
+  const serviceRecord: Record<string, string> = {}
+  for (const v of serviceVars) {
+    serviceRecord[v.key] = v.value
+  }
+
+  // Calculate inheritance
+  const stats = calculateInheritanceStats(service, sharedRecord, serviceRecord)
+  const resolved = resolveVariables(sharedRecord, serviceRecord)
+
+  const lines = [
+    `Inheritance Info for ${project}/${environment}/${service}`,
+    '',
+    `Summary:`,
+    `  Total variables: ${stats.total}`,
+    `  Inherited from shared: ${stats.inherited}`,
+    `  Overrides shared: ${stats.overrides}`,
+    `  Service-only: ${stats.serviceOnly}`,
+    ''
+  ]
+
+  // Group by source
+  const inherited: string[] = []
+  const overrides: string[] = []
+  const serviceOnly: string[] = []
+
+  for (const [key, v] of resolved) {
+    switch (v.source) {
+      case 'shared':
+        inherited.push(key)
+        break
+      case 'override':
+        overrides.push(key)
+        break
+      case 'service':
+        serviceOnly.push(key)
+        break
+    }
+  }
+
+  if (inherited.length > 0) {
+    lines.push('Inherited (from shared):')
+    for (const k of inherited) {
+      lines.push(`  • ${k}`)
+    }
+    lines.push('')
+  }
+
+  if (overrides.length > 0) {
+    lines.push('Overrides (service value differs from shared):')
+    for (const k of overrides) {
+      lines.push(`  • ${k}`)
+    }
+    lines.push('')
+  }
+
+  if (serviceOnly.length > 0) {
+    lines.push('Service-only (no shared equivalent):')
+    for (const k of serviceOnly) {
+      lines.push(`  • ${k}`)
+    }
+  }
+
+  return { content: [{ type: 'text', text: lines.join('\n') }] }
+}
+
+/**
+ * Handle vaulter_status call - consolidated status tool
+ */
+async function handleStatusCall(
+  client: VaulterClient,
+  config: VaulterConfig | null,
+  project: string,
+  environment: Environment,
+  service: string | undefined,
+  args: Record<string, unknown>
+): Promise<{ content: Array<{ type: 'text'; text: string }> }> {
+  const include = (args.include as string[]) || ['all']
+  const overdueOnly = args.overdue_only === true
+  const showAll = include.includes('all')
+
+  const sections: string[] = []
+
+  // === ENCRYPTION SECTION ===
+  if (showAll || include.includes('encryption')) {
+    const enc = config?.encryption
+    const encLines: string[] = ['## Encryption', '']
+
+    if (!enc) {
+      encLines.push('Mode: symmetric (default)')
+      encLines.push('Algorithm: AES-256-GCM')
+      encLines.push('Key source: VAULTER_KEY env var (default)')
+    } else {
+      const mode = enc.mode || 'symmetric'
+      encLines.push(`Mode: ${mode}`)
+
+      if (mode === 'symmetric') {
+        encLines.push('Algorithm: AES-256-GCM')
+        if (enc.key_source && enc.key_source.length > 0) {
+          encLines.push('Key sources:')
+          for (const src of enc.key_source) {
+            if ('env' in src) encLines.push(`  • env: ${src.env}`)
+            if ('file' in src) encLines.push(`  • file: ${src.file}`)
+            if ('s3' in src) encLines.push(`  • s3: ${src.s3}`)
+          }
+        }
+      } else {
+        const asym = enc.asymmetric
+        encLines.push(`Algorithm: ${asym?.algorithm || 'rsa-4096'} + AES-256-GCM`)
+        if (asym?.key_name) encLines.push(`Key name: ${asym.key_name}`)
+      }
+    }
+
+    sections.push(encLines.join('\n'))
+  }
+
+  // === ROTATION SECTION ===
+  if (showAll || include.includes('rotation')) {
+    const rotationConfig = config?.encryption?.rotation
+    const rotLines: string[] = ['## Rotation', '']
+
+    if (!rotationConfig?.enabled) {
+      rotLines.push('Status: disabled')
+      rotLines.push('')
+      rotLines.push('To enable, add to config.yaml:')
+      rotLines.push('  encryption.rotation.enabled: true')
+      rotLines.push('  encryption.rotation.interval_days: 90')
+    } else {
+      const patterns = rotationConfig.patterns || ['*_KEY', '*_SECRET', '*_TOKEN', '*_PASSWORD']
+      const intervalDays = rotationConfig.interval_days || 90
+
+      rotLines.push(`Status: enabled (${intervalDays} day interval)`)
+      rotLines.push(`Patterns: ${patterns.join(', ')}`)
+      rotLines.push('')
+
+      // Get rotation status for secrets
+      const vars = await client.list({ project, environment, service })
+      const now = new Date()
+      let overdueCount = 0
+      let healthyCount = 0
+
+      for (const v of vars) {
+        const matchesPattern = patterns.some(p => {
+          const regex = new RegExp('^' + p.replace(/\*/g, '.*').replace(/\?/g, '.') + '$')
+          return regex.test(v.key)
+        })
+        if (!matchesPattern) continue
+
+        const rotatedAt = v.metadata?.rotatedAt
+        if (rotatedAt) {
+          const rotatedDate = new Date(rotatedAt)
+          const nextRotation = new Date(rotatedDate)
+          nextRotation.setDate(nextRotation.getDate() + intervalDays)
+          if (nextRotation < now) {
+            overdueCount++
+          } else {
+            healthyCount++
+          }
+        } else {
+          overdueCount++ // Never rotated
+        }
+      }
+
+      if (overdueCount > 0) {
+        rotLines.push(`⚠️  ${overdueCount} secret(s) overdue for rotation`)
+      }
+      if (healthyCount > 0) {
+        rotLines.push(`✓ ${healthyCount} secret(s) healthy`)
+      }
+      if (overdueCount === 0 && healthyCount === 0) {
+        rotLines.push('No secrets match rotation patterns')
+      }
+    }
+
+    sections.push(rotLines.join('\n'))
+  }
+
+  // === AUDIT SECTION ===
+  if (showAll || include.includes('audit')) {
+    const auditConfig = config?.audit
+    const auditLines: string[] = ['## Audit', '']
+
+    if (auditConfig?.enabled === false) {
+      auditLines.push('Status: disabled')
+    } else {
+      auditLines.push('Status: enabled')
+      auditLines.push(`Retention: ${auditConfig?.retention_days || 90} days`)
+      auditLines.push(`User source: ${auditConfig?.user_source || 'git'}`)
+    }
+
+    sections.push(auditLines.join('\n'))
+  }
+
+  return {
+    content: [{
+      type: 'text',
+      text: sections.join('\n\n')
+    }]
+  }
 }

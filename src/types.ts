@@ -262,6 +262,16 @@ export interface DirectoriesConfig {
   path?: string
 }
 
+/**
+ * Service configuration for monorepos
+ */
+export interface ServiceConfig {
+  /** Service name */
+  name: string
+  /** Optional service-specific directory */
+  path?: string
+}
+
 export interface VaulterConfig {
   version: '1'
   project: string
@@ -283,6 +293,8 @@ export interface VaulterConfig {
   audit?: AuditConfig
   /** MCP server configuration (defaults when running in this project) */
   mcp?: McpConfig
+  /** Monorepo services list */
+  services?: Array<string | ServiceConfig>
 }
 
 // ============================================================================
@@ -345,6 +357,15 @@ export interface CLIArgs {
   until?: string
   limit?: number
   source?: string
+  // v1.1 - New hierarchical CLI flags
+  prune?: boolean
+  shared?: boolean
+  override?: boolean
+  repo?: string
+  yes?: boolean
+  y?: boolean
+  quiet?: boolean
+  q?: boolean
 }
 
 export interface CommandContext {

@@ -19,6 +19,8 @@ import { createClientFromConfig } from '../lib/create-client.js'
 import { findConfigDir, getSecretsFilePath, getConfigsFilePath, getEnvFilePath, getEnvFilePathForConfig } from '../../lib/config-loader.js'
 import { parseEnvFile, serializeEnv } from '../../lib/env-parser.js'
 import { createConnectedAuditLogger, logSetOperation, disconnectAuditLogger } from '../lib/audit-helper.js'
+import { c, symbols, colorEnv, print } from '../lib/colors.js'
+import { SHARED_SERVICE } from '../../lib/shared.js'
 
 type SeparatorValue = string | number | boolean | null
 
@@ -34,6 +36,8 @@ interface SetContext {
   secrets: Record<string, SeparatorValue>
   configs: Record<string, SeparatorValue>
   meta: Record<string, SeparatorValue>
+  /** Target shared variables scope */
+  shared?: boolean
 }
 
 /**
@@ -155,6 +159,12 @@ function writeToEnvFile(filePath: string, variables: Map<string, string>, verbos
 export async function runSet(context: SetContext): Promise<void> {
   const { args, config, project, service, environment, verbose, dryRun, jsonOutput, meta } = context
 
+  // Check for --shared flag
+  const isShared = args.shared || context.shared
+
+  // Determine effective service
+  const effectiveService = isShared ? SHARED_SERVICE : service
+
   // Build variables maps (secrets and configs)
   const { secrets, configs } = buildVariablesMaps(context)
 
@@ -164,27 +174,27 @@ export async function runSet(context: SetContext): Promise<void> {
   const totalVars = secrets.size + configs.size
 
   if (totalVars === 0) {
-    console.error('Error: No variables specified')
+    print.error('No variables specified')
     console.error('')
-    console.error('Usage:')
-    console.error('  vaulter set KEY "value" -e dev                  # Single secret')
-    console.error('  vaulter set KEY=value -e dev                    # Secret (encrypted)')
-    console.error('  vaulter set KEY::value -e dev                   # Config (split: file | unified: file + backend)')
-    console.error('  vaulter set K1=v1 K2::v2 PORT:=3000             # Batch: mix secrets & configs')
-    console.error('  vaulter set KEY=val @tag:db,secret @owner:team  # With metadata')
+    console.error(c.header('Usage:'))
+    console.error(`  ${c.command('vaulter set')} ${c.key('KEY')} ${c.value('"value"')} ${c.highlight('-e')} ${colorEnv('dev')}                  ${c.muted('# Single secret')}`)
+    console.error(`  ${c.command('vaulter set')} ${c.key('KEY')}${c.secret('=')}${c.value('value')} ${c.highlight('-e')} ${colorEnv('dev')}                    ${c.muted('# Secret (encrypted)')}`)
+    console.error(`  ${c.command('vaulter set')} ${c.key('KEY')}${c.config('::')}${c.value('value')} ${c.highlight('-e')} ${colorEnv('dev')}                   ${c.muted('# Config (file only in split mode)')}`)
+    console.error(`  ${c.command('vaulter set')} ${c.key('K1')}${c.secret('=')}${c.value('v1')} ${c.key('K2')}${c.config('::')}${c.value('v2')} ${c.key('PORT')}${c.muted(':=')}${c.value('3000')}             ${c.muted('# Batch: mix secrets & configs')}`)
+    console.error(`  ${c.command('vaulter set')} ${c.key('KEY')}${c.secret('=')}${c.value('val')} ${c.muted('@tag:db,secret @owner:team')}  ${c.muted('# With metadata')}`)
     process.exit(1)
   }
 
   if (!project) {
-    console.error('Error: Project not specified and no config found')
-    console.error('Run "vaulter init" or specify --project')
+    print.error('Project not specified and no config found')
+    console.error(`Run "${c.command('vaulter init')}" or specify ${c.highlight('--project')}`)
     process.exit(1)
   }
 
   // Production confirmation
   if (isProdEnvironment(environment) && config?.security?.confirm_production && !args.force) {
-    console.error(`Warning: You are modifying ${environment} (production) environment`)
-    console.error('Use --force to confirm this action')
+    print.warning(`You are modifying ${colorEnv(environment)} (production) environment`)
+    console.error(`Use ${c.highlight('--force')} to confirm this action`)
     process.exit(1)
   }
 
@@ -192,9 +202,11 @@ export async function runSet(context: SetContext): Promise<void> {
   const configDir = findConfigDir()
 
   if (verbose) {
-    console.error(`Mode: ${splitMode ? 'split' : 'unified'}`)
-    if (secrets.size > 0) console.error(`Secrets: ${[...secrets.keys()].join(', ')}`)
-    if (configs.size > 0) console.error(`Configs: ${[...configs.keys()].join(', ')}`)
+    const scope = isShared ? c.env('shared') : c.service(service || '(no service)')
+    console.error(`${symbols.info} Setting variables for ${c.project(project)}/${scope}/${colorEnv(environment)}`)
+    console.error(`${symbols.info} Mode: ${c.value(splitMode ? 'split' : 'unified')}`)
+    if (secrets.size > 0) console.error(`${symbols.info} ${c.secretType('Secrets')}: ${c.key([...secrets.keys()].join(', '))}`)
+    if (configs.size > 0) console.error(`${symbols.info} ${c.configType('Configs')}: ${c.key([...configs.keys()].join(', '))}`)
   }
 
   // Dry run output
@@ -203,8 +215,9 @@ export async function runSet(context: SetContext): Promise<void> {
       action: 'set',
       mode: splitMode ? 'split' : 'unified',
       project,
-      service,
+      service: effectiveService,
       environment,
+      shared: isShared,
       dryRun: true
     }
 
@@ -232,21 +245,21 @@ export async function runSet(context: SetContext): Promise<void> {
       console.log(JSON.stringify(result))
     } else {
       if (secrets.size > 0) {
-        console.log(`Dry run - would set ${secrets.size} secret(s):`)
+        console.log(`${c.muted('Dry run')} - would set ${c.secretType(String(secrets.size))} ${c.secretType('secret(s)')}:`)
         for (const key of secrets.keys()) {
           const dest = splitMode ? 'secrets file + backend' : 'env file + backend'
-          console.log(`  ${key} → ${dest}`)
+          console.log(`  ${c.key(key)} ${symbols.arrow} ${c.muted(dest)}`)
         }
       }
       if (configs.size > 0) {
-        console.log(`Dry run - would set ${configs.size} config(s):`)
+        console.log(`${c.muted('Dry run')} - would set ${c.configType(String(configs.size))} ${c.configType('config(s)')}:`)
         for (const key of configs.keys()) {
           const dest = splitMode ? 'configs file (no backend)' : 'env file + backend'
-          console.log(`  ${key} → ${dest}`)
+          console.log(`  ${c.key(key)} ${symbols.arrow} ${c.muted(dest)}`)
         }
       }
-      if (tags.length > 0) console.log(`  [tags: ${tags.join(', ')}]`)
-      if (owner) console.log(`  [owner: ${owner}]`)
+      if (tags.length > 0) console.log(`  ${c.muted('[tags:')} ${c.value(tags.join(', '))}${c.muted(']')}`)
+      if (owner) console.log(`  ${c.muted('[owner:')} ${c.value(owner)}${c.muted(']')}`)
     }
     return
   }
@@ -276,7 +289,7 @@ export async function runSet(context: SetContext): Promise<void> {
       for (const [key, value] of secrets) {
         try {
           // Get existing value for audit log
-          const existing = await client.get(key, project, environment, service)
+          const existing = await client.get(key, project, environment, effectiveService)
           const previousValue = existing?.value
 
           // Update rotatedAt if value changed (secret rotation tracking)
@@ -287,7 +300,7 @@ export async function runSet(context: SetContext): Promise<void> {
             key,
             value,
             project,
-            service,
+            service: effectiveService,
             environment,
             tags: tags.length > 0 ? tags : undefined,
             metadata: {
@@ -308,7 +321,7 @@ export async function runSet(context: SetContext): Promise<void> {
             newValue: value,
             project,
             environment,
-            service,
+            service: effectiveService,
             source: 'cli'
           })
 
@@ -320,13 +333,14 @@ export async function runSet(context: SetContext): Promise<void> {
           }
 
           if (!jsonOutput) {
-            console.log(`✓ Set secret ${key} in ${project}/${environment}`)
+            const scope = isShared ? c.env('shared') : colorEnv(environment)
+            console.log(`${symbols.success} Set ${c.secretType('secret')} ${c.key(key)} in ${c.project(project)}/${scope}`)
           }
         } catch (err) {
           results.push({ key, type: 'secret', success: false, error: (err as Error).message })
 
           if (!jsonOutput) {
-            console.error(`✗ Failed to set secret ${key}: ${(err as Error).message}`)
+            console.error(`${symbols.error} Failed to set ${c.secretType('secret')} ${c.key(key)}: ${c.error((err as Error).message)}`)
           }
         }
       }
@@ -347,7 +361,7 @@ export async function runSet(context: SetContext): Promise<void> {
         results.push({ key, type: 'config', success: true })
 
         if (!jsonOutput) {
-          console.log(`✓ Set config ${key} in ${configsFilePath}`)
+          console.log(`${symbols.success} Set ${c.configType('config')} ${c.key(key)} in ${c.muted(configsFilePath)}`)
         }
       }
     } else if (configDir) {
@@ -368,7 +382,7 @@ export async function runSet(context: SetContext): Promise<void> {
         for (const [key, value] of configs) {
           try {
             // Get existing value for audit log
-            const existing = await client.get(key, project, environment, service)
+            const existing = await client.get(key, project, environment, effectiveService)
             const previousValue = existing?.value
 
             // Update rotatedAt if value changed (rotation tracking)
@@ -379,7 +393,7 @@ export async function runSet(context: SetContext): Promise<void> {
               key,
               value,
               project,
-              service,
+              service: effectiveService,
               environment,
               tags: tags.length > 0 ? tags : undefined,
               metadata: {
@@ -400,7 +414,7 @@ export async function runSet(context: SetContext): Promise<void> {
               newValue: value,
               project,
               environment,
-              service,
+              service: effectiveService,
               source: 'cli'
             })
 
@@ -412,13 +426,14 @@ export async function runSet(context: SetContext): Promise<void> {
             }
 
             if (!jsonOutput) {
-              console.log(`✓ Set config ${key} in ${project}/${environment}`)
+              const scope = isShared ? c.env('shared') : colorEnv(environment)
+              console.log(`${symbols.success} Set ${c.configType('config')} ${c.key(key)} in ${c.project(project)}/${scope}`)
             }
           } catch (err) {
             results.push({ key, type: 'config', success: false, error: (err as Error).message })
 
             if (!jsonOutput) {
-              console.error(`✗ Failed to set config ${key}: ${(err as Error).message}`)
+              console.error(`${symbols.error} Failed to set ${c.configType('config')} ${c.key(key)}: ${c.error((err as Error).message)}`)
             }
           }
         }
@@ -427,7 +442,7 @@ export async function runSet(context: SetContext): Promise<void> {
         await disconnectAuditLogger(auditLogger)
       }
     } else {
-      console.error('Error: No config directory found')
+      print.error('No config directory found')
       process.exit(1)
     }
   }
@@ -449,11 +464,12 @@ export async function runSet(context: SetContext): Promise<void> {
         configs: configs.size
       },
       project,
-      service,
-      environment
+      service: effectiveService,
+      environment,
+      shared: isShared
     }))
   } else if (totalVars > 1) {
-    console.log(`\n${successful}/${totalVars} variables set successfully`)
+    console.log(`\n${c.success(String(successful))}/${c.value(String(totalVars))} variables set successfully`)
   }
 
   // Exit with error code if any failures occurred

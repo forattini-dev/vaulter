@@ -13,6 +13,7 @@ import { loadConfig, getProjectName } from '../lib/config-loader.js'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { c, print } from './lib/colors.js'
 
 // Version is injected at build time or read from package.json
 const VERSION = process.env.VAULTER_VERSION || getPackageVersion() || '0.0.0'
@@ -49,22 +50,15 @@ function getPackageVersion(): string | undefined {
 
 // CLI commands
 import { runInit } from './commands/init.js'
-import { runGet } from './commands/get.js'
-import { runSet } from './commands/set.js'
-import { runDelete } from './commands/delete.js'
-import { runList } from './commands/list.js'
-import { runExport } from './commands/export.js'
-import { runSync } from './commands/sync.js'
-import { runPull } from './commands/pull.js'
-import { runPush } from './commands/push.js'
-import { runK8sSecret, runK8sConfigMap } from './commands/integrations/kubernetes.js'
-import { runHelmValues } from './commands/integrations/helm.js'
-import { runTfVars, runTfJson } from './commands/integrations/terraform.js'
 import { runKey } from './commands/key.js'
-import { runServices } from './commands/services.js'
-import { runScan } from './commands/scan.js'
 import { runAudit } from './commands/audit.js'
 import { runRotation } from './commands/rotation.js'
+
+// Hierarchical command group routers
+import { runVar } from './commands/var/index.js'
+import { runSyncGroup } from './commands/sync/index.js'
+import { runExportGroup } from './commands/export/index.js'
+import { runServiceGroup } from './commands/service/index.js'
 
 // MCP is loaded dynamically (not available in standalone binaries)
 const IS_STANDALONE = process.env.VAULTER_STANDALONE === 'true'
@@ -181,6 +175,38 @@ const cliSchema: CLISchema = {
     format: {
       type: 'string',
       description: 'Output format'
+    },
+    // New global options for v1.1
+    prune: {
+      type: 'boolean',
+      default: false,
+      description: 'Delete variables that don\'t exist in source (sync push/pull)'
+    },
+    shared: {
+      type: 'boolean',
+      default: false,
+      description: 'Target shared variables in monorepo'
+    },
+    override: {
+      type: 'boolean',
+      default: false,
+      description: 'Override shared variable for specific service'
+    },
+    repo: {
+      type: 'string',
+      description: 'GitHub repository (for github-actions export)'
+    },
+    yes: {
+      short: 'y',
+      type: 'boolean',
+      default: false,
+      description: 'Skip confirmations (CI/CD mode)'
+    },
+    quiet: {
+      short: 'q',
+      type: 'boolean',
+      default: false,
+      description: 'Minimal output (errors only)'
     }
   },
 
@@ -196,55 +222,98 @@ const cliSchema: CLISchema = {
       }
     },
 
-    get: {
-      description: 'Get a single environment variable',
-      positional: [
-        { name: 'key', required: true, description: 'Variable name' }
-      ]
-    },
-
-    set: {
-      description: 'Set environment variables (supports batch: KEY1=v1 KEY2=v2 PORT:=3000)',
-      positional: [
-        { name: 'key', required: false, description: 'Variable name (legacy syntax)' },
-        { name: 'value', required: false, description: 'Variable value (legacy syntax)' }
-      ]
-    },
-
-    delete: {
-      description: 'Delete an environment variable',
-      aliases: ['rm', 'remove'],
-      positional: [
-        { name: 'key', required: true, description: 'Variable name' }
-      ]
-    },
-
-    list: {
-      description: 'List all environment variables',
-      aliases: ['ls'],
-      options: {
-        'all-envs': {
-          type: 'boolean',
-          default: false,
-          description: 'List variables across all environments'
+    // NEW: Hierarchical var command group
+    var: {
+      description: 'Variable management commands',
+      commands: {
+        get: {
+          description: 'Get a single variable',
+          positional: [
+            { name: 'key', required: true, description: 'Variable name' }
+          ]
+        },
+        set: {
+          description: 'Set variables (supports batch: KEY1=v1 KEY2=v2)',
+          positional: [
+            { name: 'key', required: false, description: 'Variable name (legacy)' },
+            { name: 'value', required: false, description: 'Variable value (legacy)' }
+          ]
+        },
+        delete: {
+          description: 'Delete a variable',
+          aliases: ['rm', 'remove'],
+          positional: [
+            { name: 'key', required: true, description: 'Variable name' }
+          ]
+        },
+        list: {
+          description: 'List all variables',
+          aliases: ['ls'],
+          options: {
+            'all-envs': {
+              type: 'boolean',
+              default: false,
+              description: 'List across all environments'
+            }
+          }
         }
       }
     },
 
+    // Hierarchical export command group
     export: {
-      description: 'Export variables for shell evaluation'
+      description: 'Export variables to various formats',
+      commands: {
+        shell: {
+          description: 'Export for shell eval (default)'
+        },
+        'k8s-secret': {
+          description: 'Kubernetes Secret YAML'
+        },
+        'k8s-configmap': {
+          description: 'Kubernetes ConfigMap YAML'
+        },
+        helm: {
+          description: 'Helm values.yaml'
+        },
+        terraform: {
+          description: 'Terraform .tfvars'
+        },
+        docker: {
+          description: 'Docker --env-file format'
+        },
+        vercel: {
+          description: 'Vercel environment JSON'
+        },
+        railway: {
+          description: 'Railway CLI format'
+        },
+        fly: {
+          description: 'Fly.io secrets format'
+        },
+        'github-actions': {
+          description: 'GitHub Actions gh secret commands'
+        }
+      }
     },
 
+    // NEW: Hierarchical sync command group
     sync: {
-      description: 'Merge local .env file with backend'
-    },
-
-    pull: {
-      description: 'Pull variables from backend to local .env'
-    },
-
-    push: {
-      description: 'Push local .env to backend'
+      description: 'Synchronization commands',
+      commands: {
+        merge: {
+          description: 'Two-way merge (local ↔ remote)'
+        },
+        push: {
+          description: 'Push local to remote (use --prune to delete remote-only)'
+        },
+        pull: {
+          description: 'Pull remote to local (use --prune to delete local-only)'
+        },
+        diff: {
+          description: 'Show differences between local and remote'
+        }
+      }
     },
 
     key: {
@@ -334,16 +403,25 @@ const cliSchema: CLISchema = {
       }
     },
 
-    services: {
-      description: 'List services in monorepo',
-      aliases: ['svc']
-    },
-
-    scan: {
-      description: 'Scan monorepo for packages (NX, Turborepo, Lerna, pnpm, Yarn, Rush)',
-      positional: [
-        { name: 'path', required: false, description: 'Root directory to scan' }
-      ]
+    // NEW: Hierarchical service command group
+    service: {
+      description: 'Monorepo service management',
+      aliases: ['svc'],
+      commands: {
+        list: {
+          description: 'List services in monorepo',
+          aliases: ['ls']
+        },
+        scan: {
+          description: 'Scan for packages (NX, Turborepo, Lerna, pnpm)',
+          positional: [
+            { name: 'path', required: false, description: 'Root directory' }
+          ]
+        },
+        tree: {
+          description: 'Show inheritance tree with shared variables'
+        }
+      }
     },
 
     mcp: {
@@ -367,26 +445,6 @@ const cliSchema: CLISchema = {
 
     config: {
       description: 'Manage configuration'
-    },
-
-    'k8s:secret': {
-      description: 'Generate Kubernetes Secret YAML'
-    },
-
-    'k8s:configmap': {
-      description: 'Generate Kubernetes ConfigMap YAML'
-    },
-
-    'helm:values': {
-      description: 'Generate Helm values.yaml'
-    },
-
-    'tf:vars': {
-      description: 'Generate Terraform .tfvars'
-    },
-
-    'tf:json': {
-      description: 'Generate Terraform JSON'
     },
 
     audit: {
@@ -490,6 +548,34 @@ const cliSchema: CLISchema = {
         list: {
           description: 'List secrets with rotation policies',
           aliases: ['ls']
+        },
+        run: {
+          description: 'CI/CD gate - exit 1 if secrets are overdue',
+          options: {
+            'all-envs': {
+              type: 'boolean',
+              default: false,
+              description: 'Check across all environments'
+            },
+            overdue: {
+              type: 'boolean',
+              default: false,
+              description: 'Only show overdue secrets'
+            },
+            pattern: {
+              type: 'string',
+              description: 'Filter by key pattern (e.g., "*_KEY")'
+            },
+            days: {
+              type: 'number',
+              description: 'Override rotation threshold (default: 90)'
+            },
+            fail: {
+              type: 'boolean',
+              default: true,
+              description: 'Exit with code 1 if secrets need rotation'
+            }
+          }
         }
       }
     }
@@ -562,7 +648,19 @@ function toCliArgs(result: CommandParseResult): CLIArgs {
     since: opts.since as string | undefined,
     until: opts.until as string | undefined,
     limit: opts.limit as number | undefined,
-    source: opts.source as string | undefined
+    source: opts.source as string | undefined,
+    // Rotation run options
+    overdue: opts.overdue as boolean | undefined,
+    fail: opts.fail as boolean | undefined,
+    // New v1.1 options
+    prune: opts.prune as boolean | undefined,
+    shared: opts.shared as boolean | undefined,
+    override: opts.override as boolean | undefined,
+    repo: opts.repo as string | undefined,
+    yes: opts.yes as boolean | undefined,
+    y: opts.yes as boolean | undefined,
+    quiet: opts.quiet as boolean | undefined,
+    q: opts.quiet as boolean | undefined
   }
 }
 
@@ -632,7 +730,7 @@ async function main(): Promise<void> {
   // Handle errors from parser (after help/version checks)
   if (result.errors.length > 0) {
     for (const error of result.errors) {
-      console.error(`Error: ${error}`)
+      print.error(error)
     }
     process.exit(1)
   }
@@ -656,59 +754,83 @@ async function main(): Promise<void> {
         await runInit(context)
         break
 
-      case 'get':
-        await runGet(context)
+      // Hierarchical var command group
+      case 'var':
+        await runVar(context)
         break
 
+      // ========== LEGACY ALIASES: var commands ==========
       case 'set':
-        await runSet(context)
-        break
-
+      case 'get':
       case 'delete':
       case 'rm':
       case 'remove':
-        await runDelete(context)
-        break
-
       case 'list':
       case 'ls':
-        await runList(context)
+        // Rewrite args to hierarchical format: vaulter set → vaulter var set
+        context.args._.unshift('var')
+        await runVar(context)
         break
 
+      // Hierarchical export command group
       case 'export':
-        await runExport(context)
+        await runExportGroup(context)
         break
 
+      // ========== LEGACY ALIASES: export commands ==========
+      case 'k8s:secret':
+        context.args._ = ['export', 'k8s-secret', ...context.args._.slice(1)]
+        await runExportGroup(context)
+        break
+      case 'k8s:configmap':
+        context.args._ = ['export', 'k8s-configmap', ...context.args._.slice(1)]
+        await runExportGroup(context)
+        break
+      case 'helm:values':
+        context.args._ = ['export', 'helm', ...context.args._.slice(1)]
+        await runExportGroup(context)
+        break
+      case 'tf:vars':
+        context.args._ = ['export', 'terraform', ...context.args._.slice(1)]
+        await runExportGroup(context)
+        break
+
+      // Hierarchical sync command group
       case 'sync':
-        await runSync(context)
+        await runSyncGroup(context)
         break
 
-      case 'pull':
-        await runPull(context)
-        break
-
+      // ========== LEGACY ALIASES: sync commands ==========
       case 'push':
-        await runPush(context)
+        context.args._ = ['sync', 'push', ...context.args._.slice(1)]
+        await runSyncGroup(context)
+        break
+      case 'pull':
+        context.args._ = ['sync', 'pull', ...context.args._.slice(1)]
+        await runSyncGroup(context)
         break
 
       case 'key':
         await runKey(context)
         break
 
-      case 'services':
+      // Hierarchical service command group
+      case 'service':
       case 'svc':
-        await runServices(context)
+        await runServiceGroup(context)
         break
 
+      // ========== LEGACY ALIAS: scan ==========
       case 'scan':
-        await runScan(context)
+        context.args._ = ['service', 'scan', ...context.args._.slice(1)]
+        await runServiceGroup(context)
         break
 
       case 'mcp':
         // MCP server - dynamically loaded (not available in standalone binaries)
         if (IS_STANDALONE) {
-          console.error('Error: MCP server is not available in standalone binaries')
-          console.error('Install via npm/pnpm to use MCP: pnpm add -g vaulter')
+          print.error('MCP server is not available in standalone binaries')
+          console.error(`Install via npm/pnpm to use MCP: ${c.command('pnpm add -g vaulter')}`)
           process.exit(1)
         }
         const { startServer } = await import('../mcp/server.js')
@@ -724,8 +846,8 @@ async function main(): Promise<void> {
       case 'ui':
         // TUI - dynamically loaded (not available in standalone binaries)
         if (IS_STANDALONE) {
-          console.error('Error: TUI is not available in standalone binaries')
-          console.error('Install via npm/pnpm to use TUI: pnpm add -g vaulter')
+          print.error('TUI is not available in standalone binaries')
+          console.error(`Install via npm/pnpm to use TUI: ${c.command('pnpm add -g vaulter')}`)
           process.exit(1)
         }
         const tuiScreen = context.args._[1] || 'menu'
@@ -772,26 +894,6 @@ async function main(): Promise<void> {
         console.log('config command not yet implemented')
         break
 
-      case 'k8s:secret':
-        await runK8sSecret(context)
-        break
-
-      case 'k8s:configmap':
-        await runK8sConfigMap(context)
-        break
-
-      case 'helm:values':
-        await runHelmValues(context)
-        break
-
-      case 'tf:vars':
-        await runTfVars(context)
-        break
-
-      case 'tf:json':
-        await runTfJson(context)
-        break
-
       case 'audit':
         await runAudit(context)
         break
@@ -801,15 +903,15 @@ async function main(): Promise<void> {
         break
 
       default:
-        console.error(`Unknown command: ${command}`)
-        console.error('Run "vaulter --help" for usage information')
+        print.error(`Unknown command: ${c.command(command)}`)
+        console.error(`Run "${c.command('vaulter --help')}" for usage information`)
         process.exit(1)
     }
   } catch (err) {
     if (context.verbose) {
       console.error(err)
     } else {
-      console.error(`Error: ${(err as Error).message}`)
+      print.error((err as Error).message)
     }
     process.exit(1)
   }
@@ -817,6 +919,6 @@ async function main(): Promise<void> {
 
 // Run
 main().catch(err => {
-  console.error('Fatal error:', err.message)
+  print.error(`Fatal error: ${err.message}`)
   process.exit(1)
 })

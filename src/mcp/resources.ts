@@ -1,114 +1,56 @@
 /**
  * Vaulter MCP Resources
  *
- * Resource definitions and handlers for the MCP server
+ * Read-only data views for the MCP server.
+ * Resources provide static/cached data that doesn't require input parameters.
+ * For actions that require input, use Tools instead.
  *
- * Resources (8 types):
- *   vaulter://instructions         → CRITICAL: How vaulter works (READ THIS FIRST!)
- *   vaulter://mcp-config           → MCP configuration with sources (WHERE each setting comes from)
- *   vaulter://config               → Current project configuration
- *   vaulter://services             → List of services in monorepo
- *   vaulter://keys                 → List all encryption keys
- *   vaulter://keys/<name>          → Show specific key info
- *   vaulter://project/env          → Environment variables for project/env
- *   vaulter://project/env/service  → Environment variables for service
- *   vaulter://compare/env1/env2    → Comparison between two environments
+ * Resources (5 types - no redundancy with tools):
+ *   vaulter://instructions  → CRITICAL: How vaulter works (READ THIS FIRST!)
+ *   vaulter://tools-guide   → Guide on which tools to use for each scenario
+ *   vaulter://mcp-config    → MCP configuration with sources
+ *   vaulter://config        → Current project configuration (YAML)
+ *   vaulter://services      → List of services in monorepo
+ *
+ * Removed (use Tools instead - avoid redundancy):
+ *   ❌ vaulter://keys/*           → use vaulter_key_list / vaulter_key_show tools
+ *   ❌ vaulter://project/env/*    → use vaulter_list tool
+ *   ❌ vaulter://compare/*        → use vaulter_compare tool
  */
 
 import type { Resource } from '@modelcontextprotocol/sdk/types.js'
 import fs from 'node:fs'
 import path from 'node:path'
-import { VaulterClient } from '../client.js'
-import { resolveMcpConfigWithSources, type ResolvedMcpConfig } from './tools.js'
-import {
-  loadConfig,
-  loadEncryptionKey,
-  loadPublicKey,
-  loadPrivateKey,
-  getEncryptionMode,
-  getAsymmetricAlgorithm,
-  findConfigDir,
-  getProjectKeysDir,
-  getGlobalKeysDir
-} from '../lib/config-loader.js'
-import { detectAlgorithm } from '../lib/crypto.js'
-import type { Environment, VaulterConfig, AsymmetricAlgorithm } from '../types.js'
-import { DEFAULT_ENVIRONMENTS } from '../types.js'
-import { resolveBackendUrls } from '../index.js'
-
-/**
- * Get current config and client
- * Supports both symmetric and asymmetric encryption modes
- */
-async function getClientAndConfig(): Promise<{ client: VaulterClient; config: VaulterConfig | null }> {
-  let config: VaulterConfig | null = null
-  try {
-    config = loadConfig()
-  } catch {
-    // Config not found is OK
-  }
-
-  const connectionStrings = config ? resolveBackendUrls(config) : []
-
-  // Determine encryption mode
-  const encryptionMode = config ? getEncryptionMode(config) : 'symmetric'
-
-  // For asymmetric mode, load public/private keys
-  if (encryptionMode === 'asymmetric' && config) {
-    const publicKey = await loadPublicKey(config, config.project)
-    const privateKey = await loadPrivateKey(config, config.project)
-    const algorithm = getAsymmetricAlgorithm(config) as AsymmetricAlgorithm
-
-    const client = new VaulterClient({
-      connectionStrings: connectionStrings.length > 0 ? connectionStrings : undefined,
-      encryptionMode: 'asymmetric',
-      publicKey: publicKey || undefined,
-      privateKey: privateKey || undefined,
-      asymmetricAlgorithm: algorithm
-    })
-
-    return { client, config }
-  }
-
-  // Symmetric mode (default)
-  const passphrase = config ? await loadEncryptionKey(config) : undefined
-
-  const client = new VaulterClient({
-    connectionStrings: connectionStrings.length > 0 ? connectionStrings : undefined,
-    encryptionMode: 'symmetric',
-    passphrase: passphrase || undefined
-  })
-
-  return { client, config }
-}
+import { resolveMcpConfigWithSources } from './tools.js'
+import { findConfigDir } from '../lib/config-loader.js'
 
 /**
  * Parse a vaulter:// URI
  *
- * Formats:
- *   vaulter://config
- *   vaulter://services
- *   vaulter://keys
- *   vaulter://keys/<name>
- *   vaulter://project/environment
- *   vaulter://project/environment/service
- *   vaulter://compare/env1/env2
+ * Supported formats (5 resources - no redundancy with tools):
+ *   vaulter://instructions  → How vaulter works (critical!)
+ *   vaulter://tools-guide   → Guide on which tools to use
+ *   vaulter://mcp-config    → MCP configuration sources
+ *   vaulter://config        → Project configuration
+ *   vaulter://services      → Monorepo services
  */
 type ParsedUri =
   | { type: 'instructions' }
+  | { type: 'tools-guide' }
   | { type: 'mcp-config' }
   | { type: 'config' }
   | { type: 'services' }
-  | { type: 'keys' }
-  | { type: 'key'; name: string; global?: boolean }
-  | { type: 'env'; project: string; environment: Environment; service?: string }
-  | { type: 'compare'; env1: Environment; env2: Environment }
   | null
 
 function parseResourceUri(uri: string): ParsedUri {
   // vaulter://instructions (CRITICAL - must read first!)
   if (uri === 'vaulter://instructions') {
     return { type: 'instructions' }
+  }
+
+  // vaulter://tools-guide
+  if (uri === 'vaulter://tools-guide') {
+    return { type: 'tools-guide' }
   }
 
   // vaulter://mcp-config (shows WHERE each setting comes from)
@@ -124,39 +66,6 @@ function parseResourceUri(uri: string): ParsedUri {
   // vaulter://services
   if (uri === 'vaulter://services') {
     return { type: 'services' }
-  }
-
-  // vaulter://keys (list all)
-  if (uri === 'vaulter://keys') {
-    return { type: 'keys' }
-  }
-
-  // vaulter://keys/<name> or vaulter://keys/global/<name>
-  const keyMatch = uri.match(/^vaulter:\/\/keys\/(?:(global)\/)?([^/]+)$/)
-  if (keyMatch) {
-    const [, isGlobal, name] = keyMatch
-    return { type: 'key', name, global: isGlobal === 'global' }
-  }
-
-  // vaulter://compare/env1/env2
-  // Accept any environment names (custom envs supported)
-  const compareMatch = uri.match(/^vaulter:\/\/compare\/([^/]+)\/([^/]+)$/)
-  if (compareMatch) {
-    const [, env1, env2] = compareMatch
-    return { type: 'compare', env1: env1 as Environment, env2: env2 as Environment }
-  }
-
-  // vaulter://project/environment[/service]
-  // Accept any environment name (custom envs supported)
-  const envMatch = uri.match(/^vaulter:\/\/([^/]+)\/([^/]+)(?:\/([^/]+))?$/)
-  if (envMatch) {
-    const [, project, env, service] = envMatch
-    return {
-      type: 'env',
-      project,
-      environment: env as Environment,
-      service
-    }
   }
 
   return null
@@ -208,10 +117,9 @@ function discoverServices(rootDir: string): Array<{ name: string; path: string; 
 
 /**
  * List available resources
- * Returns resources for config, services, and each project/environment combination
+ * Returns 5 static resources (no redundancy with tools)
  */
 export async function listResources(): Promise<Resource[]> {
-  const { config } = await getClientAndConfig()
   const resources: Resource[] = []
 
   // CRITICAL: Instructions resource - MUST BE READ FIRST
@@ -219,6 +127,14 @@ export async function listResources(): Promise<Resource[]> {
     uri: 'vaulter://instructions',
     name: '⚠️ CRITICAL: How Vaulter Works',
     description: 'IMPORTANT: Read this FIRST before using any vaulter tools. Explains how data is stored and what NOT to do.',
+    mimeType: 'text/markdown'
+  })
+
+  // Tools Guide - which tool to use for each scenario
+  resources.push({
+    uri: 'vaulter://tools-guide',
+    name: 'Tools Guide',
+    description: 'Comprehensive guide on which vaulter tool to use for each scenario. Includes 27 tools organized by category.',
     mimeType: 'text/markdown'
   })
 
@@ -246,54 +162,6 @@ export async function listResources(): Promise<Resource[]> {
     mimeType: 'application/json'
   })
 
-  // Always include keys resource
-  resources.push({
-    uri: 'vaulter://keys',
-    name: 'Encryption Keys',
-    description: 'List all encryption keys (project and global)',
-    mimeType: 'application/json'
-  })
-
-  if (!config?.project) {
-    return resources
-  }
-
-  const project = config.project
-  const environments = config.environments || DEFAULT_ENVIRONMENTS
-  const service = config.service
-
-  // Add environment resources
-  for (const env of environments) {
-    const uri = service
-      ? `vaulter://${project}/${env}/${service}`
-      : `vaulter://${project}/${env}`
-
-    resources.push({
-      uri,
-      name: `${project}/${env}${service ? `/${service}` : ''}`,
-      description: `Environment variables for ${project} in ${env}`,
-      mimeType: 'text/plain'
-    })
-  }
-
-  // Add comparison resources for common pairs
-  const comparisonPairs: Array<[Environment, Environment]> = [
-    ['dev', 'stg'],
-    ['stg', 'prd'],
-    ['dev', 'prd']
-  ]
-
-  for (const [env1, env2] of comparisonPairs) {
-    if (environments.includes(env1) && environments.includes(env2)) {
-      resources.push({
-        uri: `vaulter://compare/${env1}/${env2}`,
-        name: `Compare ${env1} vs ${env2}`,
-        description: `Comparison of variables between ${env1} and ${env2} environments`,
-        mimeType: 'text/plain'
-      })
-    }
-  }
-
   return resources
 }
 
@@ -304,26 +172,20 @@ export async function handleResourceRead(uri: string): Promise<{ contents: Array
   const parsed = parseResourceUri(uri)
 
   if (!parsed) {
-    throw new Error(`Invalid resource URI: ${uri}. Expected format: vaulter://config, vaulter://services, vaulter://project/environment, or vaulter://compare/env1/env2`)
+    throw new Error(`Invalid resource URI: ${uri}. Valid resources: vaulter://instructions, vaulter://tools-guide, vaulter://mcp-config, vaulter://config, vaulter://services. For keys/env/compare, use the corresponding tools instead.`)
   }
 
   switch (parsed.type) {
     case 'instructions':
       return handleInstructionsRead(uri)
+    case 'tools-guide':
+      return handleToolsGuideRead(uri)
     case 'mcp-config':
       return handleMcpConfigRead(uri)
     case 'config':
       return handleConfigRead(uri)
     case 'services':
       return handleServicesRead(uri)
-    case 'keys':
-      return handleKeysRead(uri)
-    case 'key':
-      return handleKeyRead(uri, parsed.name, parsed.global)
-    case 'compare':
-      return handleCompareRead(uri, parsed.env1, parsed.env2)
-    case 'env':
-      return handleEnvRead(uri, parsed.project, parsed.environment, parsed.service)
   }
 }
 
@@ -501,6 +363,255 @@ Backend resolution priority (first match wins):
 }
 
 /**
+ * Read tools guide resource - Which tool to use for each scenario
+ */
+async function handleToolsGuideRead(uri: string): Promise<{ contents: Array<{ uri: string; mimeType: string; text: string }> }> {
+  const guide = `# Vaulter MCP Tools Guide (27 tools)
+
+## Quick Reference
+
+| Scenario | Tool to Use |
+|----------|-------------|
+| Read a single variable | \`vaulter_get\` |
+| Set/update a variable | \`vaulter_set\` |
+| Set shared variable | \`vaulter_set\` with shared=true |
+| Delete a variable | \`vaulter_delete\` |
+| List all variables | \`vaulter_list\` |
+| Export to file format | \`vaulter_export\` |
+| Compare environments | \`vaulter_compare\` |
+| Search across envs | \`vaulter_search\` |
+| Check system status | \`vaulter_status\` |
+
+---
+
+## 📦 Core Operations (8 tools)
+
+### \`vaulter_get\`
+**Use for:** Retrieving a single variable value
+\`\`\`
+key: "DATABASE_URL"
+environment: "dev"
+\`\`\`
+
+### \`vaulter_set\`
+**Use for:** Setting or updating a variable
+\`\`\`
+key: "API_KEY"
+value: "sk-..."
+environment: "dev"
+tags: ["production", "api"]  # optional
+shared: true  # optional, for monorepo shared vars
+\`\`\`
+
+### \`vaulter_delete\`
+**Use for:** Removing a variable
+\`\`\`
+key: "OLD_CONFIG"
+environment: "dev"
+\`\`\`
+
+### \`vaulter_list\`
+**Use for:** Listing all variables in an environment
+\`\`\`
+environment: "dev"
+showValues: true  # optional, shows actual values
+\`\`\`
+
+### \`vaulter_export\`
+**Use for:** Exporting variables to different formats
+- Formats: shell, env, json, yaml, tfvars, docker-args
+\`\`\`
+environment: "dev"
+format: "json"
+\`\`\`
+
+### \`vaulter_sync\`
+**Use for:** Bidirectional sync between local .env and backend
+\`\`\`
+environment: "dev"
+dry_run: true  # preview changes first
+\`\`\`
+
+### \`vaulter_pull\`
+**Use for:** Download from backend to local .env
+\`\`\`
+environment: "dev"
+\`\`\`
+
+### \`vaulter_push\`
+**Use for:** Upload local .env to backend
+\`\`\`
+environment: "dev"
+\`\`\`
+
+---
+
+## 🔍 Analysis & Discovery (3 tools)
+
+### \`vaulter_compare\`
+**Use for:** Comparing two environments
+\`\`\`
+source: "dev"
+target: "prd"
+\`\`\`
+
+### \`vaulter_search\`
+**Use for:** Searching variables by pattern
+\`\`\`
+pattern: "DATABASE_*"
+\`\`\`
+
+### \`vaulter_scan\`
+**Use for:** Scanning monorepo for packages
+
+---
+
+## 📊 Status & Audit (2 tools)
+
+### \`vaulter_status\`
+**Use for:** Comprehensive status (encryption, rotation, audit)
+\`\`\`
+environment: "dev"
+include: ["all"]  # or ["encryption", "rotation", "audit"]
+overdue_only: true  # for rotation: only overdue secrets
+\`\`\`
+
+### \`vaulter_audit_list\`
+**Use for:** Viewing audit log (who changed what when)
+\`\`\`
+environment: "dev"
+user: "john"     # optional
+operation: "set" # optional
+since: "2024-01-01"  # optional
+\`\`\`
+
+---
+
+## 📂 Categorization (1 tool)
+
+### \`vaulter_categorize_vars\`
+**Use for:** Seeing which vars are secrets vs configs
+\`\`\`
+environment: "dev"
+\`\`\`
+
+---
+
+## 🔗 Shared Variables (2 tools)
+
+### \`vaulter_shared_list\`
+**Use for:** Listing shared monorepo variables
+\`\`\`
+environment: "dev"
+\`\`\`
+
+### \`vaulter_inheritance_info\`
+**Use for:** Seeing inheritance for a service
+\`\`\`
+service: "api"
+environment: "dev"
+\`\`\`
+
+> **Tip:** Use \`vaulter_set\` with \`shared=true\` to set shared variables
+
+---
+
+## ☸️ Kubernetes Integration (2 tools)
+
+### \`vaulter_k8s_secret\`
+**Use for:** Generating K8s Secret YAML
+\`\`\`
+environment: "prd"
+namespace: "my-app"
+\`\`\`
+
+### \`vaulter_k8s_configmap\`
+**Use for:** Generating K8s ConfigMap YAML
+
+---
+
+## 🏗️ Infrastructure as Code (2 tools)
+
+### \`vaulter_helm_values\`
+**Use for:** Generating Helm values.yaml
+
+### \`vaulter_tf_vars\`
+**Use for:** Generating Terraform .tfvars
+
+---
+
+## 🔑 Key Management (5 tools)
+
+### \`vaulter_key_generate\`
+**Use for:** Generating encryption keys
+\`\`\`
+asymmetric: true  # for asymmetric encryption
+algorithm: "rsa-4096"
+\`\`\`
+
+### \`vaulter_key_list\`
+**Use for:** Listing all keys
+
+### \`vaulter_key_show\`
+**Use for:** Showing key details
+
+### \`vaulter_key_export\`
+**Use for:** Exporting key to encrypted bundle
+
+### \`vaulter_key_import\`
+**Use for:** Importing key from bundle
+
+---
+
+## 🏢 Monorepo (2 tools)
+
+### \`vaulter_services\`
+**Use for:** Listing discovered services
+
+### \`vaulter_init\`
+**Use for:** Initializing new project
+\`\`\`
+mode: "split"  # or "unified"
+\`\`\`
+
+---
+
+## Common Workflows
+
+### 1. First time setup
+1. \`vaulter_init\` - Initialize project
+2. \`vaulter_key_generate\` - Generate encryption key
+3. \`vaulter_set\` - Add variables
+
+### 2. Deploy to Kubernetes
+1. \`vaulter_list\` - Review variables
+2. \`vaulter_k8s_secret\` - Generate Secret YAML
+3. Apply with kubectl
+
+### 3. Compare before deploy
+1. \`vaulter_compare\` - Compare dev vs prd
+2. \`vaulter_sync\` with dry_run - Preview changes
+
+### 4. Check system status
+1. \`vaulter_status\` - Get encryption, rotation & audit overview
+2. \`vaulter_audit_list\` - Detailed audit log
+
+### 5. Monorepo shared variables
+1. \`vaulter_shared_list\` - See shared vars
+2. \`vaulter_set shared=true\` - Add shared var
+3. \`vaulter_inheritance_info\` - Check service inheritance
+`
+
+  return {
+    contents: [{
+      uri,
+      mimeType: 'text/markdown',
+      text: guide
+    }]
+  }
+}
+
+/**
  * Read MCP configuration with sources
  * Shows WHERE each setting comes from (cli, project, project.mcp, global.mcp, or default)
  */
@@ -660,416 +771,4 @@ async function handleServicesRead(uri: string): Promise<{ contents: Array<{ uri:
       }, null, 2)
     }]
   }
-}
-
-/**
- * Read keys resource - list all encryption keys
- */
-async function handleKeysRead(uri: string): Promise<{ contents: Array<{ uri: string; mimeType: string; text: string }> }> {
-  let config: VaulterConfig | null = null
-  try {
-    config = loadConfig()
-  } catch {
-    // Config not found is OK
-  }
-
-  const projectKeysDir = config?.project ? getProjectKeysDir(config.project) : null
-  const globalKeysDir = getGlobalKeysDir()
-
-  interface KeyInfo {
-    name: string
-    scope: 'project' | 'global'
-    type: 'symmetric' | 'asymmetric'
-    algorithm?: string
-    path: string
-  }
-
-  const keys: KeyInfo[] = []
-
-  // Scan project keys
-  if (projectKeysDir && fs.existsSync(projectKeysDir)) {
-    try {
-      const files = fs.readdirSync(projectKeysDir)
-      for (const file of files) {
-        if (file.endsWith('.key') || file.endsWith('.pub') || file.endsWith('.pem')) {
-          const keyPath = path.join(projectKeysDir, file)
-          const baseName = file.replace(/\.(key|pub|pem)$/, '')
-
-          // Skip if already added (e.g., .key and .pub for same key)
-          if (keys.some(k => k.name === baseName && k.scope === 'project')) continue
-
-          try {
-            const content = fs.readFileSync(keyPath, 'utf-8')
-            const isAsymmetric = content.includes('BEGIN') && content.includes('KEY')
-            const algorithm = isAsymmetric ? (detectAlgorithm(content) || undefined) : undefined
-
-            keys.push({
-              name: baseName,
-              scope: 'project',
-              type: isAsymmetric ? 'asymmetric' : 'symmetric',
-              algorithm,
-              path: keyPath
-            })
-          } catch {
-            // Skip unreadable keys
-          }
-        }
-      }
-    } catch {
-      // Skip inaccessible directories
-    }
-  }
-
-  // Scan global keys
-  if (fs.existsSync(globalKeysDir)) {
-    try {
-      const files = fs.readdirSync(globalKeysDir)
-      for (const file of files) {
-        if (file.endsWith('.key') || file.endsWith('.pub') || file.endsWith('.pem')) {
-          const keyPath = path.join(globalKeysDir, file)
-          const baseName = file.replace(/\.(key|pub|pem)$/, '')
-
-          // Skip if already added
-          if (keys.some(k => k.name === baseName && k.scope === 'global')) continue
-
-          try {
-            const content = fs.readFileSync(keyPath, 'utf-8')
-            const isAsymmetric = content.includes('BEGIN') && content.includes('KEY')
-            const algorithm = isAsymmetric ? (detectAlgorithm(content) || undefined) : undefined
-
-            keys.push({
-              name: baseName,
-              scope: 'global',
-              type: isAsymmetric ? 'asymmetric' : 'symmetric',
-              algorithm,
-              path: keyPath
-            })
-          } catch {
-            // Skip unreadable keys
-          }
-        }
-      }
-    } catch {
-      // Skip inaccessible directories
-    }
-  }
-
-  if (keys.length === 0) {
-    return {
-      contents: [{
-        uri,
-        mimeType: 'application/json',
-        text: JSON.stringify({
-          found: false,
-          message: 'No encryption keys found',
-          projectKeysDir,
-          globalKeysDir,
-          hint: 'Use vaulter_key_generate tool to create a new key'
-        }, null, 2)
-      }]
-    }
-  }
-
-  return {
-    contents: [{
-      uri,
-      mimeType: 'application/json',
-      text: JSON.stringify({
-        found: true,
-        count: keys.length,
-        project: config?.project || null,
-        projectKeysDir,
-        globalKeysDir,
-        keys: keys.map(k => ({
-          name: k.name,
-          scope: k.scope,
-          type: k.type,
-          algorithm: k.algorithm,
-          uri: k.scope === 'global'
-            ? `vaulter://keys/global/${k.name}`
-            : `vaulter://keys/${k.name}`
-        }))
-      }, null, 2)
-    }]
-  }
-}
-
-/**
- * Read specific key resource
- */
-async function handleKeyRead(
-  uri: string,
-  name: string,
-  global?: boolean
-): Promise<{ contents: Array<{ uri: string; mimeType: string; text: string }> }> {
-  let config: VaulterConfig | null = null
-  try {
-    config = loadConfig()
-  } catch {
-    // Config not found is OK for global keys
-  }
-
-  // Determine key directory
-  let keyDir: string
-  if (global) {
-    keyDir = getGlobalKeysDir()
-  } else {
-    if (!config?.project) {
-      return {
-        contents: [{
-          uri,
-          mimeType: 'application/json',
-          text: JSON.stringify({
-            error: 'No project configured',
-            hint: 'Use --global flag for global keys or run vaulter init to configure a project'
-          }, null, 2)
-        }]
-      }
-    }
-    keyDir = getProjectKeysDir(config.project)
-  }
-
-  // Check if key exists (try different extensions)
-  const extensions = ['.key', '.pem', '.pub']
-  let keyPath: string | null = null
-  let keyContent: string | null = null
-
-  for (const ext of extensions) {
-    const tryPath = path.join(keyDir, `${name}${ext}`)
-    if (fs.existsSync(tryPath)) {
-      keyPath = tryPath
-      try {
-        keyContent = fs.readFileSync(tryPath, 'utf-8')
-      } catch {
-        // Continue to next extension
-      }
-      break
-    }
-  }
-
-  if (!keyPath || !keyContent) {
-    return {
-      contents: [{
-        uri,
-        mimeType: 'application/json',
-        text: JSON.stringify({
-          error: `Key not found: ${name}`,
-          scope: global ? 'global' : 'project',
-          searchedDir: keyDir,
-          hint: 'Use vaulter://keys to list available keys'
-        }, null, 2)
-      }]
-    }
-  }
-
-  // Analyze key
-  const isAsymmetric = keyContent.includes('BEGIN') && keyContent.includes('KEY')
-  const keyType = isAsymmetric ? 'asymmetric' : 'symmetric'
-  const algorithm = isAsymmetric ? (detectAlgorithm(keyContent) || undefined) : undefined
-  const stats = fs.statSync(keyPath)
-
-  // For asymmetric keys, check for public key pair
-  let publicKeyPath: string | null = null
-  let hasPublicKey = false
-  if (isAsymmetric) {
-    const pubPath = path.join(keyDir, `${name}.pub`)
-    if (fs.existsSync(pubPath)) {
-      publicKeyPath = pubPath
-      hasPublicKey = true
-    }
-  }
-
-  // Mask the key content for security (show only structure)
-  let maskedContent: string
-  if (!isAsymmetric) {
-    // For symmetric keys, show length and hash info
-    const keyLength = keyContent.trim().length
-    maskedContent = `[Symmetric key: ${keyLength} characters]`
-  } else {
-    // For asymmetric keys, show header/footer only
-    const lines = keyContent.trim().split('\n')
-    if (lines.length > 2) {
-      maskedContent = `${lines[0]}\n[... ${lines.length - 2} lines ...]\n${lines[lines.length - 1]}`
-    } else {
-      maskedContent = '[Asymmetric key content]'
-    }
-  }
-
-  return {
-    contents: [{
-      uri,
-      mimeType: 'application/json',
-      text: JSON.stringify({
-        name,
-        scope: global ? 'global' : 'project',
-        project: global ? null : config?.project,
-        type: keyType,
-        algorithm: algorithm || 'aes-256-gcm',
-        path: keyPath,
-        publicKeyPath: hasPublicKey ? publicKeyPath : undefined,
-        hasPublicKey,
-        size: stats.size,
-        created: stats.birthtime.toISOString(),
-        modified: stats.mtime.toISOString(),
-        preview: maskedContent
-      }, null, 2)
-    }]
-  }
-}
-
-/**
- * Read environment comparison resource
- */
-async function handleCompareRead(
-  uri: string,
-  env1: Environment,
-  env2: Environment
-): Promise<{ contents: Array<{ uri: string; mimeType: string; text: string }> }> {
-  const { client, config } = await getClientAndConfig()
-
-  if (!config?.project) {
-    return {
-      contents: [{
-        uri,
-        mimeType: 'text/plain',
-        text: '# No project configured\n# Run `vaulter init` to create a new project'
-      }]
-    }
-  }
-
-  const project = config.project
-  const service = config.service
-
-  try {
-    await client.connect()
-
-    const [vars1, vars2] = await Promise.all([
-      client.export(project, env1, service),
-      client.export(project, env2, service)
-    ])
-
-    const allKeys = new Set([...Object.keys(vars1), ...Object.keys(vars2)])
-    const sorted = Array.from(allKeys).sort()
-
-    const onlyIn1: string[] = []
-    const onlyIn2: string[] = []
-    const different: string[] = []
-    const same: string[] = []
-
-    for (const key of sorted) {
-      const v1 = vars1[key]
-      const v2 = vars2[key]
-
-      if (v1 !== undefined && v2 === undefined) {
-        onlyIn1.push(key)
-      } else if (v1 === undefined && v2 !== undefined) {
-        onlyIn2.push(key)
-      } else if (v1 !== v2) {
-        different.push(key)
-      } else {
-        same.push(key)
-      }
-    }
-
-    const lines: string[] = [
-      `# Comparison: ${env1} vs ${env2}`,
-      `# Project: ${project}${service ? `/${service}` : ''}`,
-      '',
-      `Total keys: ${allKeys.size}`,
-      `  Same: ${same.length}`,
-      `  Different: ${different.length}`,
-      `  Only in ${env1}: ${onlyIn1.length}`,
-      `  Only in ${env2}: ${onlyIn2.length}`,
-      ''
-    ]
-
-    if (onlyIn1.length > 0) {
-      lines.push(`## Only in ${env1}`)
-      for (const key of onlyIn1) {
-        lines.push(`  ${key}`)
-      }
-      lines.push('')
-    }
-
-    if (onlyIn2.length > 0) {
-      lines.push(`## Only in ${env2}`)
-      for (const key of onlyIn2) {
-        lines.push(`  ${key}`)
-      }
-      lines.push('')
-    }
-
-    if (different.length > 0) {
-      lines.push(`## Different values`)
-      for (const key of different) {
-        lines.push(`  ${key}:`)
-        lines.push(`    ${env1}: ${maskValue(vars1[key])}`)
-        lines.push(`    ${env2}: ${maskValue(vars2[key])}`)
-      }
-      lines.push('')
-    }
-
-    return {
-      contents: [{
-        uri,
-        mimeType: 'text/plain',
-        text: lines.join('\n')
-      }]
-    }
-  } finally {
-    await client.disconnect()
-  }
-}
-
-/**
- * Read environment variables resource
- */
-async function handleEnvRead(
-  uri: string,
-  project: string,
-  environment: Environment,
-  service?: string
-): Promise<{ contents: Array<{ uri: string; mimeType: string; text: string }> }> {
-  const { client } = await getClientAndConfig()
-
-  try {
-    await client.connect()
-
-    const vars = await client.export(project, environment, service)
-    const entries = Object.entries(vars)
-
-    if (entries.length === 0) {
-      return {
-        contents: [{
-          uri,
-          mimeType: 'text/plain',
-          text: `# No variables found for ${project}/${environment}${service ? `/${service}` : ''}`
-        }]
-      }
-    }
-
-    // Format as .env file content
-    const envContent = entries
-      .map(([key, value]) => `${key}=${value}`)
-      .join('\n')
-
-    return {
-      contents: [{
-        uri,
-        mimeType: 'text/plain',
-        text: `# Environment: ${project}/${environment}${service ? `/${service}` : ''}\n# Variables: ${entries.length}\n\n${envContent}`
-      }]
-    }
-  } finally {
-    await client.disconnect()
-  }
-}
-
-/**
- * Mask a value for safe display (show first 3 chars + ... + last 3 chars if > 10 chars)
- */
-function maskValue(value: string | undefined): string {
-  if (!value) return '(undefined)'
-  if (value.length <= 10) return value
-  return `${value.slice(0, 3)}...${value.slice(-3)}`
 }

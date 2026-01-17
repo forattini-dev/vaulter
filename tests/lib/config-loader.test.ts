@@ -12,6 +12,10 @@ import {
   getProjectName,
   configExists,
   loadEncryptionKey,
+  loadPublicKey,
+  loadPrivateKey,
+  getEncryptionMode,
+  getAsymmetricAlgorithm,
   createDefaultConfig,
   getEnvFilePath,
   getSecretsFilePath,
@@ -632,6 +636,155 @@ directories:
         expect(config.directories?.configs).toBe('deploy/configs')
         expect(config.directories?.secrets).toBe('deploy/secrets')
       })
+    })
+  })
+
+  describe('getEncryptionMode', () => {
+    it('should return symmetric by default', () => {
+      const config = { ...DEFAULT_CONFIG }
+      expect(getEncryptionMode(config)).toBe('symmetric')
+    })
+
+    it('should return configured mode', () => {
+      const config = {
+        ...DEFAULT_CONFIG,
+        encryption: { mode: 'asymmetric' as const }
+      }
+      expect(getEncryptionMode(config)).toBe('asymmetric')
+    })
+  })
+
+  describe('getAsymmetricAlgorithm', () => {
+    it('should return rsa-4096 by default', () => {
+      const config = { ...DEFAULT_CONFIG }
+      expect(getAsymmetricAlgorithm(config)).toBe('rsa-4096')
+    })
+
+    it('should return configured algorithm', () => {
+      const config = {
+        ...DEFAULT_CONFIG,
+        encryption: {
+          mode: 'asymmetric' as const,
+          asymmetric: { algorithm: 'ec-p256' }
+        }
+      }
+      expect(getAsymmetricAlgorithm(config)).toBe('ec-p256')
+    })
+  })
+
+  describe('loadPublicKey', () => {
+    it('should return null when no asymmetric config', async () => {
+      const config = { ...DEFAULT_CONFIG }
+      const key = await loadPublicKey(config)
+      expect(key).toBeNull()
+    })
+
+    it('should load from environment variable fallback', async () => {
+      process.env.VAULTER_PUBLIC_KEY = '-----BEGIN PUBLIC KEY-----\ntest\n-----END PUBLIC KEY-----'
+
+      const config = {
+        ...DEFAULT_CONFIG,
+        encryption: {
+          mode: 'asymmetric' as const,
+          asymmetric: {}
+        }
+      }
+
+      const key = await loadPublicKey(config)
+      expect(key).toBe('-----BEGIN PUBLIC KEY-----\ntest\n-----END PUBLIC KEY-----')
+    })
+
+    it('should load from explicit public_key env source', async () => {
+      process.env.MY_PUBLIC_KEY = '-----BEGIN PUBLIC KEY-----\nfrom-env\n-----END PUBLIC KEY-----'
+
+      const config = {
+        ...DEFAULT_CONFIG,
+        encryption: {
+          mode: 'asymmetric' as const,
+          asymmetric: {
+            public_key: [{ env: 'MY_PUBLIC_KEY' }]
+          }
+        }
+      }
+
+      const key = await loadPublicKey(config)
+      expect(key).toBe('-----BEGIN PUBLIC KEY-----\nfrom-env\n-----END PUBLIC KEY-----')
+    })
+
+    it('should load from explicit public_key file source', async () => {
+      const keyFile = path.join(tempDir, 'pub.key')
+      fs.writeFileSync(keyFile, '-----BEGIN PUBLIC KEY-----\nfrom-file\n-----END PUBLIC KEY-----')
+
+      const config = {
+        ...DEFAULT_CONFIG,
+        encryption: {
+          mode: 'asymmetric' as const,
+          asymmetric: {
+            public_key: [{ file: keyFile }]
+          }
+        }
+      }
+
+      const key = await loadPublicKey(config)
+      expect(key).toBe('-----BEGIN PUBLIC KEY-----\nfrom-file\n-----END PUBLIC KEY-----')
+    })
+  })
+
+  describe('loadPrivateKey', () => {
+    it('should return null when no asymmetric config', async () => {
+      const config = { ...DEFAULT_CONFIG }
+      const key = await loadPrivateKey(config)
+      expect(key).toBeNull()
+    })
+
+    it('should load from environment variable fallback', async () => {
+      process.env.VAULTER_PRIVATE_KEY = '-----BEGIN PRIVATE KEY-----\ntest\n-----END PRIVATE KEY-----'
+
+      const config = {
+        ...DEFAULT_CONFIG,
+        encryption: {
+          mode: 'asymmetric' as const,
+          asymmetric: {}
+        }
+      }
+
+      const key = await loadPrivateKey(config)
+      expect(key).toBe('-----BEGIN PRIVATE KEY-----\ntest\n-----END PRIVATE KEY-----')
+    })
+
+    it('should load from explicit private_key env source', async () => {
+      process.env.MY_PRIVATE_KEY = '-----BEGIN PRIVATE KEY-----\nfrom-env\n-----END PRIVATE KEY-----'
+
+      const config = {
+        ...DEFAULT_CONFIG,
+        encryption: {
+          mode: 'asymmetric' as const,
+          asymmetric: {
+            private_key: [{ env: 'MY_PRIVATE_KEY' }]
+          }
+        }
+      }
+
+      const key = await loadPrivateKey(config)
+      expect(key).toBe('-----BEGIN PRIVATE KEY-----\nfrom-env\n-----END PRIVATE KEY-----')
+    })
+
+    it('should load from explicit private_key file source', async () => {
+      const keyFile = path.join(tempDir, 'priv.key')
+      fs.writeFileSync(keyFile, '-----BEGIN PRIVATE KEY-----\nfrom-file\n-----END PRIVATE KEY-----')
+
+      const config = {
+        ...DEFAULT_CONFIG,
+        encryption: {
+          mode: 'asymmetric' as const,
+          asymmetric: {
+            private_key: [{ file: keyFile }]
+          }
+        }
+      }
+
+      const key = await loadPrivateKey(config)
+      expect(key).toBe('-----BEGIN PRIVATE KEY-----\nfrom-file\n-----END PRIVATE KEY-----')
     })
   })
 })

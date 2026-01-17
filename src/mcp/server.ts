@@ -5,7 +5,7 @@
  * Exposes vaulter tools, resources, and prompts via stdio transport
  *
  * Tools:     22 tools for managing secrets and configs
- * Resources: 8 resource types (instructions, mcp-config, config, services, keys, env, compare)
+ * Resources: 4 resource types (instructions, mcp-config, config, services)
  * Prompts:   5 workflow prompts (setup, migrate, deploy, compare, audit)
  *
  * ═══════════════════════════════════════════════════════════════════════

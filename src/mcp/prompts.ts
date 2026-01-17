@@ -9,6 +9,8 @@
  *   deploy_secrets       → Deploy secrets to Kubernetes
  *   compare_environments → Compare variables between environments
  *   security_audit       → Audit secrets for security issues
+ *   rotation_workflow    → Check and manage secret rotation (check/rotate/report)
+ *   shared_vars_workflow → Manage monorepo shared variables (list/promote/override/audit)
  */
 
 import type { Prompt, GetPromptResult } from '@modelcontextprotocol/sdk/types.js'
@@ -117,6 +119,48 @@ export function registerPrompts(): Prompt[] {
           required: false
         }
       ]
+    },
+    {
+      name: 'rotation_workflow',
+      description: 'Check and manage secret rotation. Identifies overdue secrets, helps with rotation, and updates rotation timestamps.',
+      arguments: [
+        {
+          name: 'environment',
+          description: 'Environment to check: dev, stg, prd, sbx, dr, or "all"',
+          required: true
+        },
+        {
+          name: 'action',
+          description: 'Action to perform: "check" (list overdue), "rotate" (interactive rotation), or "report" (full status report)',
+          required: false
+        },
+        {
+          name: 'key_pattern',
+          description: 'Optional pattern to filter keys (e.g., "*_KEY", "API_*")',
+          required: false
+        }
+      ]
+    },
+    {
+      name: 'shared_vars_workflow',
+      description: 'Manage monorepo shared variables. Shared vars apply to all services and can be overridden per-service.',
+      arguments: [
+        {
+          name: 'action',
+          description: 'Action: "list" (show inheritance), "promote" (service→shared), "override" (create service override), or "audit" (check consistency)',
+          required: true
+        },
+        {
+          name: 'environment',
+          description: 'Environment: dev, stg, prd, sbx, or dr',
+          required: true
+        },
+        {
+          name: 'service',
+          description: 'Service name (required for promote/override actions)',
+          required: false
+        }
+      ]
     }
   ]
 }
@@ -136,6 +180,10 @@ export function getPrompt(name: string, args: Record<string, string>): GetPrompt
       return getCompareEnvironmentsPrompt(args)
     case 'security_audit':
       return getSecurityAuditPrompt(args)
+    case 'rotation_workflow':
+      return getRotationWorkflowPrompt(args)
+    case 'shared_vars_workflow':
+      return getSharedVarsWorkflowPrompt(args)
     default:
       throw new Error(`Unknown prompt: ${name}`)
   }
@@ -408,6 +456,278 @@ ${strict ? `6. **Strict mode additional checks:**
    - Certificate expiration dates
    - API key age and rotation
    - Compliance with security standards` : ''}`
+        }
+      }
+    ]
+  }
+}
+
+function getRotationWorkflowPrompt(args: Record<string, string>): GetPromptResult {
+  const environment = args.environment || 'prd'
+  const action = args.action || 'check'
+  const keyPattern = args.key_pattern || ''
+
+  return {
+    description: `Secret rotation ${action} for ${environment}`,
+    messages: [
+      {
+        role: 'user',
+        content: {
+          type: 'text',
+          text: `Help me manage secret rotation:
+
+**Environment:** ${environment}
+**Action:** ${action}
+${keyPattern ? `**Key Pattern:** ${keyPattern}` : '**Key Pattern:** (all secrets)'}
+
+${action === 'check' ? `## Check Overdue Secrets
+
+Please:
+
+1. **Get rotation status** using \`vaulter_rotation_status\` tool
+   - Environment: ${environment}
+   ${keyPattern ? `- Filter by pattern: ${keyPattern}` : ''}
+
+2. **List overdue secrets:**
+   - Show secrets past their rotation date
+   - Show days overdue for each
+   - Highlight critical secrets (passwords, API keys)
+
+3. **List upcoming rotations:**
+   - Secrets due within 7 days
+   - Secrets due within 30 days
+
+4. **Provide a summary:**
+   | Status | Count |
+   |--------|-------|
+   | Overdue | X |
+   | Due soon (7 days) | X |
+   | Healthy | X |
+   | No rotation configured | X |
+
+5. **Recommendations:**
+   - Priority order for rotation
+   - Which secrets are most critical` : ''}
+
+${action === 'rotate' ? `## Interactive Rotation
+
+Please help me rotate secrets step by step:
+
+1. **Get current rotation status** using \`vaulter_rotation_status\`
+
+2. **For each overdue secret:**
+   - Show current masked value
+   - Ask for new value (or help generate one)
+   - Update using \`vaulter_set\` with rotation metadata
+   - Confirm rotation timestamp updated
+
+3. **Rotation checklist:**
+   \`\`\`
+   [ ] Generate new secret value
+   [ ] Update in vaulter
+   [ ] Update in dependent services
+   [ ] Verify services work with new secret
+   [ ] Revoke old secret (if applicable)
+   \`\`\`
+
+4. **After rotation:**
+   - Show updated rotation status
+   - Confirm next rotation date` : ''}
+
+${action === 'report' ? `## Full Rotation Report
+
+Please generate a comprehensive rotation report:
+
+1. **Fetch all data:**
+   - Use \`vaulter_rotation_status\` for ${environment}
+   - Use \`vaulter_list\` to get all variables
+
+2. **Generate report sections:**
+
+   ### Summary
+   - Total secrets tracked: X
+   - With rotation configured: X
+   - Healthy: X
+   - Needs attention: X
+
+   ### Overdue Secrets (CRITICAL)
+   | Key | Last Rotated | Days Overdue | Rotation Interval |
+   |-----|--------------|--------------|-------------------|
+
+   ### Upcoming Rotations (7 days)
+   | Key | Last Rotated | Due In | Rotation Interval |
+   |-----|--------------|--------|-------------------|
+
+   ### Secrets Without Rotation
+   | Key | Recommendation |
+   |-----|----------------|
+
+3. **Recommendations:**
+   - Enable rotation for critical secrets
+   - Suggested rotation intervals
+   - Automation opportunities (CI/CD integration)
+
+4. **Commands to fix:**
+   \`\`\`bash
+   # Set rotation for a secret
+   vaulter set API_KEY "value" -e ${environment} --rotate-after 90d
+
+   # Check what needs rotation
+   vaulter rotation:check -e ${environment} --overdue
+   \`\`\`` : ''}`
+        }
+      }
+    ]
+  }
+}
+
+function getSharedVarsWorkflowPrompt(args: Record<string, string>): GetPromptResult {
+  const action = args.action || 'list'
+  const environment = args.environment || 'dev'
+  const service = args.service || ''
+
+  return {
+    description: `Shared variables ${action} for ${environment}`,
+    messages: [
+      {
+        role: 'user',
+        content: {
+          type: 'text',
+          text: `Help me manage monorepo shared variables:
+
+**Action:** ${action}
+**Environment:** ${environment}
+${service ? `**Service:** ${service}` : '**Service:** (all services)'}
+
+## Understanding Shared Variables
+
+Vaulter supports variable inheritance in monorepos:
+- **Shared vars** (service=\`__shared__\`): Apply to ALL services
+- **Service vars**: Apply to specific service only
+- **Overrides**: Service vars override shared vars with same key
+
+**Resolution order:**
+1. Shared variables (base)
+2. Service-specific variables (override)
+
+${action === 'list' ? `## List Inheritance
+
+Please:
+
+1. **Get shared variables** using \`vaulter_shared_list\`
+   - Environment: ${environment}
+
+2. **Get service inheritance stats** using \`vaulter_inheritance_stats\`
+   ${service ? `- Service: ${service}` : '- For all services in the project'}
+
+3. **Display inheritance map:**
+
+   ### Shared Variables (Base)
+   | Key | Value (masked) |
+   |-----|----------------|
+
+   ### Per-Service Inheritance
+   | Service | Total Vars | Inherited | Overrides | Local Only |
+   |---------|------------|-----------|-----------|------------|
+
+4. **For ${service ? service : 'each service'}, show:**
+   - Variables inherited from shared (using base value)
+   - Variables overriding shared (different from base)
+   - Variables unique to service (not in shared)
+
+5. **Recommendations:**
+   - Candidates for promotion to shared (same value across services)
+   - Potential override conflicts` : ''}
+
+${action === 'promote' ? `## Promote to Shared
+
+${!service ? '⚠️ **Service name required** - Please specify a service to promote from.\n\n' : ''}Please help me promote a service variable to shared:
+
+1. **List service variables** for \`${service || '<service>'}\` using \`vaulter_list\`
+
+2. **Check if variable exists in shared** using \`vaulter_shared_list\`
+
+3. **Promotion process:**
+   - Show current value in service
+   - Check if other services have same key
+   - Show impact (which services will inherit)
+
+4. **Execute promotion:**
+   \`\`\`bash
+   # Set as shared variable
+   vaulter set KEY "value" -e ${environment} --shared
+
+   # Remove from service (optional, keeps as override)
+   vaulter delete KEY -e ${environment} -s ${service || '<service>'}
+   \`\`\`
+
+5. **Verify promotion:**
+   - Use \`vaulter_inheritance_stats\` to confirm
+   - Check all services now inherit the value` : ''}
+
+${action === 'override' ? `## Create Override
+
+${!service ? '⚠️ **Service name required** - Please specify a service for the override.\n\n' : ''}Please help me create a service-specific override:
+
+1. **Check current shared value** using \`vaulter_shared_list\`
+   - Verify the key exists in shared
+
+2. **Show inheritance impact:**
+   - Current: Service inherits shared value
+   - After: Service will use its own value
+
+3. **Create override:**
+   \`\`\`bash
+   # Set service-specific value (overrides shared)
+   vaulter set KEY "service-specific-value" -e ${environment} -s ${service || '<service>'}
+   \`\`\`
+
+4. **Verify override:**
+   - Use \`vaulter_inheritance_stats -s ${service || '<service>'}\`
+   - Confirm override count increased
+
+5. **Document reason for override** (recommended):
+   - Why does this service need a different value?
+   - Is this temporary or permanent?` : ''}
+
+${action === 'audit' ? `## Audit Consistency
+
+Please perform a shared variables audit:
+
+1. **Get all shared variables** using \`vaulter_shared_list\`
+
+2. **Get inheritance stats for all services** using \`vaulter_inheritance_stats\`
+
+3. **Check for issues:**
+
+   ### Orphaned Overrides
+   Service vars that override a shared var that no longer exists:
+   | Service | Key | Status |
+   |---------|-----|--------|
+
+   ### Duplicate Values
+   Same value in multiple services (candidate for shared):
+   | Key | Value (masked) | Services |
+   |-----|----------------|----------|
+
+   ### Override Conflicts
+   Different values across services for same key:
+   | Key | Shared Value | Service Overrides |
+   |-----|--------------|-------------------|
+
+4. **Recommendations:**
+   - Variables to promote to shared
+   - Overrides to review/remove
+   - Missing shared variables
+
+5. **Cleanup commands:**
+   \`\`\`bash
+   # Remove orphaned override
+   vaulter delete KEY -e ${environment} -s <service>
+
+   # Promote to shared
+   vaulter set KEY "value" -e ${environment} --shared
+   \`\`\`` : ''}`
         }
       }
     ]

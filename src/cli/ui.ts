@@ -7,6 +7,7 @@
 
 import { Table, renderToString, getSpinnerConfig } from 'tuiuiu.js'
 import type { SpinnerStyle } from 'tuiuiu.js'
+import { c, symbols, colorEnv, print } from './lib/colors.js'
 
 // Detect if running in interactive terminal
 export const isTTY = process.stdout.isTTY ?? false
@@ -41,7 +42,7 @@ export function log(message: string): void {
  */
 export function verbose(message: string, enabled: boolean): void {
   if (enabled) {
-    console.error(`[vaulter] ${message}`)
+    console.error(`${c.muted('[vaulter]')} ${message}`)
   }
 }
 
@@ -49,7 +50,7 @@ export function verbose(message: string, enabled: boolean): void {
  * Log error to stderr (always shown)
  */
 export function error(message: string): void {
-  console.error(`Error: ${message}`)
+  print.error(message)
 }
 
 /**
@@ -57,7 +58,7 @@ export function error(message: string): void {
  */
 export function success(message: string): void {
   if (isTTY) {
-    console.error(`✓ ${message}`)
+    print.success(message)
   }
 }
 
@@ -65,7 +66,7 @@ export function success(message: string): void {
  * Log warning message (always shown)
  */
 export function warn(message: string): void {
-  console.error(`Warning: ${message}`)
+  print.warning(message)
 }
 
 /**
@@ -79,8 +80,8 @@ export function createSpinner(text: string, style: SpinnerStyle = 'dots') {
       start: () => { console.error(text) },
       stop: () => {},
       update: (_text: string) => {},
-      succeed: (msg?: string) => { if (msg) console.error(`✓ ${msg}`) },
-      fail: (msg?: string) => { if (msg) console.error(`✗ ${msg}`) }
+      succeed: (msg?: string) => { if (msg) print.success(msg) },
+      fail: (msg?: string) => { if (msg) print.error(msg) }
     }
   }
 
@@ -91,7 +92,7 @@ export function createSpinner(text: string, style: SpinnerStyle = 'dots') {
 
   const render = () => {
     const frame = config.frames[frameIndex % config.frames.length]
-    process.stderr.write(`\r\x1b[K${frame} ${currentText}`)
+    process.stderr.write(`\r\x1b[K${c.info(frame)} ${currentText}`)
     frameIndex++
   }
 
@@ -111,12 +112,12 @@ export function createSpinner(text: string, style: SpinnerStyle = 'dots') {
     succeed: (msg?: string) => {
       if (interval) clearInterval(interval)
       process.stderr.write(`\r\x1b[K`)
-      console.error(`✓ ${msg || currentText}`)
+      print.success(msg || currentText)
     },
     fail: (msg?: string) => {
       if (interval) clearInterval(interval)
       process.stderr.write(`\r\x1b[K`)
-      console.error(`✗ ${msg || currentText}`)
+      print.error(msg || currentText)
     }
   }
 }
@@ -212,7 +213,7 @@ export async function withSpinner<T>(
  */
 export function header(text: string): void {
   if (isTTY) {
-    console.error(`\n${text}\n${'─'.repeat(text.length)}`)
+    console.error(`\n${c.header(text)}\n${c.muted('─'.repeat(text.length))}`)
   }
 }
 
@@ -221,6 +222,9 @@ export function header(text: string): void {
  */
 export function divider(): void {
   if (isTTY) {
-    console.error('─'.repeat(40))
+    console.error(c.muted('─'.repeat(40)))
   }
 }
+
+// Re-export color utilities for use in commands
+export { c, symbols, colorEnv }

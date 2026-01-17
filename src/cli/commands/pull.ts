@@ -10,9 +10,11 @@ import type { CLIArgs, VaulterConfig, Environment } from '../../types.js'
 import { createClientFromConfig } from '../lib/create-client.js'
 import { runHook } from '../lib/hooks.js'
 import { findConfigDir, getEnvFilePathForConfig } from '../../lib/config-loader.js'
-import { serializeEnv } from '../../lib/env-parser.js'
+import { serializeEnv, parseEnvFile } from '../../lib/env-parser.js'
+import { c, symbols, colorEnv, print } from '../lib/colors.js'
+import { SHARED_SERVICE } from '../../lib/shared.js'
 
-interface PullContext {
+export interface PullContext {
   args: CLIArgs
   config: VaulterConfig | null
   project: string
@@ -21,17 +23,24 @@ interface PullContext {
   verbose: boolean
   dryRun: boolean
   jsonOutput: boolean
+  /** Delete local variables that don't exist on remote */
+  prune?: boolean
+  /** Target shared variables scope (monorepo) */
+  shared?: boolean
 }
 
 /**
  * Run the pull command
  */
 export async function runPull(context: PullContext): Promise<void> {
-  const { args, config, project, service, environment, verbose, dryRun, jsonOutput } = context
+  const { args, config, project, environment, verbose, dryRun, jsonOutput } = context
+
+  // If --shared is set, target __shared__ service (monorepo)
+  const effectiveService = context.shared ? SHARED_SERVICE : context.service
 
   if (!project) {
-    console.error('Error: Project not specified and no config found')
-    console.error('Run "vaulter init" or specify --project')
+    print.error('Project not specified and no config found')
+    console.error(`Run "${c.command('vaulter init')}" or specify ${c.highlight('--project')}`)
     process.exit(1)
   }
 
@@ -52,11 +61,11 @@ export async function runPull(context: PullContext): Promise<void> {
   }
 
   if (verbose) {
-    console.error(`Pulling ${project}/${service || '(no service)'}/${environment}`)
+    console.error(`${symbols.info} Pulling ${c.project(project)}/${context.shared ? c.env('shared') : c.service(effectiveService || '(no service)')}/${colorEnv(environment)}`)
     if (envFilePath) {
-      console.error(`Output: ${envFilePath}`)
+      console.error(`${symbols.info} Output: ${c.muted(envFilePath)}`)
     } else {
-      console.error('Output: stdout')
+      console.error(`${symbols.info} Output: stdout`)
     }
   }
 
@@ -69,7 +78,7 @@ export async function runPull(context: PullContext): Promise<void> {
   try {
     await client.connect()
 
-    const vars = await client.export(project, environment, service)
+    const vars = await client.export(project, environment, effectiveService)
     const varCount = Object.keys(vars).length
 
     if (varCount === 0) {
@@ -77,8 +86,9 @@ export async function runPull(context: PullContext): Promise<void> {
         console.log(JSON.stringify({
           warning: 'no_variables',
           project,
-          service,
-          environment
+          service: effectiveService,
+          environment,
+          shared: context.shared || false
         }))
       } else {
         console.error(`Warning: No variables found for ${project}/${environment}`)
@@ -90,13 +100,33 @@ export async function runPull(context: PullContext): Promise<void> {
     const envContent = serializeEnv(vars)
 
     if (dryRun) {
+      // Calculate what would happen with merge/prune
+      let localOnlyCount = 0
+      const localOnlyKeys: string[] = []
+
+      if (envFilePath && fs.existsSync(envFilePath)) {
+        const localVars = parseEnvFile(envFilePath)
+        const remoteKeys = new Set(Object.keys(vars))
+        for (const key of Object.keys(localVars)) {
+          if (!remoteKeys.has(key)) {
+            localOnlyKeys.push(key)
+            localOnlyCount++
+          }
+        }
+      }
+
       if (jsonOutput) {
         console.log(JSON.stringify({
           dryRun: true,
           project,
-          service,
+          service: effectiveService,
           environment,
-          variableCount: varCount,
+          shared: context.shared || false,
+          prune: context.prune || false,
+          pull: varCount,
+          localOnly: localOnlyCount,
+          localOnlyAction: context.prune ? 'delete' : 'keep',
+          localOnlyKeys,
           outputPath: envFilePath,
           variables: Object.keys(vars)
         }))
@@ -108,38 +138,62 @@ export async function runPull(context: PullContext): Promise<void> {
         } else {
           console.log('  Output: stdout')
         }
+        if (localOnlyCount > 0) {
+          if (context.prune) {
+            console.log(`  ${c.removed(`Would delete ${localOnlyCount} local-only: ${localOnlyKeys.join(', ')}`)}`)
+          } else {
+            console.log(`  Would keep ${localOnlyCount} local-only: ${localOnlyKeys.join(', ')}`)
+          }
+        }
       }
       return
     }
 
     if (envFilePath) {
-      // Check if file exists and warn about overwrite
-      if (fs.existsSync(envFilePath) && !args.force) {
-        console.error(`Warning: File exists: ${envFilePath}`)
-        console.error('Use --force to overwrite')
-        process.exit(1)
-      }
-
       // Ensure directory exists
       const dir = path.dirname(envFilePath)
       if (!fs.existsSync(dir)) {
         fs.mkdirSync(dir, { recursive: true })
       }
 
-      // Write file
-      fs.writeFileSync(envFilePath, envContent + '\n')
+      // Merge with existing local vars (unless --prune is set)
+      let finalVars = vars
+      let localOnlyKept = 0
+
+      if (fs.existsSync(envFilePath) && !context.prune) {
+        const localVars = parseEnvFile(envFilePath)
+        const remoteKeys = new Set(Object.keys(vars))
+
+        // Merge: remote vars + local-only vars
+        finalVars = { ...vars }
+        for (const [key, value] of Object.entries(localVars)) {
+          if (!remoteKeys.has(key)) {
+            finalVars[key] = value
+            localOnlyKept++
+          }
+        }
+      }
+
+      const finalContent = serializeEnv(finalVars)
+      fs.writeFileSync(envFilePath, finalContent + '\n')
 
       if (jsonOutput) {
         console.log(JSON.stringify({
           success: true,
           project,
-          service,
+          service: effectiveService,
           environment,
-          variableCount: varCount,
+          shared: context.shared || false,
+          pulled: varCount,
+          localOnlyKept,
+          total: Object.keys(finalVars).length,
           outputPath: envFilePath
         }))
       } else {
         console.log(`✓ Pulled ${varCount} variables to ${envFilePath}`)
+        if (localOnlyKept > 0) {
+          console.log(`  Kept ${localOnlyKept} local-only variables`)
+        }
       }
 
       runHook(config?.hooks?.post_pull, 'post_pull', verbose)
@@ -149,8 +203,9 @@ export async function runPull(context: PullContext): Promise<void> {
         console.log(JSON.stringify({
           success: true,
           project,
-          service,
+          service: effectiveService,
           environment,
+          shared: context.shared || false,
           variables: vars
         }))
       } else {
