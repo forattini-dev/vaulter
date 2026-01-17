@@ -370,6 +370,7 @@ export interface CommandContext {
   environment: Environment
   config: VaulterConfig
   verbose: boolean
+  quiet: boolean
   dryRun: boolean
   jsonOutput: boolean
 }

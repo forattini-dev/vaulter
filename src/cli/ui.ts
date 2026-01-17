@@ -13,9 +13,28 @@ import { c, symbols, colorEnv, print } from './lib/colors.js'
 export const isTTY = process.stdout.isTTY ?? false
 export const isStderrTTY = process.stderr.isTTY ?? false
 
+// Global quiet mode state
+let quietMode = false
+
+/**
+ * Set quiet mode globally
+ * When quiet, suppress all non-essential output (errors still shown)
+ */
+export function setQuiet(enabled: boolean): void {
+  quietMode = enabled
+}
+
+/**
+ * Check if quiet mode is enabled
+ */
+export function isQuiet(): boolean {
+  return quietMode
+}
+
 /**
  * Output data to stdout (for pipes)
  * This is the ONLY function that should write to stdout for data
+ * Works even in quiet mode (data output is essential)
  */
 export function output(data: string): void {
   process.stdout.write(data + '\n')
@@ -30,9 +49,10 @@ export function outputRaw(data: string): void {
 
 /**
  * Log message to stderr (doesn't interfere with pipes)
+ * Suppressed in quiet mode
  */
 export function log(message: string): void {
-  if (isTTY) {
+  if (isTTY && !quietMode) {
     console.error(message)
   }
 }
@@ -55,9 +75,10 @@ export function error(message: string): void {
 
 /**
  * Log success message (only in TTY mode)
+ * Suppressed in quiet mode
  */
 export function success(message: string): void {
-  if (isTTY) {
+  if (isTTY && !quietMode) {
     print.success(message)
   }
 }
@@ -72,8 +93,20 @@ export function warn(message: string): void {
 /**
  * Simple spinner for stderr
  * Uses tuiuiu.js spinner frames but renders imperatively to stderr
+ * Returns no-op spinner in quiet mode
  */
 export function createSpinner(text: string, style: SpinnerStyle = 'dots') {
+  // No-op spinner for quiet mode
+  if (quietMode) {
+    return {
+      start: () => {},
+      stop: () => {},
+      update: (_text: string) => {},
+      succeed: (_msg?: string) => {},
+      fail: (msg?: string) => { if (msg) print.error(msg) } // Errors still shown
+    }
+  }
+
   if (!isStderrTTY) {
     // No-op spinner for non-TTY
     return {
@@ -210,18 +243,20 @@ export async function withSpinner<T>(
 
 /**
  * Print a styled header (only in TTY mode)
+ * Suppressed in quiet mode
  */
 export function header(text: string): void {
-  if (isTTY) {
+  if (isTTY && !quietMode) {
     console.error(`\n${c.header(text)}\n${c.muted('─'.repeat(text.length))}`)
   }
 }
 
 /**
  * Print a divider line (only in TTY mode)
+ * Suppressed in quiet mode
  */
 export function divider(): void {
-  if (isTTY) {
+  if (isTTY && !quietMode) {
     console.error(c.muted('─'.repeat(40)))
   }
 }

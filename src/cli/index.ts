@@ -14,6 +14,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { c, print } from './lib/colors.js'
+import * as ui from './ui.js'
 
 // Version is injected at build time or read from package.json
 const VERSION = process.env.VAULTER_VERSION || getPackageVersion() || '0.0.0'
@@ -136,6 +137,12 @@ const cliSchema: CLISchema = {
       type: 'boolean',
       default: false,
       description: 'Enable verbose output'
+    },
+    quiet: {
+      short: 'q',
+      type: 'boolean',
+      default: false,
+      description: 'Suppress non-essential output (errors still shown)'
     },
     all: {
       type: 'boolean',
@@ -654,8 +661,12 @@ function buildContext(result: CommandParseResult, config: VaulterConfig | null) 
   const project = (opts.project || (config ? getProjectName(config) : '')) as string
   const service = (opts.service || config?.service) as string | undefined
   const verbose = (opts.verbose || false) as boolean
+  const quiet = (opts.quiet || false) as boolean
   const dryRun = (opts['dry-run'] || false) as boolean
   const jsonOutput = (opts.json || false) as boolean
+
+  // Set global quiet mode for UI
+  ui.setQuiet(quiet)
 
   // Separator buckets (from KEY=value, KEY::value, @tag:value syntax)
   const secrets = (result as Record<string, unknown>).secrets as Record<string, SeparatorValue> | undefined
@@ -669,6 +680,7 @@ function buildContext(result: CommandParseResult, config: VaulterConfig | null) 
     service,
     environment,
     verbose,
+    quiet,
     dryRun,
     jsonOutput,
     // Separator buckets
