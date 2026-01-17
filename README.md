@@ -60,9 +60,12 @@ vaulter k8s:secret -e prd | kubectl apply -f -  # Deploy to K8s
 | `get <key> -e <env>` | Get a variable |
 | `set KEY=val -e <env>` | Set secret (encrypted) |
 | `set KEY::val -e <env>` | Set config (plain text) |
+| `set KEY:=123 -e <env>` | Set typed secret (number/boolean) |
 | `delete <key> -e <env>` | Delete a variable |
 | `list -e <env>` | List all variables |
 | `export -e <env>` | Export for shell |
+
+**Set syntax**: `=` encrypted secret · `::` plain config · `:=` typed secret
 
 ### Sync
 
@@ -98,6 +101,8 @@ vaulter k8s:secret -e prd | kubectl apply -f -  # Deploy to K8s
 | `key generate --name <n> --asymmetric` | Generate RSA/EC key pair |
 | `key list` | List all keys |
 | `key export --name <n>` | Export encrypted bundle |
+
+> Run `vaulter --help` or `vaulter <command> --help` for all options.
 
 ---
 
@@ -147,6 +152,10 @@ encryption:
   key_source:
     - env: VAULTER_KEY
     - file: .vaulter/.key
+  rotation:
+    enabled: true
+    interval_days: 90
+    patterns: ["*_KEY", "*_SECRET", "*_TOKEN"]
 
 environments: [dev, stg, prd]
 default_environment: dev
@@ -154,12 +163,6 @@ default_environment: dev
 audit:
   enabled: true
   retention_days: 90
-
-encryption:
-  rotation:
-    enabled: true
-    interval_days: 90
-    patterns: ["*_KEY", "*_SECRET", "*_TOKEN"]
 ```
 
 ### Backend URLs
@@ -317,15 +320,14 @@ vaulter tui keys         # Key manager
 
 ### Shortcuts
 
-| Context | Key | Action |
-|:--------|:----|:-------|
-| All | `q` | Quit / Back |
-| All | `ESC` | Back to menu |
-| Menu | `↑↓` | Navigate |
-| Menu | `1` `2` `3` | Quick access |
-| Dashboard | `r` `v` `e` | Refresh / Toggle values / Cycle env |
-| Audit | `↑↓` `o` `s` `/` `c` | Navigate / Filter op / Filter src / Search / Clear |
-| Keys | `↑↓` `r` `c` | Navigate / Refresh / Toggle config |
+**Global**: `q` quit · `ESC` back · `↑↓` navigate
+
+| Screen | Shortcuts |
+|:-------|:----------|
+| Menu | `1` `2` `3` quick access to screens |
+| Dashboard | `r` refresh · `v` toggle values · `e` cycle env |
+| Audit | `o` filter op · `s` filter source · `/` search · `c` clear |
+| Keys | `r` refresh · `c` toggle config |
 
 ---
 
