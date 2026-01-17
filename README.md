@@ -56,6 +56,7 @@ vaulter k8s:secret -e prd | kubectl apply -f -
 - [Why Vaulter?](#why-vaulter)
 - [Security](#security)
 - [Daily Use](#daily-use)
+- [TUI (Terminal Interface)](#tui-terminal-interface)
 - [Audit & Compliance](#audit--compliance)
 - [Secret Rotation](#secret-rotation)
 - [CI/CD](#cicd)
@@ -507,6 +508,59 @@ vaulter set PORT::3000 HOST::localhost   # Configs
     --force             Skip confirmations
     --all               Apply to all services in monorepo
 ```
+
+### TUI (Terminal Interface)
+
+Vaulter includes an interactive terminal interface for managing secrets visually.
+
+```bash
+# Launch TUI menu
+vaulter tui
+
+# Direct access to screens
+vaulter tui dashboard    # Secrets dashboard
+vaulter tui audit        # Audit log viewer
+vaulter tui keys         # Key manager
+```
+
+#### Navigation
+
+| Screen | Key | Action |
+|:-------|:----|:-------|
+| **All screens** | `q` | Quit (or back to menu) |
+| **All screens** | `ESC` | Back to menu |
+| **Menu** | `↑` `↓` | Navigate options |
+| **Menu** | `Enter` | Select screen |
+| **Menu** | `1` `2` `3` | Quick access (Dashboard/Audit/Keys) |
+
+#### Dashboard Shortcuts
+
+| Key | Action |
+|:----|:-------|
+| `r` | Refresh secrets list |
+| `v` | Toggle show/hide values |
+| `e` | Cycle environment (dev → stg → prd) |
+
+#### Audit Viewer Shortcuts
+
+| Key | Action |
+|:----|:-------|
+| `↑` `↓` or `k` `j` | Navigate entries |
+| `r` | Refresh logs |
+| `o` | Filter by operation |
+| `s` | Filter by source |
+| `/` | Search by key |
+| `c` | Clear all filters |
+
+#### Key Manager Shortcuts
+
+| Key | Action |
+|:----|:-------|
+| `↑` `↓` or `k` `j` | Navigate keys |
+| `r` | Refresh list |
+| `c` | Toggle config view |
+
+---
 
 ### Flexible Environment Names
 
