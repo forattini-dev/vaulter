@@ -381,7 +381,7 @@ export function AuditViewer(props: AuditViewerProps) {
 
     const passphrase = await loadEncryptionKey(props.config) || undefined
     const newLogger = new AuditLogger(props.config.audit)
-    await newLogger.connect(urls[0], passphrase)
+    await newLogger.connect(urls[0], passphrase, props.verbose)
     setLogger(newLogger)
     return newLogger
   }

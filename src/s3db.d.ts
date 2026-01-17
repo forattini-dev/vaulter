@@ -3,9 +3,12 @@
  */
 
 declare module 's3db.js' {
+  export type LogLevel = 'trace' | 'debug' | 'info' | 'warn' | 'error' | 'fatal' | 'silent'
+
   export interface S3dbOptions {
     connectionString: string
     passphrase?: string
+    logLevel?: LogLevel
   }
 
   export interface ResourceSchema {

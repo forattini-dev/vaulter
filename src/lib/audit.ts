@@ -116,12 +116,13 @@ export class AuditLogger {
    * Note: Connection is allowed even when audit.enabled is false
    * (only writing is disabled, reading/cleanup still work)
    */
-  async connect(connectionString: string, passphrase?: string): Promise<void> {
+  async connect(connectionString: string, passphrase?: string, verbose?: boolean): Promise<void> {
     if (this.initialized) return
 
     this.db = new S3db({
       connectionString,
-      passphrase: passphrase || 'vaulter-audit-key'
+      passphrase: passphrase || 'vaulter-audit-key',
+      logLevel: verbose ? 'debug' : 'silent'
     })
 
     await this.db.connect()

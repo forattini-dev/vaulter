@@ -164,7 +164,8 @@ export class VaulterClient {
 
         this.db = new S3db({
           connectionString,
-          passphrase: this.passphrase
+          passphrase: this.passphrase,
+          logLevel: this.verbose ? 'debug' : 'silent'
         })
 
         await this.db.connect()

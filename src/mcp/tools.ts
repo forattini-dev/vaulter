@@ -2306,7 +2306,7 @@ async function handleAuditListCall(
   }
 
   try {
-    await auditLogger.connect(urls[0])
+    await auditLogger.connect(urls[0], undefined, false)
 
     const queryOptions: AuditQueryOptions = {
       project,

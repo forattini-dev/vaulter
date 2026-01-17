@@ -29,7 +29,7 @@ export async function createConnectedAuditLogger(
   try {
     const passphrase = await loadEncryptionKey(config) || undefined
     const logger = new AuditLogger(config.audit)
-    await logger.connect(urls[0], passphrase)
+    await logger.connect(urls[0], passphrase, verbose)
 
     if (verbose) {
       console.error('[vaulter] Audit logger connected')

@@ -39,7 +39,7 @@ async function createAuditLogger(context: AuditContext): Promise<AuditLogger> {
   const logger = new AuditLogger(config.audit)
 
   ui.verbose(`Connecting to audit backend: ${urls[0].replace(/:([^:@/]+)@/, ':***@')}`, verbose)
-  await logger.connect(urls[0], passphrase)
+  await logger.connect(urls[0], passphrase, verbose)
 
   return logger
 }
