@@ -339,17 +339,8 @@ export class VaulterClient {
     // O(1) lookup using deterministic ID
     const id = generateVarId(project, environment, service, key)
 
-    // s3db.js may throw "No such key" if not found
-    let found: any = null
-    try {
-      found = await this.resource.get(id)
-    } catch (err: any) {
-      // Handle "not found" errors gracefully
-      if (err?.code !== 'NOT_FOUND' && !err?.message?.includes('No such key') && !err?.message?.includes('not found')) {
-        throw err
-      }
-      return null
-    }
+    // Use getOrNull to avoid exception handling for missing keys
+    const found = await this.resource.getOrNull(id)
 
     if (!found) return null
 
@@ -373,16 +364,8 @@ export class VaulterClient {
     // O(1) lookup using deterministic ID
     const id = generateVarId(input.project, input.environment, input.service, input.key)
 
-    // Try to get existing - s3db.js may throw "No such key" if not found
-    let existing: any = null
-    try {
-      existing = await this.resource.get(id)
-    } catch (err: any) {
-      // Handle "not found" errors gracefully - means we need to insert
-      if (err?.code !== 'NOT_FOUND' && !err?.message?.includes('No such key') && !err?.message?.includes('not found')) {
-        throw err
-      }
-    }
+    // Use getOrNull - returns null if not found (no exception)
+    const existing = await this.resource.getOrNull(id)
 
     if (existing) {
       // Update existing - filter undefined values to preserve existing metadata
@@ -517,16 +500,8 @@ export class VaulterClient {
       const id = generateVarId(input.project, input.environment, input.service, input.key)
       const encryptedValue = this.encryptValue(input.value)
 
-      // O(1) lookup for existing - s3db.js may throw "No such key" if not found
-      let existing: any = null
-      try {
-        existing = await this.resource.get(id)
-      } catch (err: any) {
-        // Handle "not found" errors gracefully - means we need to insert
-        if (err?.code !== 'NOT_FOUND' && !err?.message?.includes('No such key') && !err?.message?.includes('not found')) {
-          throw err
-        }
-      }
+      // Use getOrNull - returns null if not found (no exception)
+      const existing = await this.resource.getOrNull(id)
 
       if (existing) {
         // Update existing
@@ -578,17 +553,8 @@ export class VaulterClient {
       keys.map(async (key): Promise<[string, EnvVar | null]> => {
         const id = generateVarId(project, environment, service, key)
 
-        // s3db.js may throw "No such key" if not found
-        let found: any = null
-        try {
-          found = await this.resource.get(id)
-        } catch (err: any) {
-          // Handle "not found" errors gracefully
-          if (err?.code !== 'NOT_FOUND' && !err?.message?.includes('No such key') && !err?.message?.includes('not found')) {
-            throw err
-          }
-          return [key, null]
-        }
+        // Use getOrNull - returns null if not found (no exception)
+        const found = await this.resource.getOrNull(id)
 
         if (!found) return [key, null]
 

@@ -11,7 +11,8 @@ const mockResource = {
   update: vi.fn(),
   delete: vi.fn(),
   list: vi.fn(),
-  get: vi.fn()
+  get: vi.fn(),
+  getOrNull: vi.fn()
 }
 
 const mockDb = {
@@ -44,6 +45,7 @@ describe('VaulterClient', () => {
     mockDb.createResource.mockResolvedValue(mockResource)
     mockResource.list.mockResolvedValue([])
     mockResource.get.mockResolvedValue(null) // Default: not found
+    mockResource.getOrNull.mockResolvedValue(null) // Default: not found (returns null, no exception)
     mockResource.insert.mockImplementation(async (data: any) => ({
       id: 'test-id-' + Date.now(),
       ...data,
@@ -196,8 +198,8 @@ describe('VaulterClient', () => {
         environment: 'dev',
         metadata: {}
       }
-      // Now uses resource.get with deterministic ID instead of list
-      mockResource.get.mockResolvedValue(existingVar)
+      // Now uses resource.getOrNull with deterministic ID instead of list
+      mockResource.getOrNull.mockResolvedValue(existingVar)
       mockResource.update.mockResolvedValue({
         ...existingVar,
         value: 'updated-value'
@@ -285,14 +287,14 @@ describe('VaulterClient', () => {
         project: 'test-project',
         environment: 'dev'
       }
-      // Now uses resource.get with deterministic ID instead of list
-      mockResource.get.mockResolvedValue(existingVar)
+      // Now uses resource.getOrNull with deterministic ID instead of list
+      mockResource.getOrNull.mockResolvedValue(existingVar)
 
       const result = await client.get('EXISTING_KEY', 'test-project', 'dev')
       expect(result).not.toBeNull()
       expect(result!.key).toBe('EXISTING_KEY')
       expect(result!.value).toBe('existing-value')
-      expect(mockResource.get).toHaveBeenCalledWith(expectedId)
+      expect(mockResource.getOrNull).toHaveBeenCalledWith(expectedId)
     })
 
     it('should return null for non-existent variable', async () => {
@@ -312,13 +314,13 @@ describe('VaulterClient', () => {
         service: 'api',
         environment: 'dev'
       }
-      // Now uses resource.get with deterministic ID including service
-      mockResource.get.mockResolvedValue(serviceVar)
+      // Now uses resource.getOrNull with deterministic ID including service
+      mockResource.getOrNull.mockResolvedValue(serviceVar)
 
       const result = await client.get('SERVICE_KEY', 'test-project', 'dev', 'api')
       expect(result).not.toBeNull()
       expect(result!.service).toBe('api')
-      expect(mockResource.get).toHaveBeenCalledWith(expectedId)
+      expect(mockResource.getOrNull).toHaveBeenCalledWith(expectedId)
     })
   })
 
