@@ -487,14 +487,15 @@ export function registerTools(): Tool[] {
     },
     {
       name: 'vaulter_export',
-      description: 'Export all environment variables in various formats (shell, env, json, yaml, tfvars, docker-args)',
+      description: 'Export all environment variables in various formats (shell, env, json, yaml, tfvars, docker-args). When a service is specified, shared variables are automatically included (inheritance).',
       inputSchema: {
         type: 'object',
         properties: {
           environment: { type: 'string', description: 'Environment name', default: 'dev' },
           project: { type: 'string', description: 'Project name' },
           service: { type: 'string', description: 'Service name' },
-          format: { type: 'string', description: 'Output format', enum: ['shell', 'env', 'json', 'yaml', 'tfvars', 'docker-args'], default: 'shell' }
+          format: { type: 'string', description: 'Output format', enum: ['shell', 'env', 'json', 'yaml', 'tfvars', 'docker-args'], default: 'shell' },
+          includeShared: { type: 'boolean', description: 'Include shared variables when service is specified (default: true)', default: true }
         }
       }
     },
@@ -1348,7 +1349,8 @@ async function handleExportCall(
   args: Record<string, unknown>
 ): Promise<{ content: Array<{ type: 'text'; text: string }> }> {
   const format = (args.format as string) || 'shell'
-  const vars = await client.export(project, environment, service)
+  const includeShared = args.includeShared !== false // default true
+  const vars = await client.export(project, environment, service, { includeShared })
 
   let output: string
   switch (format) {

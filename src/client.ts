@@ -645,17 +645,38 @@ export class VaulterClient {
 
   /**
    * Export variables to a Record<string, string>
+   *
+   * When a service is specified, shared variables (__shared__) are automatically
+   * included and merged, with service-specific values taking precedence.
+   *
+   * @param project - Project name
+   * @param environment - Environment name
+   * @param service - Service name (optional)
+   * @param options - Export options
+   * @param options.includeShared - Include shared vars when service is specified (default: true)
    */
   async export(
     project: string,
     environment: Environment,
-    service?: string
+    service?: string,
+    options: { includeShared?: boolean } = {}
   ): Promise<Record<string, string>> {
-    const vars = await this.list({ project, environment, service })
+    const { includeShared = true } = options
     const result: Record<string, string> = {}
 
+    // If service is specified and includeShared is true, merge shared vars first
+    // Service-specific vars will override shared vars (inheritance)
+    if (service && service !== '__shared__' && includeShared) {
+      const sharedVars = await this.list({ project, environment, service: '__shared__' })
+      for (const v of sharedVars) {
+        result[v.key] = v.value
+      }
+    }
+
+    // Get service-specific vars (or all vars if no service)
+    const vars = await this.list({ project, environment, service })
     for (const v of vars) {
-      result[v.key] = v.value
+      result[v.key] = v.value // Overrides shared if same key
     }
 
     return result
