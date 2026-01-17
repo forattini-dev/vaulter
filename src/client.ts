@@ -29,27 +29,56 @@ const DEFAULT_CONNECTION_STRING = `file://${os.homedir()}/.vaulter/store`
 const DEFAULT_PASSPHRASE = 'vaulter-default-dev-key'
 
 /**
- * Generate a deterministic ID for an environment variable
- * Format: {project}|{environment}|{service}|{key}
- * When service is undefined, it becomes empty: {project}|{environment}||{key}
+ * Encode string to base64url (URL-safe base64, no padding)
+ * Uses - and _ instead of + and / to be S3 path safe
+ */
+function toBase64Url(str: string): string {
+  return Buffer.from(str, 'utf8')
+    .toString('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '')
+}
+
+/**
+ * Decode base64url back to string
+ */
+function fromBase64Url(b64: string): string {
+  // Restore standard base64 chars and padding
+  let str = b64.replace(/-/g, '+').replace(/_/g, '/')
+  const pad = str.length % 4
+  if (pad) str += '='.repeat(4 - pad)
+  return Buffer.from(str, 'base64').toString('utf8')
+}
+
+/**
+ * Generate a deterministic ID for an environment variable using base64url
+ * Input: {project}|{environment}|{service}|{key}
+ * Output: URL-safe base64 string (reversible)
  *
  * This allows O(1) lookups by computing the ID directly instead of listing + filtering
  */
 export function generateVarId(project: string, environment: string, service: string | undefined, key: string): string {
-  return `${project}|${environment}|${service || ''}|${key}`
+  const input = `${project}|${environment}|${service || ''}|${key}`
+  return toBase64Url(input)
 }
 
 /**
  * Parse a deterministic ID back to its components
  */
 export function parseVarId(id: string): { project: string; environment: string; service: string | undefined; key: string } | null {
-  const parts = id.split('|')
-  if (parts.length !== 4) return null
-  return {
-    project: parts[0],
-    environment: parts[1],
-    service: parts[2] || undefined,
-    key: parts[3]
+  try {
+    const decoded = fromBase64Url(id)
+    const parts = decoded.split('|')
+    if (parts.length !== 4) return null
+    return {
+      project: parts[0],
+      environment: parts[1],
+      service: parts[2] || undefined,
+      key: parts[3]
+    }
+  } catch {
+    return null
   }
 }
 
@@ -309,7 +338,18 @@ export class VaulterClient {
 
     // O(1) lookup using deterministic ID
     const id = generateVarId(project, environment, service, key)
-    const found = await this.resource.get(id)
+
+    // s3db.js may throw "No such key" if not found
+    let found: any = null
+    try {
+      found = await this.resource.get(id)
+    } catch (err: any) {
+      // Handle "not found" errors gracefully
+      if (err?.code !== 'NOT_FOUND' && !err?.message?.includes('No such key') && !err?.message?.includes('not found')) {
+        throw err
+      }
+      return null
+    }
 
     if (!found) return null
 
@@ -332,7 +372,17 @@ export class VaulterClient {
 
     // O(1) lookup using deterministic ID
     const id = generateVarId(input.project, input.environment, input.service, input.key)
-    const existing = await this.resource.get(id)
+
+    // Try to get existing - s3db.js may throw "No such key" if not found
+    let existing: any = null
+    try {
+      existing = await this.resource.get(id)
+    } catch (err: any) {
+      // Handle "not found" errors gracefully - means we need to insert
+      if (err?.code !== 'NOT_FOUND' && !err?.message?.includes('No such key') && !err?.message?.includes('not found')) {
+        throw err
+      }
+    }
 
     if (existing) {
       // Update existing - filter undefined values to preserve existing metadata
@@ -467,8 +517,16 @@ export class VaulterClient {
       const id = generateVarId(input.project, input.environment, input.service, input.key)
       const encryptedValue = this.encryptValue(input.value)
 
-      // O(1) lookup for existing
-      const existing = await this.resource.get(id)
+      // O(1) lookup for existing - s3db.js may throw "No such key" if not found
+      let existing: any = null
+      try {
+        existing = await this.resource.get(id)
+      } catch (err: any) {
+        // Handle "not found" errors gracefully - means we need to insert
+        if (err?.code !== 'NOT_FOUND' && !err?.message?.includes('No such key') && !err?.message?.includes('not found')) {
+          throw err
+        }
+      }
 
       if (existing) {
         // Update existing
@@ -519,7 +577,18 @@ export class VaulterClient {
     const entries = await Promise.all(
       keys.map(async (key): Promise<[string, EnvVar | null]> => {
         const id = generateVarId(project, environment, service, key)
-        const found = await this.resource.get(id)
+
+        // s3db.js may throw "No such key" if not found
+        let found: any = null
+        try {
+          found = await this.resource.get(id)
+        } catch (err: any) {
+          // Handle "not found" errors gracefully
+          if (err?.code !== 'NOT_FOUND' && !err?.message?.includes('No such key') && !err?.message?.includes('not found')) {
+            throw err
+          }
+          return [key, null]
+        }
 
         if (!found) return [key, null]
 

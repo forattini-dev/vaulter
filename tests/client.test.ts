@@ -33,7 +33,7 @@ vi.mock('s3db.js/lite', () => {
   }
 })
 
-import { VaulterClient, createClient } from '../src/client.js'
+import { VaulterClient, createClient, generateVarId } from '../src/client.js'
 
 describe('VaulterClient', () => {
   beforeEach(() => {
@@ -187,8 +187,9 @@ describe('VaulterClient', () => {
     })
 
     it('should update existing variable', async () => {
+      const expectedId = generateVarId('test-project', 'dev', undefined, 'API_KEY')
       const existingVar = {
-        id: 'test-project|dev||API_KEY', // Deterministic ID format
+        id: expectedId,
         key: 'API_KEY',
         value: 'original-value',
         project: 'test-project',
@@ -209,7 +210,7 @@ describe('VaulterClient', () => {
         environment: 'dev'
       })
 
-      expect(mockResource.update).toHaveBeenCalledWith('test-project|dev||API_KEY', expect.objectContaining({
+      expect(mockResource.update).toHaveBeenCalledWith(expectedId, expect.objectContaining({
         value: 'updated-value'
       }))
       expect(updated.value).toBe('updated-value')
@@ -276,8 +277,9 @@ describe('VaulterClient', () => {
     })
 
     it('should get existing variable', async () => {
+      const expectedId = generateVarId('test-project', 'dev', undefined, 'EXISTING_KEY')
       const existingVar = {
-        id: 'test-project|dev||EXISTING_KEY', // Deterministic ID format
+        id: expectedId,
         key: 'EXISTING_KEY',
         value: 'existing-value',
         project: 'test-project',
@@ -290,7 +292,7 @@ describe('VaulterClient', () => {
       expect(result).not.toBeNull()
       expect(result!.key).toBe('EXISTING_KEY')
       expect(result!.value).toBe('existing-value')
-      expect(mockResource.get).toHaveBeenCalledWith('test-project|dev||EXISTING_KEY')
+      expect(mockResource.get).toHaveBeenCalledWith(expectedId)
     })
 
     it('should return null for non-existent variable', async () => {
@@ -301,8 +303,9 @@ describe('VaulterClient', () => {
     })
 
     it('should get variable with service filter', async () => {
+      const expectedId = generateVarId('test-project', 'dev', 'api', 'SERVICE_KEY')
       const serviceVar = {
-        id: 'test-project|dev|api|SERVICE_KEY', // Deterministic ID with service
+        id: expectedId,
         key: 'SERVICE_KEY',
         value: 'service-value',
         project: 'test-project',
@@ -315,7 +318,7 @@ describe('VaulterClient', () => {
       const result = await client.get('SERVICE_KEY', 'test-project', 'dev', 'api')
       expect(result).not.toBeNull()
       expect(result!.service).toBe('api')
-      expect(mockResource.get).toHaveBeenCalledWith('test-project|dev|api|SERVICE_KEY')
+      expect(mockResource.get).toHaveBeenCalledWith(expectedId)
     })
   })
 
@@ -333,10 +336,11 @@ describe('VaulterClient', () => {
       // With deterministic IDs, delete uses the computed ID directly
       // Successful delete just resolves without error
       mockResource.delete.mockResolvedValue(undefined)
+      const expectedId = generateVarId('test-project', 'dev', undefined, 'TO_DELETE')
 
       const result = await client.delete('TO_DELETE', 'test-project', 'dev')
       expect(result).toBe(true)
-      expect(mockResource.delete).toHaveBeenCalledWith('test-project|dev||TO_DELETE')
+      expect(mockResource.delete).toHaveBeenCalledWith(expectedId)
     })
 
     it('should return false for non-existent variable', async () => {

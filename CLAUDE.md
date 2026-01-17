@@ -21,21 +21,20 @@ Keep this managed block so 'openspec update' can refresh the instructions.
 
 ## IDs Determinísticos
 
-O vaulter usa **IDs determinísticos** para armazenamento de variáveis, permitindo lookups O(1).
+O vaulter usa **IDs determinísticos** em formato **base64url** para armazenamento de variáveis, permitindo lookups O(1).
 
 ### Formato do ID
 
-```
-{project}|{environment}|{service}|{key}
-```
+**Input:** `{project}|{environment}|{service}|{key}`
+**Output:** base64url (URL-safe, S3 path safe, reversível)
 
 **Exemplos:**
 
-| Cenário | ID Gerado |
-|---------|-----------|
-| Single repo | `myproject\|dev\|\|DATABASE_URL` |
-| Monorepo com service | `myproject\|dev\|api\|DATABASE_URL` |
-| Shared (sem service) | `myproject\|dev\|\|SHARED_KEY` |
+| Cenário | Input | ID Gerado (base64url) |
+|---------|-------|----------------------|
+| Single repo | `myproject\|dev\|\|DATABASE_URL` | `bXlwcm9qZWN0fGRldnx8REFUQUJBU0VfVVJM` |
+| Monorepo com service | `myproject\|dev\|api\|DATABASE_URL` | `bXlwcm9qZWN0fGRldnxhcGl8REFUQUJBU0VfVVJM` |
+| Shared (sem service) | `myproject\|dev\|\|SHARED_KEY` | `bXlwcm9qZWN0fGRldnx8U0hBUkVEX0tFWQ` |
 
 ### Performance
 
@@ -62,17 +61,17 @@ O vaulter usa **IDs determinísticos** para armazenamento de variáveis, permiti
 ```typescript
 import { generateVarId, parseVarId } from 'vaulter'
 
-// Gerar ID
+// Gerar ID (retorna base64url)
 const id = generateVarId('project', 'dev', 'api', 'KEY')
-// => "project|dev|api|KEY"
+// => "cHJvamVjdHxkZXZ8YXBpfEtFWQ"
 
 // Sem service
 const id2 = generateVarId('project', 'dev', undefined, 'KEY')
-// => "project|dev||KEY"
+// => "cHJvamVjdHxkZXZ8fEtFWQ"
 
-// Parse
-const parsed = parseVarId('project|dev|api|KEY')
-// => { project, environment, service, key }
+// Parse (reversível!)
+const parsed = parseVarId('cHJvamVjdHxkZXZ8YXBpfEtFWQ')
+// => { project: 'project', environment: 'dev', service: 'api', key: 'KEY' }
 ```
 
 ### Client API
@@ -123,9 +122,11 @@ await client.deleteManyByKeys(['OLD1', 'OLD2'], 'project', 'dev')
 
 Funciona para ambos cenários. O campo `service` é opcional:
 
-- **Single repo:** `project|env||key` (service vazio)
-- **Monorepo:** `project|env|service|key`
-- **Shared vars:** sempre sem service `project|env||key`
+- **Single repo:** input `project|env||key` → base64url
+- **Monorepo:** input `project|env|service|key` → base64url
+- **Shared vars:** sempre sem service `project|env||key` → base64url
+
+O formato base64url é **S3 path safe** (usa `-` e `_` ao invés de `+` e `/`).
 
 ---
 
