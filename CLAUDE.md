@@ -16,3 +16,135 @@ Use `@/openspec/AGENTS.md` to learn:
 Keep this managed block so 'openspec update' can refresh the instructions.
 
 <!-- OPENSPEC:END -->
+
+# Vaulter - Environment Variables & Secrets Manager
+
+## IDs Determinísticos
+
+O vaulter usa **IDs determinísticos** para armazenamento de variáveis, permitindo lookups O(1).
+
+### Formato do ID
+
+```
+{project}|{environment}|{service}|{key}
+```
+
+**Exemplos:**
+
+| Cenário | ID Gerado |
+|---------|-----------|
+| Single repo | `myproject\|dev\|\|DATABASE_URL` |
+| Monorepo com service | `myproject\|dev\|api\|DATABASE_URL` |
+| Shared (sem service) | `myproject\|dev\|\|SHARED_KEY` |
+
+### Performance
+
+| Operação | Complexidade |
+|----------|--------------|
+| get | O(1) direct lookup |
+| set | O(1) direct upsert |
+| delete | O(1) direct delete |
+| batch (N) | N parallel O(1) ops |
+
+---
+
+## Arquitetura
+
+### Storage Backend (s3db.js)
+
+- Dados em **metadados S3**, não no body
+- Cada variável = um objeto S3
+- Valor encriptado nos headers `x-amz-meta-*`
+- idGenerator customizado para IDs determinísticos
+
+### Funções Auxiliares
+
+```typescript
+import { generateVarId, parseVarId } from 'vaulter'
+
+// Gerar ID
+const id = generateVarId('project', 'dev', 'api', 'KEY')
+// => "project|dev|api|KEY"
+
+// Sem service
+const id2 = generateVarId('project', 'dev', undefined, 'KEY')
+// => "project|dev||KEY"
+
+// Parse
+const parsed = parseVarId('project|dev|api|KEY')
+// => { project, environment, service, key }
+```
+
+### Client API
+
+```typescript
+import { createClient } from 'vaulter'
+
+const client = createClient({ connectionString: 's3://bucket' })
+await client.connect()
+
+// Single operations - O(1)
+await client.get('KEY', 'project', 'dev')
+await client.set({ key: 'KEY', value: 'val', project: 'project', environment: 'dev' })
+await client.delete('KEY', 'project', 'dev')
+
+// Com service (monorepo)
+await client.get('KEY', 'project', 'dev', 'api')
+
+// Batch operations - parallel
+await client.setMany([...])
+await client.getMany(['VAR1', 'VAR2'], 'project', 'dev')
+await client.deleteManyByKeys(['OLD1', 'OLD2'], 'project', 'dev')
+```
+
+---
+
+## MCP Server (30 Tools)
+
+**Core (8):** `vaulter_get`, `vaulter_set`, `vaulter_delete`, `vaulter_list`, `vaulter_export`, `vaulter_sync`, `vaulter_pull`, `vaulter_push`
+
+**Batch (3):** `vaulter_multi_get`, `vaulter_multi_set`, `vaulter_multi_delete`
+
+**Analysis (3):** `vaulter_compare`, `vaulter_search`, `vaulter_scan`
+
+**Status (2):** `vaulter_status`, `vaulter_audit_list`
+
+**K8s (2):** `vaulter_k8s_secret`, `vaulter_k8s_configmap`
+
+**IaC (2):** `vaulter_helm_values`, `vaulter_tf_vars`
+
+**Keys (5):** `vaulter_key_generate`, `vaulter_key_list`, `vaulter_key_show`, `vaulter_key_export`, `vaulter_key_import`
+
+**Monorepo (5):** `vaulter_services`, `vaulter_init`, `vaulter_shared_list`, `vaulter_inheritance_info`, `vaulter_categorize_vars`
+
+---
+
+## Monorepo vs Single Repo
+
+Funciona para ambos cenários. O campo `service` é opcional:
+
+- **Single repo:** `project|env||key` (service vazio)
+- **Monorepo:** `project|env|service|key`
+- **Shared vars:** sempre sem service `project|env||key`
+
+---
+
+## Estrutura
+
+```
+src/
+├── client.ts          # VaulterClient com IDs determinísticos
+├── index.ts           # Exports
+├── types.ts           # Types
+├── loader.ts          # dotenv loader
+├── cli/               # CLI
+├── lib/               # Utils
+└── mcp/               # MCP server (tools, resources, prompts)
+```
+
+## Comandos
+
+```bash
+pnpm test      # Testes
+pnpm build     # Build
+```

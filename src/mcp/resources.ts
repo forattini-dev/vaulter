@@ -200,6 +200,23 @@ async function handleInstructionsRead(uri: string): Promise<{ contents: Array<{ 
 Vaulter uses **s3db.js** internally, which stores data in **S3 OBJECT METADATA**,
 NOT in the object body. This is crucial to understand before using any tools.
 
+## 🔑 Deterministic IDs
+
+Vaulter uses **deterministic IDs** for O(1) lookups:
+
+\`\`\`
+{project}|{environment}|{service}|{key}
+\`\`\`
+
+**Examples:**
+- Single repo: \`myproject|dev||DATABASE_URL\` (empty service)
+- Monorepo: \`myproject|dev|api|DATABASE_URL\`
+- Shared var: \`myproject|dev||SHARED_KEY\`
+
+**Performance:**
+- get/set/delete: O(1) direct lookup
+- batch operations: N parallel O(1) ops
+
 ## ❌ NEVER DO THESE THINGS
 
 1. **NEVER upload files directly to S3**
@@ -233,23 +250,17 @@ npx vaulter sync merge -e dev
 
 # List variables
 npx vaulter var list -e dev
+
+# For monorepo with service
+npx vaulter var set KEY=value -e dev -s api
 \`\`\`
 
 ## How s3db.js Stores Data
 
-- Each variable is stored as an S3 object
+- Each variable is stored as an S3 object with **deterministic ID**
+- ID format: \`{project}|{environment}|{service}|{key}\`
 - The **value is encrypted** and stored in \`x-amz-meta-*\` headers
 - The object **body is empty** (or contains overflow data for very large values)
-- Keys, project, environment are stored as metadata fields
-
-## Diagnosing Issues
-
-If you see **empty metadata** (\`"Metadata": {}\`) when inspecting S3 objects:
-\`\`\`bash
-aws s3api head-object --bucket my-bucket --key path/to/object
-\`\`\`
-
-This means the data was uploaded WRONG (manually), not through vaulter.
 
 ## Correct Workflow
 
