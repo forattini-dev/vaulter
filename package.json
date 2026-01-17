@@ -99,14 +99,14 @@
     "cli-args-parser": "^1.0.3",
     "dotenv": "^17.2.3",
     "p-limit": "^7.2.0",
-    "recker": "^1.0.58",
-    "s3db.js": "^19.3.3",
+    "recker": "^1.0.59",
+    "s3db.js": "^19.3.4",
     "tinyglobby": "^0.2.15",
     "tuiuiu.js": "^1.0.50",
     "yaml": "^2.8.2"
   },
   "devDependencies": {
-    "@aws-sdk/client-s3": "^3.970.0",
+    "@aws-sdk/client-s3": "^3.971.0",
     "@types/node": "^25.0.9",
     "@vitest/coverage-v8": "^4.0.17",
     "@yao-pkg/pkg": "^6.12.0",
