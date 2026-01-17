@@ -5,7 +5,7 @@
  */
 
 // Client
-export { VaulterClient, createClient } from './client.js'
+export { VaulterClient, createClient, generateVarId, parseVarId } from './client.js'
 export type { VaulterClientOptions, ListOptions, SyncResult } from './types.js'
 
 // Types

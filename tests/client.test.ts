@@ -43,6 +43,7 @@ describe('VaulterClient', () => {
     mockDb.disconnect.mockResolvedValue(undefined)
     mockDb.createResource.mockResolvedValue(mockResource)
     mockResource.list.mockResolvedValue([])
+    mockResource.get.mockResolvedValue(null) // Default: not found
     mockResource.insert.mockImplementation(async (data: any) => ({
       id: 'test-id-' + Date.now(),
       ...data,
@@ -187,14 +188,15 @@ describe('VaulterClient', () => {
 
     it('should update existing variable', async () => {
       const existingVar = {
-        id: 'existing-id',
+        id: 'test-project|dev||API_KEY', // Deterministic ID format
         key: 'API_KEY',
         value: 'original-value',
         project: 'test-project',
         environment: 'dev',
         metadata: {}
       }
-      mockResource.list.mockResolvedValue([existingVar])
+      // Now uses resource.get with deterministic ID instead of list
+      mockResource.get.mockResolvedValue(existingVar)
       mockResource.update.mockResolvedValue({
         ...existingVar,
         value: 'updated-value'
@@ -207,7 +209,7 @@ describe('VaulterClient', () => {
         environment: 'dev'
       })
 
-      expect(mockResource.update).toHaveBeenCalledWith('existing-id', expect.objectContaining({
+      expect(mockResource.update).toHaveBeenCalledWith('test-project|dev||API_KEY', expect.objectContaining({
         value: 'updated-value'
       }))
       expect(updated.value).toBe('updated-value')
@@ -275,18 +277,20 @@ describe('VaulterClient', () => {
 
     it('should get existing variable', async () => {
       const existingVar = {
-        id: 'test-id',
+        id: 'test-project|dev||EXISTING_KEY', // Deterministic ID format
         key: 'EXISTING_KEY',
         value: 'existing-value',
         project: 'test-project',
         environment: 'dev'
       }
-      mockResource.list.mockResolvedValue([existingVar])
+      // Now uses resource.get with deterministic ID instead of list
+      mockResource.get.mockResolvedValue(existingVar)
 
       const result = await client.get('EXISTING_KEY', 'test-project', 'dev')
       expect(result).not.toBeNull()
       expect(result!.key).toBe('EXISTING_KEY')
       expect(result!.value).toBe('existing-value')
+      expect(mockResource.get).toHaveBeenCalledWith('test-project|dev||EXISTING_KEY')
     })
 
     it('should return null for non-existent variable', async () => {
@@ -298,21 +302,20 @@ describe('VaulterClient', () => {
 
     it('should get variable with service filter', async () => {
       const serviceVar = {
-        id: 'service-id',
+        id: 'test-project|dev|api|SERVICE_KEY', // Deterministic ID with service
         key: 'SERVICE_KEY',
         value: 'service-value',
         project: 'test-project',
         service: 'api',
         environment: 'dev'
       }
-      mockResource.list.mockResolvedValue([serviceVar])
+      // Now uses resource.get with deterministic ID including service
+      mockResource.get.mockResolvedValue(serviceVar)
 
       const result = await client.get('SERVICE_KEY', 'test-project', 'dev', 'api')
       expect(result).not.toBeNull()
       expect(result!.service).toBe('api')
-      expect(mockResource.list).toHaveBeenCalledWith(expect.objectContaining({
-        partition: 'byProjectServiceEnv'
-      }))
+      expect(mockResource.get).toHaveBeenCalledWith('test-project|dev|api|SERVICE_KEY')
     })
   })
 
@@ -327,22 +330,18 @@ describe('VaulterClient', () => {
     })
 
     it('should delete existing variable', async () => {
-      const existingVar = {
-        id: 'delete-id',
-        key: 'TO_DELETE',
-        value: 'value',
-        project: 'test-project',
-        environment: 'dev'
-      }
-      mockResource.list.mockResolvedValue([existingVar])
+      // With deterministic IDs, delete uses the computed ID directly
+      // Successful delete just resolves without error
+      mockResource.delete.mockResolvedValue(undefined)
 
       const result = await client.delete('TO_DELETE', 'test-project', 'dev')
       expect(result).toBe(true)
-      expect(mockResource.delete).toHaveBeenCalledWith('delete-id')
+      expect(mockResource.delete).toHaveBeenCalledWith('test-project|dev||TO_DELETE')
     })
 
     it('should return false for non-existent variable', async () => {
-      mockResource.list.mockResolvedValue([])
+      // Delete throws NOT_FOUND error when ID doesn't exist
+      mockResource.delete.mockRejectedValue({ code: 'NOT_FOUND', message: 'not found' })
 
       const result = await client.delete('NON_EXISTENT', 'test-project', 'dev')
       expect(result).toBe(false)

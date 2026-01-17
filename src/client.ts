@@ -29,6 +29,31 @@ const DEFAULT_CONNECTION_STRING = `file://${os.homedir()}/.vaulter/store`
 const DEFAULT_PASSPHRASE = 'vaulter-default-dev-key'
 
 /**
+ * Generate a deterministic ID for an environment variable
+ * Format: {project}|{environment}|{service}|{key}
+ * When service is undefined, it becomes empty: {project}|{environment}||{key}
+ *
+ * This allows O(1) lookups by computing the ID directly instead of listing + filtering
+ */
+export function generateVarId(project: string, environment: string, service: string | undefined, key: string): string {
+  return `${project}|${environment}|${service || ''}|${key}`
+}
+
+/**
+ * Parse a deterministic ID back to its components
+ */
+export function parseVarId(id: string): { project: string; environment: string; service: string | undefined; key: string } | null {
+  const parts = id.split('|')
+  if (parts.length !== 4) return null
+  return {
+    project: parts[0],
+    environment: parts[1],
+    service: parts[2] || undefined,
+    key: parts[3]
+  }
+}
+
+/**
  * Vaulter Client
  *
  * Provides a high-level API for managing environment variables
@@ -178,6 +203,10 @@ export class VaulterClient {
         this.resource = await this.db.createResource({
           name: 'environment-variables',
 
+          // Deterministic ID generator for O(1) lookups
+          // Format: {project}|{environment}|{service}|{key}
+          idGenerator: (data: any) => generateVarId(data.project, data.environment, data.service, data.key),
+
           attributes: {
             key: 'string|required',
             value: valueFieldType, // Encryption depends on mode
@@ -268,6 +297,7 @@ export class VaulterClient {
 
   /**
    * Get a single environment variable
+   * Uses deterministic ID for O(1) lookup
    */
   async get(
     key: string,
@@ -277,17 +307,10 @@ export class VaulterClient {
   ): Promise<EnvVar | null> {
     this.ensureConnected()
 
-    const partition = service ? 'byProjectServiceEnv' : 'byProjectEnv'
-    const partitionValues = service
-      ? { project, service, environment }
-      : { project, environment }
+    // O(1) lookup using deterministic ID
+    const id = generateVarId(project, environment, service, key)
+    const found = await this.resource.get(id)
 
-    const results = await this.resource.list({
-      partition,
-      partitionValues
-    })
-
-    const found = results.find((item: EnvVar) => item.key === key)
     if (!found) return null
 
     // Decrypt value if in asymmetric mode
@@ -299,6 +322,7 @@ export class VaulterClient {
 
   /**
    * Set an environment variable (create or update)
+   * Uses deterministic ID for O(1) upsert
    */
   async set(input: EnvVarInput): Promise<EnvVar> {
     this.ensureConnected()
@@ -306,14 +330,9 @@ export class VaulterClient {
     // Encrypt value if in asymmetric mode
     const encryptedValue = this.encryptValue(input.value)
 
-    // For get, we need to query without decryption to find existing record
-    const partition = input.service ? 'byProjectServiceEnv' : 'byProjectEnv'
-    const partitionValues = input.service
-      ? { project: input.project, service: input.service, environment: input.environment }
-      : { project: input.project, environment: input.environment }
-
-    const results = await this.resource.list({ partition, partitionValues })
-    const existing = results.find((item: EnvVar) => item.key === input.key)
+    // O(1) lookup using deterministic ID
+    const id = generateVarId(input.project, input.environment, input.service, input.key)
+    const existing = await this.resource.get(id)
 
     if (existing) {
       // Update existing - filter undefined values to preserve existing metadata
@@ -321,7 +340,7 @@ export class VaulterClient {
         ? Object.fromEntries(Object.entries(input.metadata).filter(([, v]) => v !== undefined))
         : {}
 
-      const result = await this.resource.update(existing.id, {
+      const result = await this.resource.update(id, {
         value: encryptedValue,
         tags: input.tags,
         metadata: {
@@ -351,6 +370,7 @@ export class VaulterClient {
 
   /**
    * Delete an environment variable
+   * Uses deterministic ID for O(1) deletion
    */
   async delete(
     key: string,
@@ -360,11 +380,19 @@ export class VaulterClient {
   ): Promise<boolean> {
     this.ensureConnected()
 
-    const existing = await this.get(key, project, environment, service)
-    if (!existing) return false
+    // O(1) deletion using deterministic ID
+    const id = generateVarId(project, environment, service, key)
 
-    await this.resource.delete(existing.id)
-    return true
+    try {
+      await this.resource.delete(id)
+      return true
+    } catch (err: any) {
+      // Handle "not found" errors gracefully
+      if (err?.code === 'NOT_FOUND' || err?.message?.includes('not found')) {
+        return false
+      }
+      throw err
+    }
   }
 
   /**
@@ -427,42 +455,20 @@ export class VaulterClient {
 
   /**
    * Set multiple environment variables efficiently
-   * Uses a single list query + parallel operations for better performance
+   * Uses deterministic IDs for O(1) lookups - fully parallel without list queries
    */
   async setMany(inputs: EnvVarInput[]): Promise<EnvVar[]> {
     this.ensureConnected()
 
     if (inputs.length === 0) return []
 
-    // Group inputs by project/environment/service for efficient querying
-    const groups = new Map<string, { inputs: EnvVarInput[], existing: Map<string, EnvVar> }>()
-
-    for (const input of inputs) {
-      const groupKey = `${input.project}:${input.environment}:${input.service || ''}`
-      if (!groups.has(groupKey)) {
-        groups.set(groupKey, { inputs: [], existing: new Map() })
-      }
-      groups.get(groupKey)!.inputs.push(input)
-    }
-
-    // Fetch existing vars for each group (one query per group)
-    for (const [groupKey, group] of groups) {
-      const [project, environment, service] = groupKey.split(':')
-      const existingVars = await this.list({
-        project,
-        environment: environment as Environment,
-        service: service || undefined
-      })
-      for (const v of existingVars) {
-        group.existing.set(v.key, v)
-      }
-    }
-
-    // Process all inputs in parallel
+    // Process all inputs in parallel using deterministic IDs (no list queries needed!)
     const results = await Promise.all(inputs.map(async (input) => {
-      const groupKey = `${input.project}:${input.environment}:${input.service || ''}`
-      const existing = groups.get(groupKey)!.existing.get(input.key)
+      const id = generateVarId(input.project, input.environment, input.service, input.key)
       const encryptedValue = this.encryptValue(input.value)
+
+      // O(1) lookup for existing
+      const existing = await this.resource.get(id)
 
       if (existing) {
         // Update existing
@@ -470,7 +476,7 @@ export class VaulterClient {
           ? Object.fromEntries(Object.entries(input.metadata).filter(([, v]) => v !== undefined))
           : {}
 
-        const result = await this.resource.update(existing.id, {
+        const result = await this.resource.update(id, {
           value: encryptedValue,
           tags: input.tags,
           metadata: {
@@ -499,7 +505,7 @@ export class VaulterClient {
 
   /**
    * Get multiple environment variables efficiently
-   * Uses a single list query instead of multiple get calls
+   * Uses deterministic IDs for O(1) parallel lookups
    */
   async getMany(
     keys: string[],
@@ -509,22 +515,25 @@ export class VaulterClient {
   ): Promise<Map<string, EnvVar | null>> {
     this.ensureConnected()
 
-    // Single query to get all vars in the partition
-    const allVars = await this.list({ project, environment, service })
-    const varMap = new Map(allVars.map(v => [v.key, v]))
+    // Parallel O(1) lookups using deterministic IDs
+    const entries = await Promise.all(
+      keys.map(async (key): Promise<[string, EnvVar | null]> => {
+        const id = generateVarId(project, environment, service, key)
+        const found = await this.resource.get(id)
 
-    // Build result map
-    const result = new Map<string, EnvVar | null>()
-    for (const key of keys) {
-      result.set(key, varMap.get(key) || null)
-    }
+        if (!found) return [key, null]
 
-    return result
+        // Decrypt value if in asymmetric mode
+        return [key, { ...found, value: this.decryptValue(found.value) }]
+      })
+    )
+
+    return new Map(entries)
   }
 
   /**
    * Delete multiple environment variables efficiently
-   * Uses a single list query + native deleteMany from s3db.js
+   * Uses deterministic IDs for O(1) parallel deletion - no list query needed
    */
   async deleteManyByKeys(
     keys: string[],
@@ -534,35 +543,48 @@ export class VaulterClient {
   ): Promise<{ deleted: string[], notFound: string[] }> {
     this.ensureConnected()
 
-    // Single query to get all vars in the partition
-    const allVars = await this.list({ project, environment, service })
-    const varMap = new Map(allVars.map(v => [v.key, v]))
-
-    const idsToDelete: string[] = []
-    const deleted: string[] = []
-    const notFound: string[] = []
-
-    for (const key of keys) {
-      const existing = varMap.get(key)
-      if (existing) {
-        idsToDelete.push(existing.id)
-        deleted.push(key)
-      } else {
-        notFound.push(key)
-      }
-    }
+    // Compute deterministic IDs directly - no list query needed!
+    const ids = keys.map(key => generateVarId(project, environment, service, key))
 
     // Use native deleteMany if available (s3db.js)
-    if (idsToDelete.length > 0) {
-      if (typeof this.resource.deleteMany === 'function') {
-        await this.resource.deleteMany(idsToDelete)
-      } else {
-        // Fallback to parallel deletes
-        await Promise.all(idsToDelete.map(id => this.resource.delete(id)))
-      }
-    }
+    if (typeof this.resource.deleteMany === 'function') {
+      // deleteMany returns which IDs were actually deleted
+      const result = await this.resource.deleteMany(ids)
+      const deletedIds = new Set(result?.deleted || ids)
 
-    return { deleted, notFound }
+      const deleted: string[] = []
+      const notFound: string[] = []
+
+      for (let i = 0; i < keys.length; i++) {
+        if (deletedIds.has(ids[i])) {
+          deleted.push(keys[i])
+        } else {
+          notFound.push(keys[i])
+        }
+      }
+
+      return { deleted, notFound }
+    } else {
+      // Fallback to parallel deletes with individual existence checks
+      const results = await Promise.all(
+        keys.map(async (key, i) => {
+          try {
+            await this.resource.delete(ids[i])
+            return { key, deleted: true }
+          } catch (err: any) {
+            if (err?.code === 'NOT_FOUND' || err?.message?.includes('not found')) {
+              return { key, deleted: false }
+            }
+            throw err
+          }
+        })
+      )
+
+      const deleted = results.filter(r => r.deleted).map(r => r.key)
+      const notFound = results.filter(r => !r.deleted).map(r => r.key)
+
+      return { deleted, notFound }
+    }
   }
 
   /**
