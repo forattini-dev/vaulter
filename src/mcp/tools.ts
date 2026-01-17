@@ -1129,26 +1129,21 @@ async function handleMultiGetCall(
     }
   }
 
-  const results: Record<string, string | null> = {}
-  const found: string[] = []
-  const notFound: string[] = []
-
-  for (const key of keys) {
+  // Process in parallel for better performance
+  const getPromises = keys.map(async (key) => {
     const envVar = await client.get(key, project, environment, service)
-    if (envVar !== null) {
-      results[key] = envVar.value
-      found.push(key)
-    } else {
-      results[key] = null
-      notFound.push(key)
-    }
-  }
+    return { key, value: envVar?.value ?? null }
+  })
+
+  const results = await Promise.all(getPromises)
+  const found = results.filter(r => r.value !== null)
+  const notFound = results.filter(r => r.value === null).map(r => r.key)
 
   const location = `${project}/${environment}${service ? `/${service}` : ''}`
   const lines = [
     `Variables from ${location}:`,
     '',
-    ...found.map(k => `${k}=${results[k]}`),
+    ...found.map(r => `${r.key}=${r.value}`),
     '',
     `Found: ${found.length}/${keys.length}`
   ]
@@ -1223,34 +1218,44 @@ async function handleMultiSetCall(
     }
   }
 
-  const results: string[] = []
-
-  for (const { key, value, tags } of varsArray) {
-    if (!key || value === undefined) {
-      results.push(`⚠ Skipped invalid entry (missing key or value)`)
-      continue
-    }
-
-    await client.set({
-      key,
-      value: String(value),
-      project,
-      environment,
-      service: effectiveService,
-      tags,
-      metadata: { source: 'manual' }
+  // Process in parallel for better performance
+  const setPromises = varsArray
+    .filter(({ key, value }) => key && value !== undefined)
+    .map(async ({ key, value, tags }) => {
+      try {
+        await client.set({
+          key,
+          value: String(value),
+          project,
+          environment,
+          service: effectiveService,
+          tags,
+          metadata: { source: 'manual' }
+        })
+        return { key, success: true }
+      } catch (err) {
+        return { key, success: false, error: (err as Error).message }
+      }
     })
-    results.push(`✓ ${key}`)
-  }
+
+  const results = await Promise.all(setPromises)
+  const skipped = varsArray.filter(({ key, value }) => !key || value === undefined).length
+  const succeeded = results.filter(r => r.success).map(r => r.key)
+  const failed = results.filter(r => !r.success)
 
   const location = shared
     ? `${project}/${environment} (shared)`
     : `${project}/${environment}${service ? `/${service}` : ''}`
 
+  const lines = [`Set ${succeeded.length}/${varsArray.length} variable(s) in ${location}:`]
+  if (succeeded.length > 0) lines.push(`✓ ${succeeded.join(', ')}`)
+  if (failed.length > 0) lines.push(`✗ Failed: ${failed.map(f => `${f.key} (${f.error})`).join(', ')}`)
+  if (skipped > 0) lines.push(`⚠ Skipped ${skipped} invalid entries`)
+
   return {
     content: [{
       type: 'text',
-      text: `Set ${varsArray.length} variable(s) in ${location}:\n${results.join('\n')}`
+      text: lines.join('\n')
     }]
   }
 }
@@ -1273,17 +1278,15 @@ async function handleMultiDeleteCall(
     }
   }
 
-  const deleted: string[] = []
-  const notFound: string[] = []
-
-  for (const key of keys) {
+  // Process in parallel for better performance
+  const deletePromises = keys.map(async (key) => {
     const wasDeleted = await client.delete(key, project, environment, service)
-    if (wasDeleted) {
-      deleted.push(key)
-    } else {
-      notFound.push(key)
-    }
-  }
+    return { key, deleted: wasDeleted }
+  })
+
+  const results = await Promise.all(deletePromises)
+  const deleted = results.filter(r => r.deleted).map(r => r.key)
+  const notFound = results.filter(r => !r.deleted).map(r => r.key)
 
   const location = `${project}/${environment}${service ? `/${service}` : ''}`
   const lines = [`Deleted from ${location}:`]
