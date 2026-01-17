@@ -161,12 +161,6 @@ function Launcher(props: LauncherProps) {
     }
   }, { description: 'Quit/Back' })
 
-  useHotkeys('escape', () => {
-    if (currentScreen() !== 'menu') {
-      setCurrentScreen('menu')
-    }
-  }, { description: 'Back to menu' })
-
   // Quick access keys
   useHotkeys('1', () => setCurrentScreen('dashboard'), { description: 'Dashboard' })
   useHotkeys('2', () => setCurrentScreen('audit'), { description: 'Audit' })
@@ -188,9 +182,9 @@ function Launcher(props: LauncherProps) {
 
   // Status bar content
   const statusBar = StatusBar({
-    left: Text({ color: 'muted' }, currentScreen() === 'menu' ? 'Select an option' : 'ESC to return'),
+    left: Text({ color: 'muted' }, currentScreen() === 'menu' ? 'Select an option' : 'q to return'),
     center: undefined,
-    right: Text({ color: 'muted', dim: true }, 'q:quit  1:dashboard  2:audit  3:keys')
+    right: Text({ color: 'muted', dim: true }, 'q:back  1:dashboard  2:audit  3:keys')
   })
 
   // Render current screen
@@ -206,7 +200,8 @@ function Launcher(props: LauncherProps) {
         config: props.config,
         environment: props.environment,
         service: props.service,
-        verbose: props.verbose
+        verbose: props.verbose,
+        embedded: true
       })
       break
 
@@ -215,14 +210,16 @@ function Launcher(props: LauncherProps) {
         config: props.config,
         environment: props.environment,
         service: props.service,
-        verbose: props.verbose
+        verbose: props.verbose,
+        embedded: true
       })
       break
 
     case 'keys':
       content = KeyManager({
         config: props.config,
-        verbose: props.verbose
+        verbose: props.verbose,
+        embedded: true
       })
       break
   }

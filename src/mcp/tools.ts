@@ -74,13 +74,23 @@ let mcpOptions: McpServerOptions = {}
  * Priority for cwd:
  * 1. CLI --cwd flag
  * 2. VAULTER_CWD environment variable
+ * 3. mcp.default_cwd from ~/.vaulter/config.yaml
  */
 export function setMcpOptions(options: McpServerOptions): void {
   mcpOptions = options
 
   // Change working directory if specified (so loadConfig finds .vaulter/config.yaml)
-  // Priority: CLI --cwd > VAULTER_CWD env var
-  const cwd = options.cwd || process.env.VAULTER_CWD
+  // Priority: CLI --cwd > VAULTER_CWD env var > global config default_cwd
+  let cwd = options.cwd || process.env.VAULTER_CWD
+
+  // If no cwd from CLI or env, try global config
+  if (!cwd) {
+    const globalMcpConfig = loadMcpConfig()
+    if (globalMcpConfig?.default_cwd) {
+      cwd = globalMcpConfig.default_cwd
+    }
+  }
+
   if (cwd) {
     try {
       process.chdir(cwd)

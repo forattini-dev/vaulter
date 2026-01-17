@@ -575,6 +575,8 @@ export interface McpConfig {
   default_environment?: string
   /** Default encryption key source */
   default_key?: string
+  /** Default working directory (where to look for .vaulter/config.yaml) */
+  default_cwd?: string
 }
 
 /**

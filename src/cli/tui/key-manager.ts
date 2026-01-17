@@ -45,6 +45,7 @@ interface KeyInfo {
 export interface KeyManagerProps {
   config: VaulterConfig
   verbose?: boolean
+  embedded?: boolean
 }
 
 /**
@@ -255,7 +256,11 @@ export function KeyManager(props: KeyManagerProps) {
   const project = getProjectName(props.config)
 
   // Register hotkeys
-  useHotkeys('q', () => app.exit(), { description: 'Quit' })
+  useHotkeys('q', () => {
+    if (!props.embedded) {
+      app.exit()
+    }
+  }, { description: 'Quit' })
   useHotkeys('r', () => loadKeys(), { description: 'Refresh' })
   useHotkeys('c', () => setShowConfig(v => !v), { description: 'Toggle config' })
 
@@ -428,6 +433,10 @@ export function KeyManager(props: KeyManagerProps) {
           showConfig() ? ConfigPanel({ config: props.config }) : null
         )
       )
+
+  if (props.embedded) {
+    return content
+  }
 
   return AppShell({
     header: KeyHeader({

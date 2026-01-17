@@ -45,6 +45,7 @@ export interface AuditViewerProps {
   environment: Environment
   service?: string
   verbose?: boolean
+  embedded?: boolean
 }
 
 type FilterField = 'none' | 'operation' | 'source' | 'search'
@@ -343,7 +344,11 @@ export function AuditViewer(props: AuditViewerProps) {
   })
 
   // Register hotkeys (disabled when filter is open)
-  useHotkeys('q', () => app.exit(), { description: 'Quit' })
+  useHotkeys('q', () => {
+    if (!props.embedded) {
+      app.exit()
+    }
+  }, { description: 'Quit' })
   useHotkeys('r', () => { if (!isFilterActive) loadEntries() }, { description: 'Refresh' })
   useHotkeys('o', () => { if (!isFilterActive) setActiveFilter('operation') }, { description: 'Filter operation' })
   useHotkeys('s', () => { if (!isFilterActive) setActiveFilter('source') }, { description: 'Filter source' })
@@ -513,6 +518,10 @@ export function AuditViewer(props: AuditViewerProps) {
           )
         )
       )
+
+  if (props.embedded) {
+    return content
+  }
 
   return AppShell({
     header: AuditHeader({

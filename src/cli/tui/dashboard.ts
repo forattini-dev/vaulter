@@ -26,6 +26,8 @@ import type { VaulterConfig, Environment, CLIArgs, EnvVar } from '../../types.js
 import { loadConfig, getProjectName, getValidEnvironments } from '../../lib/config-loader.js'
 import { createClientFromConfig } from '../lib/create-client.js'
 import { VaulterClient } from '../../client.js'
+import { getSecretPatterns } from '../../lib/secret-patterns.js'
+import { compileGlobPatterns } from '../../lib/pattern-matcher.js'
 
 // Types for dashboard state
 interface SecretRow {
@@ -40,6 +42,7 @@ export interface DashboardProps {
   environment: Environment
   service?: string
   verbose?: boolean
+  embedded?: boolean
 }
 
 /**
@@ -100,7 +103,7 @@ function maskValue(value: string, isSecret: boolean): string {
 export function Dashboard(props: DashboardProps) {
   const app = useApp()
   const [loading, setLoading] = useState(true)
-  const [secrets, setSecrets] = useState<SecretRow[]>([])
+  const [vars, setVars] = useState<EnvVar[]>([])
   const [error, setError] = useState<string | null>(null)
   const [environment, setEnvironment] = useState(props.environment)
   const [showValues, setShowValues] = useState(false)
@@ -108,6 +111,7 @@ export function Dashboard(props: DashboardProps) {
 
   const project = getProjectName(props.config)
   const environments = getValidEnvironments(props.config)
+  const isSecret = compileGlobPatterns(getSecretPatterns(props.config))
 
   // Cleanup on unmount - disconnect client
   useEffect(() => {
@@ -120,7 +124,11 @@ export function Dashboard(props: DashboardProps) {
   })
 
   // Register hotkeys
-  useHotkeys('q', () => app.exit(), { description: 'Quit' })
+  useHotkeys('q', () => {
+    if (!props.embedded) {
+      app.exit()
+    }
+  }, { description: 'Quit' })
   useHotkeys('r', () => loadSecrets(), { description: 'Refresh' })
   useHotkeys('v', () => setShowValues(v => !v), { description: 'Toggle values' })
   useHotkeys('e', () => cycleEnvironment(), { description: 'Cycle environment' })
@@ -157,27 +165,13 @@ export function Dashboard(props: DashboardProps) {
         c = await initClient()
       }
 
-      const vars = await c.list({
+      const fetched = await c.list({
         project,
         service: props.service,
         environment: env
       })
 
-      // Read showValues without tracking (UI state, not a dependency)
-      const shouldShowValues = untrack(() => showValues())
-      const rows: SecretRow[] = vars.map((v: EnvVar) => {
-        const isSecret = isSecretKey(v.key)
-        return {
-          key: v.key,
-          value: shouldShowValues ? v.value : maskValue(v.value, isSecret),
-          type: isSecret ? '🔒' : '📄',
-          updatedAt: v.updatedAt ? formatDate(v.updatedAt) : '-'
-        }
-      })
-
-      // Sort by key
-      rows.sort((a, b) => a.key.localeCompare(b.key))
-      setSecrets(rows)
+      setVars(fetched)
     } catch (err) {
       setError((err as Error).message)
     } finally {
@@ -196,9 +190,21 @@ export function Dashboard(props: DashboardProps) {
     loadSecretsForEnv(env)
   })
 
+  const rows: SecretRow[] = vars()
+    .map((v: EnvVar) => {
+      const secret = isSecret(v.key)
+      return {
+        key: v.key,
+        value: showValues() ? v.value : maskValue(v.value, secret),
+        type: secret ? '🔒' : '📄',
+        updatedAt: v.updatedAt ? formatDate(v.updatedAt) : '-'
+      }
+    })
+    .sort((a, b) => a.key.localeCompare(b.key))
+
   // Status bar content
   const statusBar = StatusBar({
-    left: Text({ color: 'muted' }, `${secrets().length} variables`),
+    left: Text({ color: 'muted' }, `${rows.length} variables`),
     center: error() ? Text({ color: 'error' }, error()!) : undefined,
     right: Text({ color: 'muted', dim: true }, 'q:quit  r:refresh  e:env  v:values')
   })
@@ -224,7 +230,7 @@ export function Dashboard(props: DashboardProps) {
         Text({ color: 'error', bold: true }, '✗ Error'),
         Text({ color: 'muted' }, error()!)
       )
-    : secrets().length === 0
+    : rows.length === 0
     ? Box(
         { justifyContent: 'center', alignItems: 'center', height: '100%', flexDirection: 'column', gap: 1 },
         Text({ color: 'muted' }, 'No variables found'),
@@ -232,9 +238,13 @@ export function Dashboard(props: DashboardProps) {
       )
     : Table({
         columns,
-        data: secrets(),
+        data: rows,
         borderStyle: 'round'
       })
+
+  if (props.embedded) {
+    return content
+  }
 
   return AppShell({
     header: DashboardHeader({
@@ -251,18 +261,6 @@ export function Dashboard(props: DashboardProps) {
     padding: 0,
     children: Box({ padding: 1 }, content)
   })
-}
-
-/**
- * Check if a key name suggests it's a secret
- */
-function isSecretKey(key: string): boolean {
-  const patterns = [
-    '_KEY', '_SECRET', '_TOKEN', '_PASSWORD', '_CREDENTIAL',
-    '_PASS', '_PWD', '_PRIVATE', '_CERT', 'DATABASE_URL', 'REDIS_URL'
-  ]
-  const upper = key.toUpperCase()
-  return patterns.some(p => upper.includes(p))
 }
 
 /**
