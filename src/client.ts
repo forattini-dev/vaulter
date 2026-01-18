@@ -386,8 +386,9 @@ export class VaulterClient {
       // Return with decrypted value
       return { ...result, value: input.value }
     } else {
-      // Create new
+      // Create new - pass pre-calculated ID to ensure consistency
       const result = await this.resource.insert({
+        id,
         ...input,
         value: encryptedValue,
         metadata: {
