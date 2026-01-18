@@ -362,8 +362,9 @@ export interface CLIArgs {
   // Sync options
   prune?: boolean
   shared?: boolean
-  'no-shared'?: boolean
-  noShared?: boolean
+  // Export options (inheritance control)
+  'skip-shared'?: boolean
+  skipShared?: boolean
 }
 
 export interface CommandContext {

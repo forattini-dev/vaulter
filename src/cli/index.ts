@@ -194,7 +194,7 @@ const cliSchema: CLISchema = {
       default: false,
       description: 'Target shared variables in monorepo'
     },
-    'no-shared': {
+    'skip-shared': {
       type: 'boolean',
       default: false,
       description: 'Disable shared vars inheritance when exporting service'
@@ -645,7 +645,10 @@ function toCliArgs(result: CommandParseResult): CLIArgs {
     fail: opts.fail as boolean | undefined,
     // Sync options
     prune: opts.prune as boolean | undefined,
-    shared: opts.shared as boolean | undefined
+    shared: opts.shared as boolean | undefined,
+    // Export options
+    'skip-shared': opts['skip-shared'] as boolean | undefined,
+    skipShared: opts['skip-shared'] as boolean | undefined  // camelCase alias
   }
 }
 

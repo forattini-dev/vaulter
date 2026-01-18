@@ -20,7 +20,7 @@ interface ExportContext {
   /** Target shared variables scope */
   shared?: boolean
   /** Disable shared vars inheritance when exporting service */
-  noShared?: boolean
+  skipShared?: boolean
 }
 
 /**
@@ -121,9 +121,9 @@ export async function runExport(context: ExportContext): Promise<void> {
   const isShared = args.shared || context.shared
   const effectiveService = isShared ? SHARED_SERVICE : service
 
-  // Check for --no-shared flag (disable inheritance)
-  const noShared = args['no-shared'] || args.noShared || context.noShared
-  const includeShared = !noShared
+  // Check for --skip-shared flag (disable inheritance)
+  const skipShared = args['skip-shared'] === true || args.skipShared === true || context.skipShared === true
+  const includeShared = !skipShared
 
   if (!project) {
     console.error('Error: Project not specified and no config found')
