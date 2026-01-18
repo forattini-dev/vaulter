@@ -272,6 +272,83 @@ export interface ServiceConfig {
   path?: string
 }
 
+// ============================================================================
+// Local & Deploy Configuration (new structure)
+// ============================================================================
+
+/**
+ * Local development configuration
+ *
+ * For developers running services on their local machine.
+ * These files are typically gitignored (except templates).
+ *
+ * @example
+ * local:
+ *   shared: .vaulter/local/shared.env           # All services (gitignored)
+ *   shared_example: .vaulter/local/shared.env.example  # Template (committed)
+ *   service: .vaulter/local/{service}.env       # Per-service override
+ */
+export interface LocalConfig {
+  /** Path to shared env file for all local services */
+  shared?: string
+  /** Path to example/template file (committed to git) */
+  shared_example?: string
+  /** Path pattern for per-service overrides. Use {service} placeholder */
+  service?: string
+}
+
+/**
+ * Shared configs/secrets paths for deploy
+ */
+export interface DeploySharedConfig {
+  /** Path to configs (non-sensitive, committed). Use {env} placeholder */
+  configs?: string
+  /** Path to secrets (sensitive, gitignored). Use {env} placeholder */
+  secrets?: string
+}
+
+/**
+ * Per-service configs/secrets paths for deploy
+ */
+export interface DeployServicesConfig {
+  /** Path to service configs. Use {service} and {env} placeholders */
+  configs?: string
+  /** Path to service secrets. Use {service} and {env} placeholders */
+  secrets?: string
+}
+
+/**
+ * Deploy configuration
+ *
+ * For CI/CD pipelines deploying to Kubernetes or other environments.
+ * Configs are committed, secrets are generated at deploy time.
+ *
+ * @example
+ * deploy:
+ *   shared:
+ *     configs: .vaulter/deploy/shared/configs/{env}.env   # Committed
+ *     secrets: .vaulter/deploy/shared/secrets/{env}.env   # CI/CD generates
+ *   services:
+ *     configs: .vaulter/deploy/services/{service}/configs/{env}.env
+ *     secrets: .vaulter/deploy/services/{service}/secrets/{env}.env
+ */
+export interface DeployConfig {
+  /** Shared configs/secrets for all services */
+  shared?: DeploySharedConfig
+  /** Per-service configs/secrets */
+  services?: DeployServicesConfig
+}
+
+/**
+ * Monorepo configuration
+ */
+export interface MonorepoConfig {
+  /** Root directory of the monorepo */
+  root?: string
+  /** Glob pattern for discovering services (e.g., "apps/*") */
+  services_pattern?: string
+}
+
 export interface VaulterConfig {
   version: '1'
   project: string
@@ -287,14 +364,25 @@ export interface VaulterConfig {
   integrations?: IntegrationsConfig
   hooks?: HooksConfig
   security?: SecurityConfig
-  /** Directory structure configuration (unified or split mode) */
+  /** Directory structure configuration (unified or split mode) - legacy, use local/deploy instead */
   directories?: DirectoriesConfig
   /** Audit logging configuration */
   audit?: AuditConfig
   /** MCP server configuration (defaults when running in this project) */
   mcp?: McpConfig
-  /** Monorepo services list */
+  /** Monorepo services list - legacy */
   services?: Array<string | ServiceConfig>
+
+  // ============================================================================
+  // New structure (recommended)
+  // ============================================================================
+
+  /** Monorepo configuration */
+  monorepo?: MonorepoConfig
+  /** Local development configuration */
+  local?: LocalConfig
+  /** Deploy configuration (CI/CD → K8s) */
+  deploy?: DeployConfig
 }
 
 // ============================================================================

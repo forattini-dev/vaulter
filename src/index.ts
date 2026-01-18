@@ -78,6 +78,23 @@ export {
 export { loader, parse } from './loader.js'
 export type { LoaderOptions } from './loader.js'
 
+// Smart config (auto-detects environment)
+export {
+  config,
+  detectEnvironment,
+  isKubernetes,
+  isCI,
+  shouldLoadEnvFiles,
+  getEnvironmentInfo,
+  getDeployEnvironment
+} from './config.js'
+export type {
+  ConfigMode,
+  ConfigOptions,
+  ConfigResult,
+  DetectedEnvironment
+} from './config.js'
+
 // Audit logging
 export {
   AuditLogger,

@@ -54,6 +54,7 @@ import { runInit } from './commands/init.js'
 import { runKey } from './commands/key.js'
 import { runAudit } from './commands/audit.js'
 import { runRotation } from './commands/rotation.js'
+import { runRun } from './commands/run.js'
 
 // Hierarchical command group routers
 import { runVar } from './commands/var/index.js'
@@ -202,6 +203,17 @@ const cliSchema: CLISchema = {
   },
 
   commands: {
+    run: {
+      description: 'Execute command with env vars loaded (auto-detects environment)',
+      aliases: ['exec'],
+      options: {
+        mode: {
+          type: 'string',
+          description: 'Force mode: auto, local, deploy, skip (default: auto)'
+        }
+      }
+    },
+
     init: {
       description: 'Initialize a new .vaulter configuration',
       options: {
@@ -743,6 +755,11 @@ async function main(): Promise<void> {
 
   try {
     switch (command) {
+      case 'run':
+      case 'exec':
+        await runRun(context)
+        break
+
       case 'init':
         await runInit(context)
         break

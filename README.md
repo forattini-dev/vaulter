@@ -9,9 +9,9 @@
 [![Node.js](https://img.shields.io/badge/Node.js-22+-339933?style=flat-square&logo=node.js&logoColor=white)](https://nodejs.org/)
 [![MCP](https://img.shields.io/badge/MCP-Claude_AI-7C3AED?style=flat-square&logo=anthropic&logoColor=white)](https://modelcontextprotocol.io/)
 
-Store secrets anywhere: AWS S3, MinIO, R2, Spaces, B2, or local filesystem.
+Organizes your `.env` files with structure and best practices.
 <br>
-AES-256-GCM encryption. Native K8s, Helm & Terraform integration.
+Powered by [dotenv](https://github.com/motdotla/dotenv) for parsing. Store secrets anywhere: S3, MinIO, R2, or filesystem.
 
 </div>
 
@@ -36,17 +36,50 @@ eval $(vaulter export shell -e dev)                   # Export to shell
 
 ---
 
-## Why Vaulter?
+## What is Vaulter?
 
-| Problem | Solution |
-|:--------|:---------|
-| Secrets in plaintext `.env` | Encrypted at rest (AES-256-GCM) |
-| Manual sync between devs | `vaulter sync pull` / `vaulter sync push` |
-| Copy-paste to CI/CD | `eval $(vaulter export shell -e prd)` |
-| No audit trail | Full history via audit log |
-| Different files per machine | Single source of truth |
+Vaulter is an **opinionated organizer** for your environment variables. It uses [dotenv](https://github.com/motdotla/dotenv) under the hood for parsing `.env` files - we don't reinvent the wheel, we just add structure.
 
-**Zero lock-in**: Your data lives in YOUR storage (S3, MinIO, R2, filesystem).
+```bash
+# Install in your project
+pnpm add vaulter
+# or: npm install vaulter
+```
+
+**What vaulter adds on top of dotenv:**
+
+| Feature | dotenv | vaulter |
+|:--------|:------:|:-------:|
+| Parse `.env` files | ✅ | ✅ (uses dotenv) |
+| Organize by environment (dev/stg/prd) | ❌ | ✅ |
+| Separate local vs deploy files | ❌ | ✅ |
+| Auto-detect environment (local/CI/K8s) | ❌ | ✅ |
+| Encrypted remote storage | ❌ | ✅ |
+| Sync between team members | ❌ | ✅ |
+| Export to K8s, Helm, Terraform | ❌ | ✅ |
+
+**Philosophy**: Your local `.env` stays local (gitignored). Configs are committed. Secrets are encrypted in your own storage.
+
+---
+
+## Quick Start (Local Development)
+
+```typescript
+// app.ts
+import { config } from 'vaulter'
+
+config() // Loads .vaulter/local/shared.env (default: local mode)
+```
+
+```bash
+# Copy the example and fill in your values
+cp .vaulter/local/shared.env.example .vaulter/local/shared.env
+
+# Or run commands with env vars loaded
+npx vaulter run -- pnpm dev
+```
+
+That's it! For most local development, vaulter is just a structured dotenv.
 
 ---
 
@@ -121,6 +154,31 @@ eval $(vaulter export shell -e dev)                   # Export to shell
 | `key list` | List all keys |
 | `key export --name <n>` | Export encrypted bundle |
 
+### Run (Execute with Env Vars)
+
+| Command | Description |
+|:--------|:------------|
+| `run -- <command>` | Execute command with auto-loaded env vars |
+| `run -e prd -- <command>` | Execute with specific environment |
+| `run -s api -- <command>` | Execute with service-specific vars (monorepo) |
+| `run --verbose -- <command>` | Show which files were loaded |
+| `run --dry-run -- <command>` | Preview without executing |
+
+**Examples:**
+
+```bash
+# Local development
+npx vaulter run -- pnpm dev
+
+# CI/CD build with production vars
+npx vaulter run -e prd -- pnpm build
+
+# Monorepo service
+npx vaulter run -e dev -s api -- pnpm start
+```
+
+The `run` command auto-detects the environment (local, CI, K8s) and loads the appropriate files before executing your command.
+
 > Run `vaulter --help` or `vaulter <command> --help` for all options.
 
 ---
@@ -182,6 +240,19 @@ default_environment: dev
 audit:
   enabled: true
   retention_days: 90
+
+# Local vs Deploy separation (recommended)
+local:
+  shared: .vaulter/local/shared.env
+  shared_example: .vaulter/local/shared.env.example
+
+deploy:
+  shared:
+    configs: .vaulter/deploy/shared/configs/{env}.env
+    secrets: .vaulter/deploy/shared/secrets/{env}.env
+  services:
+    configs: .vaulter/deploy/services/{service}/configs/{env}.env
+    secrets: .vaulter/deploy/services/{service}/secrets/{env}.env
 ```
 
 ### Backend URLs
@@ -194,38 +265,86 @@ audit:
 | DigitalOcean | `https://KEY:SECRET@nyc3.digitaloceanspaces.com/bucket` |
 | FileSystem | `file:///path/to/storage` |
 
-### Split Mode
+### Local vs Deploy Structure
 
-Separate configs (committable) from secrets (gitignored):
-
-```bash
-vaulter init --split
-```
+Vaulter separates **local development** from **deployment** configurations:
 
 ```
-deploy/
-├── configs/    # Committable (PORT, HOST)
-└── secrets/    # Gitignored (DATABASE_URL, API_KEY)
+.vaulter/
+├── config.yaml
+├── local/                     # Developer machine (gitignored)
+│   ├── shared.env             # Your local secrets
+│   └── shared.env.example     # Template (committed)
+└── deploy/                    # CI/CD pipelines
+    └── shared/
+        ├── configs/           # Committed to git
+        │   ├── dev.env
+        │   ├── stg.env
+        │   └── prd.env
+        └── secrets/           # Gitignored, pulled from backend
+            ├── dev.env
+            └── prd.env
+```
+
+**Why this structure:**
+
+| Location | Purpose | Git | Contains |
+|:---------|:--------|:----|:---------|
+| `local/shared.env` | Developer's machine | Ignored | Personal secrets (API keys, DB creds) |
+| `local/shared.env.example` | Template for devs | Committed | Placeholder values |
+| `deploy/configs/*.env` | CI/CD configs | Committed | Non-sensitive (PORT, HOST, LOG_LEVEL) |
+| `deploy/secrets/*.env` | CI/CD secrets | Ignored | Pulled via `vaulter sync pull` |
+
+**Gitignore:**
+
+```gitignore
+# Local development
+.vaulter/local/shared.env
+.vaulter/local/*.env
+!.vaulter/local/*.env.example
+
+# Deploy secrets (pulled in CI)
+.vaulter/deploy/shared/secrets/
+.vaulter/deploy/services/*/secrets/
 ```
 
 ---
 
 ## CI/CD
 
-### GitHub Actions
+### GitHub Actions (Recommended)
+
+Use `vaulter run` to execute commands with auto-loaded environment variables:
 
 ```yaml
-name: Deploy
+name: Build & Deploy
 on:
   push:
     branches: [main]
 
 jobs:
-  deploy:
+  build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Deploy secrets
+      - uses: pnpm/action-setup@v4
+
+      - name: Pull secrets from backend
+        env:
+          VAULTER_KEY: ${{ secrets.VAULTER_KEY }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        run: npx vaulter sync pull -e prd
+
+      - name: Build with env vars
+        run: npx vaulter run -e prd -- pnpm build
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy secrets to K8s
         env:
           VAULTER_KEY: ${{ secrets.VAULTER_KEY }}
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -233,21 +352,38 @@ jobs:
         run: npx vaulter export k8s-secret -e prd | kubectl apply -f -
 ```
 
+**Auto-detection in CI:** When `CI=true` or `GITHUB_ACTIONS` is set, vaulter automatically loads from `.vaulter/deploy/` instead of `.vaulter/local/`.
+
 ### Other Platforms
 
 ```bash
 # GitLab CI
-npx vaulter export k8s-secret -e ${CI_ENVIRONMENT_NAME} | kubectl apply -f -
+npx vaulter run -e ${CI_ENVIRONMENT_NAME} -- pnpm build
 
-# Docker
-vaulter export docker -e prd > .env.prd && docker run --env-file .env.prd myapp
+# Docker (build with secrets)
+npx vaulter run -e prd -- docker build -t myapp .
 
 # Terraform
 vaulter export terraform -e prd > secrets.auto.tfvars
 
 # Helm
 vaulter export helm -e prd | helm upgrade myapp ./chart -f -
+
+# Direct export
+npx vaulter export k8s-secret -e prd | kubectl apply -f -
 ```
+
+### Kubernetes Runtime
+
+When running in Kubernetes, env vars are already injected via ConfigMap/Secret. Vaulter's `config()` function **automatically skips** loading when it detects K8s:
+
+```typescript
+import { config } from 'vaulter'
+
+config() // Skips in K8s, loads files elsewhere
+```
+
+Detection: `KUBERNETES_SERVICE_HOST` environment variable is set by K8s automatically.
 
 ---
 
@@ -295,6 +431,38 @@ const vars = await client.list({ project: 'my-project', environment: 'prd' })
 
 await client.disconnect()
 ```
+
+### Smart Config (Auto-Detection)
+
+The `config()` function auto-detects your environment and loads the appropriate files:
+
+```typescript
+import { config } from 'vaulter'
+
+// Auto-detect environment and load appropriate files
+const result = config()
+
+// With options
+config({
+  mode: 'auto',        // 'auto' | 'local' | 'deploy' | 'skip'
+  environment: 'dev',  // Override environment (dev, stg, prd)
+  service: 'api',      // For monorepo service-specific vars
+  verbose: true,       // Debug output
+})
+```
+
+**Environment Detection:**
+
+| Environment | Detection | Behavior |
+|:------------|:----------|:---------|
+| **Kubernetes** | `KUBERNETES_SERVICE_HOST` set | Skip loading (vars injected via ConfigMap/Secret) |
+| **CI/CD** | `CI=true`, `GITHUB_ACTIONS`, etc. | Load from `.vaulter/deploy/` |
+| **Local** | Default | Load from `.vaulter/local/shared.env` |
+
+**Why this matters:**
+- **K8s**: Env vars are already injected, no file loading needed
+- **CI/CD**: Uses committed configs + secrets pulled from backend
+- **Local**: Developer's machine-specific `.env` file (gitignored)
 
 ### Auto-load (dotenv compatible)
 
