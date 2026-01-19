@@ -324,7 +324,14 @@ environments:
     beforeEach(() => {
       delete process.env.KUBERNETES_SERVICE_HOST
       delete process.env.KUBERNETES_SERVICE_PORT
+      // Clear ALL CI detection variables
       delete process.env.CI
+      delete process.env.GITHUB_ACTIONS
+      delete process.env.GITLAB_CI
+      delete process.env.CIRCLECI
+      delete process.env.TRAVIS
+      delete process.env.JENKINS_URL
+      delete process.env.BUILDKITE
       delete process.env.VAULTER_SERVICE
       delete process.env.VAULTER_VERBOSE
     })
