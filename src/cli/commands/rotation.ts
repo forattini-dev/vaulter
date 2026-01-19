@@ -10,6 +10,8 @@
 import type { CLIArgs, VaulterConfig, Environment } from '../../types.js'
 import { createClientFromConfig } from '../lib/create-client.js'
 import { getValidEnvironments } from '../../lib/config-loader.js'
+import * as ui from '../ui.js'
+import { c, print } from '../lib/colors.js'
 
 interface RotationContext {
   args: CLIArgs
@@ -92,13 +94,13 @@ export async function runRotation(context: RotationContext): Promise<void> {
       break
 
     default:
-      console.error('Usage: vaulter rotation <subcommand>')
-      console.error('')
-      console.error('Subcommands:')
-      console.error('  check, status   Check which secrets need rotation')
-      console.error('  set KEY         Set rotation policy for a secret')
-      console.error('  list, ls        List secrets with rotation policies')
-      console.error('  run             Run rotation workflow (CI/CD integration)')
+      print.error('Usage: vaulter rotation <subcommand>')
+      ui.log('')
+      ui.log('Subcommands:')
+      ui.log('  check, status   Check which secrets need rotation')
+      ui.log('  set KEY         Set rotation policy for a secret')
+      ui.log('  list, ls        List secrets with rotation policies')
+      ui.log('  run             Run rotation workflow (CI/CD integration)')
       process.exit(1)
   }
 }
@@ -110,8 +112,8 @@ async function runRotationCheck(context: RotationContext): Promise<void> {
   const { args, config, project, service, environment, verbose, jsonOutput } = context
 
   if (!project) {
-    console.error('Error: Project not specified and no config found')
-    console.error('Run "vaulter init" or specify --project')
+    print.error('Project not specified and no config found')
+    ui.log(`Run "${c.command('vaulter init')}" or specify ${c.highlight('--project')}`)
     process.exit(1)
   }
 
@@ -121,10 +123,8 @@ async function runRotationCheck(context: RotationContext): Promise<void> {
     ? getValidEnvironments(config)
     : [environment]
 
-  if (verbose) {
-    console.error(`Checking secrets older than ${defaultDays} days`)
-    console.error(`Environments: ${environments.join(', ')}`)
-  }
+  ui.verbose(`Checking secrets older than ${defaultDays} days`, verbose)
+  ui.verbose(`Environments: ${environments.join(', ')}`, verbose)
 
   const client = await createClientFromConfig({ args, config, project, verbose })
 
@@ -186,7 +186,7 @@ async function runRotationCheck(context: RotationContext): Promise<void> {
   const upToDate = results.filter(r => !r.needsRotation)
 
   if (jsonOutput) {
-    console.log(JSON.stringify({
+    ui.output(JSON.stringify({
       project,
       service,
       environments,
@@ -197,33 +197,33 @@ async function runRotationCheck(context: RotationContext): Promise<void> {
       secrets: results
     }))
   } else {
-    console.log(`Rotation check for ${project}/${environments.join(', ')}`)
-    console.log(`Default rotation interval: ${defaultDays} days`)
-    console.log('')
+    ui.log(`Rotation check for ${c.project(project)}/${environments.join(', ')}`)
+    ui.log(`Default rotation interval: ${c.value(String(defaultDays))} days`)
+    ui.log('')
 
     if (needingRotation.length > 0) {
-      console.log(`⚠️  Secrets needing rotation (${needingRotation.length}):`)
+      ui.log(`⚠️  Secrets needing rotation (${needingRotation.length}):`)
       for (const s of needingRotation) {
         const envLabel = allEnvs ? ` [${s.environment}]` : ''
         const ageLabel = s.daysOld === Infinity ? 'never rotated' : `${s.daysOld} days old`
-        console.log(`  • ${s.key}${envLabel} - ${ageLabel}`)
+        ui.log(`  • ${c.key(s.key)}${envLabel} - ${ageLabel}`)
       }
-      console.log('')
+      ui.log('')
     }
 
     if (upToDate.length > 0 && verbose) {
-      console.log(`✓ Secrets up to date (${upToDate.length}):`)
+      ui.log(`✓ Secrets up to date (${upToDate.length}):`)
       for (const s of upToDate) {
         const envLabel = allEnvs ? ` [${s.environment}]` : ''
         const dueLabel = s.daysUntilDue !== undefined
           ? `due in ${s.daysUntilDue} days`
           : `${s.daysOld} days old`
-        console.log(`  • ${s.key}${envLabel} - ${dueLabel}`)
+        ui.log(`  • ${c.key(s.key)}${envLabel} - ${dueLabel}`)
       }
-      console.log('')
+      ui.log('')
     }
 
-    console.log(`Summary: ${needingRotation.length} need rotation, ${upToDate.length} up to date`)
+    ui.log(`Summary: ${needingRotation.length} need rotation, ${upToDate.length} up to date`)
   }
 }
 
@@ -235,14 +235,14 @@ async function runRotationSet(context: RotationContext): Promise<void> {
 
   const key = args._[2]
   if (!key) {
-    console.error('Error: Key name is required')
-    console.error('Usage: vaulter rotation set <key> --interval 90d')
+    print.error('Key name is required')
+    ui.log(`Usage: ${c.command('vaulter rotation set')} <key> ${c.highlight('--interval')} 90d`)
     process.exit(1)
   }
 
   if (!project) {
-    console.error('Error: Project not specified and no config found')
-    console.error('Run "vaulter init" or specify --project')
+    print.error('Project not specified and no config found')
+    ui.log(`Run "${c.command('vaulter init')}" or specify ${c.highlight('--project')}`)
     process.exit(1)
   }
 
@@ -250,9 +250,9 @@ async function runRotationSet(context: RotationContext): Promise<void> {
   const clear = args.clear
 
   if (!intervalStr && !clear) {
-    console.error('Error: Either --interval or --clear is required')
-    console.error('Usage: vaulter rotation set <key> --interval 90d')
-    console.error('       vaulter rotation set <key> --clear')
+    print.error('Either --interval or --clear is required')
+    ui.log(`Usage: ${c.command('vaulter rotation set')} <key> ${c.highlight('--interval')} 90d`)
+    ui.log(`       ${c.command('vaulter rotation set')} <key> ${c.highlight('--clear')}`)
     process.exit(1)
   }
 
@@ -260,23 +260,21 @@ async function runRotationSet(context: RotationContext): Promise<void> {
   if (intervalStr) {
     intervalDays = parseDuration(intervalStr)
     if (intervalDays === null) {
-      console.error(`Error: Invalid interval format: ${intervalStr}`)
-      console.error('Valid formats: 30d (days), 4w (weeks), 3m (months), 1y (year)')
+      print.error(`Invalid interval format: ${intervalStr}`)
+      ui.log('Valid formats: 30d (days), 4w (weeks), 3m (months), 1y (year)')
       process.exit(1)
     }
   }
 
-  if (verbose) {
-    if (clear) {
-      console.error(`Clearing rotation policy for ${key}`)
-    } else {
-      console.error(`Setting rotation interval for ${key}: ${intervalDays} days`)
-    }
+  if (clear) {
+    ui.verbose(`Clearing rotation policy for ${key}`, verbose)
+  } else {
+    ui.verbose(`Setting rotation interval for ${key}: ${intervalDays} days`, verbose)
   }
 
   if (dryRun) {
     if (jsonOutput) {
-      console.log(JSON.stringify({
+      ui.output(JSON.stringify({
         dryRun: true,
         action: clear ? 'clear' : 'set',
         key,
@@ -287,9 +285,9 @@ async function runRotationSet(context: RotationContext): Promise<void> {
       }))
     } else {
       if (clear) {
-        console.log(`Dry run - would clear rotation policy for ${key}`)
+        ui.log(`Dry run - would clear rotation policy for ${c.key(key)}`)
       } else {
-        console.log(`Dry run - would set rotation interval for ${key}: ${intervalDays} days`)
+        ui.log(`Dry run - would set rotation interval for ${c.key(key)}: ${intervalDays} days`)
       }
     }
     return
@@ -303,7 +301,7 @@ async function runRotationSet(context: RotationContext): Promise<void> {
     // Get existing variable
     const existing = await client.get(key, project, environment, service)
     if (!existing) {
-      console.error(`Error: Variable ${key} not found`)
+      print.error(`Variable ${c.key(key)} not found`)
       process.exit(1)
     }
 
@@ -329,7 +327,7 @@ async function runRotationSet(context: RotationContext): Promise<void> {
     })
 
     if (jsonOutput) {
-      console.log(JSON.stringify({
+      ui.output(JSON.stringify({
         success: true,
         action: clear ? 'cleared' : 'set',
         key,
@@ -340,11 +338,11 @@ async function runRotationSet(context: RotationContext): Promise<void> {
       }))
     } else {
       if (clear) {
-        console.log(`✓ Cleared rotation policy for ${key}`)
+        ui.success(`Cleared rotation policy for ${c.key(key)}`)
       } else {
-        console.log(`✓ Set rotation policy for ${key}`)
-        console.log(`  Interval: ${intervalDays} days`)
-        console.log(`  Next rotation due: ${rotateAfter!.toISOString().split('T')[0]}`)
+        ui.success(`Set rotation policy for ${c.key(key)}`)
+        ui.log(`  Interval: ${c.value(String(intervalDays))} days`)
+        ui.log(`  Next rotation due: ${c.value(rotateAfter!.toISOString().split('T')[0])}`)
       }
     }
   } finally {
@@ -359,8 +357,8 @@ async function runRotationList(context: RotationContext): Promise<void> {
   const { args, config, project, service, environment, verbose, jsonOutput } = context
 
   if (!project) {
-    console.error('Error: Project not specified and no config found')
-    console.error('Run "vaulter init" or specify --project')
+    print.error('Project not specified and no config found')
+    ui.log(`Run "${c.command('vaulter init')}" or specify ${c.highlight('--project')}`)
     process.exit(1)
   }
 
@@ -408,7 +406,7 @@ async function runRotationList(context: RotationContext): Promise<void> {
   }
 
   if (jsonOutput) {
-    console.log(JSON.stringify({
+    ui.output(JSON.stringify({
       project,
       service,
       environments,
@@ -417,13 +415,13 @@ async function runRotationList(context: RotationContext): Promise<void> {
     }))
   } else {
     if (results.length === 0) {
-      console.log('No secrets with rotation policies found.')
-      console.log('')
-      console.log('Set a rotation policy with:')
-      console.log('  vaulter rotation set <key> --interval 90d')
+      ui.log('No secrets with rotation policies found.')
+      ui.log('')
+      ui.log('Set a rotation policy with:')
+      ui.log(`  ${c.command('vaulter rotation set')} <key> ${c.highlight('--interval')} 90d`)
     } else {
-      console.log(`Secrets with rotation policies (${results.length}):`)
-      console.log('')
+      ui.log(`Secrets with rotation policies (${results.length}):`)
+      ui.log('')
 
       // Sort by days until due
       results.sort((a, b) => (a.daysUntilDue ?? Infinity) - (b.daysUntilDue ?? Infinity))
@@ -433,11 +431,11 @@ async function runRotationList(context: RotationContext): Promise<void> {
         const status = policy.daysUntilDue !== undefined
           ? (policy.daysUntilDue < 0 ? '⚠️  OVERDUE' : `due in ${policy.daysUntilDue} days`)
           : 'no due date'
-        console.log(`  • ${policy.key}${envLabel} - ${status}`)
+        ui.log(`  • ${c.key(policy.key)}${envLabel} - ${status}`)
         if (verbose && policy.rotateAfter) {
-          console.log(`      Due: ${policy.rotateAfter.split('T')[0]}`)
+          ui.log(`      Due: ${policy.rotateAfter.split('T')[0]}`)
           if (policy.rotatedAt) {
-            console.log(`      Last rotated: ${policy.rotatedAt.split('T')[0]}`)
+            ui.log(`      Last rotated: ${policy.rotatedAt.split('T')[0]}`)
           }
         }
       }
@@ -476,8 +474,8 @@ async function runRotationRun(context: RotationContext): Promise<void> {
   const { args, config, project, service, environment, verbose, jsonOutput } = context
 
   if (!project) {
-    console.error('Error: Project not specified and no config found')
-    console.error('Run "vaulter init" or specify --project')
+    print.error('Project not specified and no config found')
+    ui.log(`Run "${c.command('vaulter init')}" or specify ${c.highlight('--project')}`)
     process.exit(1)
   }
 
@@ -495,20 +493,18 @@ async function runRotationRun(context: RotationContext): Promise<void> {
   // Check if rotation is enabled in config
   const rotationEnabled = config?.encryption?.rotation?.enabled !== false
 
-  if (verbose) {
-    console.error(`Rotation workflow for ${project}`)
-    console.error(`  Rotation enabled: ${rotationEnabled}`)
-    console.error(`  Default interval: ${defaultDays} days`)
-    console.error(`  Overdue only: ${overdueOnly}`)
-    console.error(`  Pattern filter: ${pattern || 'none'}`)
-    console.error(`  Config patterns: ${configPatterns.length > 0 ? configPatterns.join(', ') : 'none'}`)
-    console.error(`  Environments: ${environments.join(', ')}`)
-  }
+  ui.verbose(`Rotation workflow for ${project}`, verbose)
+  ui.verbose(`  Rotation enabled: ${rotationEnabled}`, verbose)
+  ui.verbose(`  Default interval: ${defaultDays} days`, verbose)
+  ui.verbose(`  Overdue only: ${overdueOnly}`, verbose)
+  ui.verbose(`  Pattern filter: ${pattern || 'none'}`, verbose)
+  ui.verbose(`  Config patterns: ${configPatterns.length > 0 ? configPatterns.join(', ') : 'none'}`, verbose)
+  ui.verbose(`  Environments: ${environments.join(', ')}`, verbose)
 
   // If rotation is disabled in config, exit successfully (don't fail CI)
   if (!rotationEnabled) {
     if (jsonOutput) {
-      console.log(JSON.stringify({
+      ui.output(JSON.stringify({
         project,
         service,
         environments,
@@ -519,10 +515,10 @@ async function runRotationRun(context: RotationContext): Promise<void> {
         secrets: []
       }))
     } else {
-      console.log(`Rotation workflow: ${project}`)
-      console.log('')
-      console.log('⏭️  Rotation is disabled in config (encryption.rotation.enabled: false)')
-      console.log('   CI/CD gate passed - no secrets checked.')
+      ui.log(`Rotation workflow: ${c.project(project)}`)
+      ui.log('')
+      ui.log('⏭️  Rotation is disabled in config (encryption.rotation.enabled: false)')
+      ui.log('   CI/CD gate passed - no secrets checked.')
     }
     return
   }
@@ -607,7 +603,7 @@ async function runRotationRun(context: RotationContext): Promise<void> {
   const overdue = candidates.filter(c => c.daysOverdue !== undefined)
 
   if (jsonOutput) {
-    console.log(JSON.stringify({
+    ui.output(JSON.stringify({
       project,
       service,
       environments,
@@ -617,37 +613,37 @@ async function runRotationRun(context: RotationContext): Promise<void> {
       configPatterns,
       total: candidates.length,
       overdue: overdue.length,
-      secrets: candidates.map(c => ({
-        key: c.key,
-        environment: c.environment,
-        daysOld: c.daysOld,
-        daysOverdue: c.daysOverdue,
-        matchedPattern: c.matchedPattern
+      secrets: candidates.map(cand => ({
+        key: cand.key,
+        environment: cand.environment,
+        daysOld: cand.daysOld,
+        daysOverdue: cand.daysOverdue,
+        matchedPattern: cand.matchedPattern
       }))
     }))
   } else {
-    console.log(`Rotation workflow: ${project}`)
-    console.log('')
+    ui.log(`Rotation workflow: ${c.project(project)}`)
+    ui.log('')
 
     if (overdue.length > 0) {
-      console.log(`⚠️  Secrets requiring rotation (${overdue.length}):`)
-      for (const c of overdue) {
-        const envLabel = allEnvs ? ` [${c.environment}]` : ''
-        const overdueLabel = c.daysOverdue ? `${c.daysOverdue} days overdue` : `${c.daysOld} days old`
-        const patternLabel = c.matchedPattern ? ` (matched: ${c.matchedPattern})` : ''
-        console.log(`  • ${c.key}${envLabel} - ${overdueLabel}${patternLabel}`)
+      ui.log(`⚠️  Secrets requiring rotation (${overdue.length}):`)
+      for (const cand of overdue) {
+        const envLabel = allEnvs ? ` [${cand.environment}]` : ''
+        const overdueLabel = cand.daysOverdue ? `${cand.daysOverdue} days overdue` : `${cand.daysOld} days old`
+        const patternLabel = cand.matchedPattern ? ` (matched: ${cand.matchedPattern})` : ''
+        ui.log(`  • ${c.key(cand.key)}${envLabel} - ${overdueLabel}${patternLabel}`)
       }
-      console.log('')
-      console.log('To rotate a secret:')
-      console.log('  vaulter set <KEY> "<new-value>" -e <env>')
-      console.log('')
-      console.log('The rotatedAt timestamp will be updated automatically.')
+      ui.log('')
+      ui.log('To rotate a secret:')
+      ui.log(`  ${c.command('vaulter set')} <KEY> "<new-value>" ${c.highlight('-e')} <env>`)
+      ui.log('')
+      ui.log('The rotatedAt timestamp will be updated automatically.')
     } else {
-      console.log('✓ No secrets require rotation')
+      ui.success('No secrets require rotation')
     }
 
-    console.log('')
-    console.log(`Summary: ${overdue.length} overdue, ${candidates.length - overdue.length} up to date`)
+    ui.log('')
+    ui.log(`Summary: ${overdue.length} overdue, ${candidates.length - overdue.length} up to date`)
   }
 
   // Exit with non-zero if secrets need rotation (for CI/CD)

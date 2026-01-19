@@ -13,6 +13,7 @@ import { findConfigDir, getEnvFilePathForConfig } from '../../lib/config-loader.
 import { serializeEnv, parseEnvFile } from '../../lib/env-parser.js'
 import { c, symbols, colorEnv, print } from '../lib/colors.js'
 import { SHARED_SERVICE } from '../../lib/shared.js'
+import * as ui from '../ui.js'
 
 export interface PullContext {
   args: CLIArgs
@@ -40,7 +41,7 @@ export async function runPull(context: PullContext): Promise<void> {
 
   if (!project) {
     print.error('Project not specified and no config found')
-    console.error(`Run "${c.command('vaulter init')}" or specify ${c.highlight('--project')}`)
+    ui.log(`Run "${c.command('vaulter init')}" or specify ${c.highlight('--project')}`)
     process.exit(1)
   }
 
@@ -61,11 +62,11 @@ export async function runPull(context: PullContext): Promise<void> {
   }
 
   if (verbose) {
-    console.error(`${symbols.info} Pulling ${c.project(project)}/${context.shared ? c.env('shared') : c.service(effectiveService || '(no service)')}/${colorEnv(environment)}`)
+    ui.verbose(`Pulling ${c.project(project)}/${context.shared ? c.env('shared') : c.service(effectiveService || '(no service)')}/${colorEnv(environment)}`, true)
     if (envFilePath) {
-      console.error(`${symbols.info} Output: ${c.muted(envFilePath)}`)
+      ui.verbose(`Output: ${c.muted(envFilePath)}`, true)
     } else {
-      console.error(`${symbols.info} Output: stdout`)
+      ui.verbose('Output: stdout', true)
     }
   }
 
@@ -83,7 +84,7 @@ export async function runPull(context: PullContext): Promise<void> {
 
     if (varCount === 0) {
       if (jsonOutput) {
-        console.log(JSON.stringify({
+        ui.output(JSON.stringify({
           warning: 'no_variables',
           project,
           service: effectiveService,
@@ -91,7 +92,7 @@ export async function runPull(context: PullContext): Promise<void> {
           shared: context.shared || false
         }))
       } else {
-        console.error(`Warning: No variables found for ${project}/${environment}`)
+        print.warning(`No variables found for ${project}/${environment}`)
       }
       return
     }
@@ -116,7 +117,7 @@ export async function runPull(context: PullContext): Promise<void> {
       }
 
       if (jsonOutput) {
-        console.log(JSON.stringify({
+        ui.output(JSON.stringify({
           dryRun: true,
           project,
           service: effectiveService,
@@ -131,18 +132,18 @@ export async function runPull(context: PullContext): Promise<void> {
           variables: Object.keys(vars)
         }))
       } else {
-        console.log(`Dry run - would pull ${varCount} variables:`)
-        console.log(`  Variables: ${Object.keys(vars).join(', ')}`)
+        ui.log(`Dry run - would pull ${varCount} variables:`)
+        ui.log(`  Variables: ${Object.keys(vars).join(', ')}`)
         if (envFilePath) {
-          console.log(`  Output: ${envFilePath}`)
+          ui.log(`  Output: ${envFilePath}`)
         } else {
-          console.log('  Output: stdout')
+          ui.log('  Output: stdout')
         }
         if (localOnlyCount > 0) {
           if (context.prune) {
-            console.log(`  ${c.removed(`Would delete ${localOnlyCount} local-only: ${localOnlyKeys.join(', ')}`)}`)
+            ui.log(`  ${c.removed(`Would delete ${localOnlyCount} local-only: ${localOnlyKeys.join(', ')}`)}`)
           } else {
-            console.log(`  Would keep ${localOnlyCount} local-only: ${localOnlyKeys.join(', ')}`)
+            ui.log(`  Would keep ${localOnlyCount} local-only: ${localOnlyKeys.join(', ')}`)
           }
         }
       }
@@ -178,7 +179,7 @@ export async function runPull(context: PullContext): Promise<void> {
       fs.writeFileSync(envFilePath, finalContent + '\n')
 
       if (jsonOutput) {
-        console.log(JSON.stringify({
+        ui.output(JSON.stringify({
           success: true,
           project,
           service: effectiveService,
@@ -190,9 +191,9 @@ export async function runPull(context: PullContext): Promise<void> {
           outputPath: envFilePath
         }))
       } else {
-        console.log(`✓ Pulled ${varCount} variables to ${envFilePath}`)
+        ui.success(`Pulled ${varCount} variables to ${envFilePath}`)
         if (localOnlyKept > 0) {
-          console.log(`  Kept ${localOnlyKept} local-only variables`)
+          ui.log(`  Kept ${localOnlyKept} local-only variables`)
         }
       }
 
@@ -200,7 +201,7 @@ export async function runPull(context: PullContext): Promise<void> {
     } else {
       // Output to stdout
       if (jsonOutput) {
-        console.log(JSON.stringify({
+        ui.output(JSON.stringify({
           success: true,
           project,
           service: effectiveService,
@@ -209,7 +210,7 @@ export async function runPull(context: PullContext): Promise<void> {
           variables: vars
         }))
       } else {
-        console.log(envContent)
+        ui.output(envContent)
       }
 
       runHook(config?.hooks?.post_pull, 'post_pull', verbose)

@@ -13,6 +13,7 @@ import { parseEnvFile, hasStdinData, parseEnvFromStdin } from '../../lib/env-par
 import { createConnectedAuditLogger, logPushOperation, disconnectAuditLogger } from '../lib/audit-helper.js'
 import { c, symbols, colorEnv, print } from '../lib/colors.js'
 import { SHARED_SERVICE } from '../../lib/shared.js'
+import * as ui from '../ui.js'
 
 export interface PushContext {
   args: CLIArgs
@@ -47,14 +48,14 @@ export async function runPush(context: PushContext): Promise<void> {
 
   if (!project) {
     print.error('Project not specified and no config found')
-    console.error(`Run "${c.command('vaulter init')}" or specify ${c.highlight('--project')}`)
+    ui.log(`Run "${c.command('vaulter init')}" or specify ${c.highlight('--project')}`)
     process.exit(1)
   }
 
   // Production confirmation
   if (isProdEnvironment(environment) && config?.security?.confirm_production && !args.force) {
     print.warning(`You are pushing to ${colorEnv(environment)} (production) environment`)
-    console.error(`Use ${c.highlight('--force')} to confirm this action`)
+    ui.log(`Use ${c.highlight('--force')} to confirm this action`)
     process.exit(1)
   }
 
@@ -63,9 +64,7 @@ export async function runPush(context: PushContext): Promise<void> {
 
   if (hasStdinData()) {
     // Read from stdin
-    if (verbose) {
-      console.error(`${symbols.info} Reading variables from stdin...`)
-    }
+    ui.verbose('Reading variables from stdin...', verbose)
     localVars = await parseEnvFromStdin()
   } else {
     // Read from file
@@ -81,7 +80,7 @@ export async function runPush(context: PushContext): Promise<void> {
       const configDir = findConfigDir()
       if (!configDir || !config) {
         print.error('No config directory found and no file specified')
-        console.error(`Use ${c.highlight('-f <file>')} to specify the .env file`)
+        ui.log(`Use ${c.highlight('-f <file>')} to specify the .env file`)
         process.exit(1)
       }
       envFilePath = getEnvFilePathForConfig(config, configDir, environment)
@@ -92,9 +91,7 @@ export async function runPush(context: PushContext): Promise<void> {
       process.exit(1)
     }
 
-    if (verbose) {
-      console.error(`${symbols.info} Reading variables from ${c.muted(envFilePath)}`)
-    }
+    ui.verbose(`Reading variables from ${c.muted(envFilePath)}`, verbose)
 
     localVars = parseEnvFile(envFilePath)
   }
@@ -103,7 +100,7 @@ export async function runPush(context: PushContext): Promise<void> {
 
   if (varCount === 0) {
     if (jsonOutput) {
-      console.log(JSON.stringify({
+      ui.output(JSON.stringify({
         warning: 'no_variables',
         message: 'No variables found in source'
       }))
@@ -113,9 +110,7 @@ export async function runPush(context: PushContext): Promise<void> {
     return
   }
 
-  if (verbose) {
-    console.error(`${symbols.info} Found ${c.value(String(varCount))} variables to push`)
-  }
+  ui.verbose(`Found ${c.value(String(varCount))} variables to push`, verbose)
 
   const client = await createClientFromConfig({ args, config, project, verbose })
   const auditLogger = await createConnectedAuditLogger(config, verbose)
@@ -153,7 +148,7 @@ export async function runPush(context: PushContext): Promise<void> {
       }
 
       if (jsonOutput) {
-        console.log(JSON.stringify({
+        ui.output(JSON.stringify({
           dryRun: true,
           project,
           service: effectiveService,
@@ -168,21 +163,21 @@ export async function runPush(context: PushContext): Promise<void> {
           }
         }))
       } else {
-        console.log('Dry run - changes that would be made:')
+        ui.log('Dry run - changes that would be made:')
         if (toAdd.length > 0) {
-          console.log(`  Add (${toAdd.length}): ${toAdd.join(', ')}`)
+          ui.log(`  Add (${toAdd.length}): ${toAdd.join(', ')}`)
         }
         if (toUpdate.length > 0) {
-          console.log(`  Update (${toUpdate.length}): ${toUpdate.join(', ')}`)
+          ui.log(`  Update (${toUpdate.length}): ${toUpdate.join(', ')}`)
         }
         if (toDelete.length > 0) {
-          console.log(`  ${c.removed(`Delete (${toDelete.length}): ${toDelete.join(', ')}`)}`)
+          ui.log(`  ${c.removed(`Delete (${toDelete.length}): ${toDelete.join(', ')}`)}`)
         }
         if (unchanged.length > 0) {
-          console.log(`  Unchanged: ${unchanged.length} variables`)
+          ui.log(`  Unchanged: ${unchanged.length} variables`)
         }
         if (toAdd.length === 0 && toUpdate.length === 0 && toDelete.length === 0) {
-          console.log('  No changes needed')
+          ui.log('  No changes needed')
         }
       }
       return
@@ -240,7 +235,7 @@ export async function runPush(context: PushContext): Promise<void> {
     })
 
     if (jsonOutput) {
-      console.log(JSON.stringify({
+      ui.output(JSON.stringify({
         success: true,
         project,
         service: effectiveService,
@@ -252,15 +247,15 @@ export async function runPush(context: PushContext): Promise<void> {
         total: varCount
       }))
     } else {
-      console.log(`✓ Pushed ${varCount} variables to ${project}/${environment}`)
+      ui.success(`Pushed ${varCount} variables to ${project}/${environment}`)
       if (addedKeys.length > 0) {
-        console.log(`  Added: ${addedKeys.length}`)
+        ui.log(`  Added: ${addedKeys.length}`)
       }
       if (updatedKeys.length > 0) {
-        console.log(`  Updated: ${updatedKeys.length}`)
+        ui.log(`  Updated: ${updatedKeys.length}`)
       }
       if (deletedKeys.length > 0) {
-        console.log(`  ${c.removed(`Deleted: ${deletedKeys.length}`)}`)
+        ui.log(`  ${c.removed(`Deleted: ${deletedKeys.length}`)}`)
       }
     }
   } finally {

@@ -16,6 +16,7 @@ import {
   type InitOptions
 } from '../../lib/init-generator.js'
 import { c, print, cyan, yellow, dim } from '../lib/colors.js'
+import * as ui from '../ui.js'
 
 interface InitContext {
   args: CLIArgs
@@ -36,10 +37,10 @@ export async function runInit(context: InitContext): Promise<void> {
   if (configExists() && !args.force) {
     const existingDir = findConfigDir()
     if (jsonOutput) {
-      console.log(JSON.stringify({ error: 'already_initialized', path: existingDir }))
+      ui.output(JSON.stringify({ error: 'already_initialized', path: existingDir }))
     } else {
       print.error(`Vaulter already initialized at ${existingDir}`)
-      console.error(`Use ${c.highlight('--force')} to reinitialize`)
+      ui.log(`Use ${c.highlight('--force')} to reinitialize`)
     }
     process.exit(1)
   }
@@ -52,12 +53,10 @@ export async function runInit(context: InitContext): Promise<void> {
   const isMonorepo = args.monorepo || monorepoDetection.isMonorepo
   const servicesPattern = monorepoDetection.servicesPattern
 
-  if (verbose) {
-    console.log(`Project: ${projectName}`)
-    console.log(`Mode: ${isMonorepo ? 'monorepo' : 'single-repo'}`)
-    if (monorepoDetection.tool) {
-      console.log(`Detected: ${monorepoDetection.tool}`)
-    }
+  ui.verbose(`Project: ${projectName}`, verbose)
+  ui.verbose(`Mode: ${isMonorepo ? 'monorepo' : 'single-repo'}`, verbose)
+  if (monorepoDetection.tool) {
+    ui.verbose(`Detected: ${monorepoDetection.tool}`, verbose)
   }
 
   // Build options
@@ -76,7 +75,7 @@ export async function runInit(context: InitContext): Promise<void> {
 
   // Output
   if (jsonOutput) {
-    console.log(JSON.stringify({
+    ui.output(JSON.stringify({
       success: result.success,
       project: result.projectName,
       mode: result.mode,
@@ -90,61 +89,61 @@ export async function runInit(context: InitContext): Promise<void> {
   if (dryRun) {
     print.info('Dry run - would create:')
     for (const file of result.createdFiles) {
-      console.log(`  ${cyan(file)}`)
+      ui.log(`  ${cyan(file)}`)
     }
     return
   }
 
   // Success output
-  console.log('')
+  ui.log('')
   print.success(`Initialized vaulter for project: ${c.project(result.projectName)}`)
-  console.log('')
+  ui.log('')
 
   if (isMonorepo) {
     if (monorepoDetection.tool) {
-      console.log(`  ${dim('Detected:')} ${c.value(monorepoDetection.tool)} monorepo`)
+      ui.log(`  ${dim('Detected:')} ${c.value(monorepoDetection.tool)} monorepo`)
     }
-    console.log(`  ${dim('Mode:')} monorepo (with services/)`)
+    ui.log(`  ${dim('Mode:')} monorepo (with services/)`)
   } else {
-    console.log(`  ${dim('Mode:')} single-repo`)
+    ui.log(`  ${dim('Mode:')} single-repo`)
   }
 
-  console.log('')
-  console.log(`${dim('Created files:')}`)
+  ui.log('')
+  ui.log(`${dim('Created files:')}`)
   for (const file of result.createdFiles.slice(0, 8)) {
-    console.log(`  ${cyan(file)}`)
+    ui.log(`  ${cyan(file)}`)
   }
   if (result.createdFiles.length > 8) {
-    console.log(`  ${dim(`... and ${result.createdFiles.length - 8} more`)}`)
+    ui.log(`  ${dim(`... and ${result.createdFiles.length - 8} more`)}`)
   }
 
-  console.log('')
-  console.log(`${c.header('Next steps:')}`)
-  console.log('')
+  ui.log('')
+  ui.log(`${c.header('Next steps:')}`)
+  ui.log('')
 
   if (isMonorepo) {
-    console.log(`  ${yellow('1.')} Copy and fill local secrets:`)
-    console.log(`     ${c.command('cp .vaulter/local/shared.env.example .vaulter/local/shared.env')}`)
-    console.log('')
-    console.log(`  ${yellow('2.')} Configure backend in ${cyan('.vaulter/config.yaml')}`)
-    console.log('')
-    console.log(`  ${yellow('3.')} Generate encryption key:`)
-    console.log(`     ${c.command('vaulter key generate --name master')}`)
-    console.log('')
-    console.log(`  ${yellow('4.')} Run with env vars loaded:`)
-    console.log(`     ${c.command('vaulter run -s api -- pnpm dev')}`)
+    ui.log(`  ${yellow('1.')} Copy and fill local secrets:`)
+    ui.log(`     ${c.command('cp .vaulter/local/shared.env.example .vaulter/local/shared.env')}`)
+    ui.log('')
+    ui.log(`  ${yellow('2.')} Configure backend in ${cyan('.vaulter/config.yaml')}`)
+    ui.log('')
+    ui.log(`  ${yellow('3.')} Generate encryption key:`)
+    ui.log(`     ${c.command('vaulter key generate --name master')}`)
+    ui.log('')
+    ui.log(`  ${yellow('4.')} Run with env vars loaded:`)
+    ui.log(`     ${c.command('vaulter run -s api -- pnpm dev')}`)
   } else {
-    console.log(`  ${yellow('1.')} Copy and fill local secrets:`)
-    console.log(`     ${c.command('cp .vaulter/local/.env.example .vaulter/local/.env')}`)
-    console.log('')
-    console.log(`  ${yellow('2.')} Configure backend in ${cyan('.vaulter/config.yaml')}`)
-    console.log('')
-    console.log(`  ${yellow('3.')} Generate encryption key:`)
-    console.log(`     ${c.command('vaulter key generate --name master')}`)
-    console.log('')
-    console.log(`  ${yellow('4.')} Run with env vars loaded:`)
-    console.log(`     ${c.command('vaulter run -- pnpm dev')}`)
+    ui.log(`  ${yellow('1.')} Copy and fill local secrets:`)
+    ui.log(`     ${c.command('cp .vaulter/local/.env.example .vaulter/local/.env')}`)
+    ui.log('')
+    ui.log(`  ${yellow('2.')} Configure backend in ${cyan('.vaulter/config.yaml')}`)
+    ui.log('')
+    ui.log(`  ${yellow('3.')} Generate encryption key:`)
+    ui.log(`     ${c.command('vaulter key generate --name master')}`)
+    ui.log('')
+    ui.log(`  ${yellow('4.')} Run with env vars loaded:`)
+    ui.log(`     ${c.command('vaulter run -- pnpm dev')}`)
   }
 
-  console.log('')
+  ui.log('')
 }

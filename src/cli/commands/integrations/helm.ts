@@ -7,6 +7,8 @@
 import type { CLIArgs, VaulterConfig, Environment } from '../../../types.js'
 import { createClientFromConfig } from '../../lib/create-client.js'
 import { getSecretPatterns, splitVarsBySecret } from '../../../lib/secret-patterns.js'
+import { print } from '../../lib/colors.js'
+import * as ui from '../../ui.js'
 
 interface HelmContext {
   args: CLIArgs
@@ -25,13 +27,11 @@ export async function runHelmValues(context: HelmContext): Promise<void> {
   const { args, config, project, service, environment, verbose, jsonOutput } = context
 
   if (!project) {
-    console.error('Error: Project not specified')
+    print.error('Project not specified')
     process.exit(1)
   }
 
-  if (verbose) {
-    console.error(`Generating Helm values for ${project}/${environment}`)
-  }
+  ui.verbose(`Generating Helm values for ${project}/${environment}`, verbose)
 
   const client = await createClientFromConfig({ args, config, project, verbose })
 
@@ -41,12 +41,12 @@ export async function runHelmValues(context: HelmContext): Promise<void> {
     const vars = await client.export(project, environment, service)
 
     if (Object.keys(vars).length === 0) {
-      console.error('Warning: No variables found')
+      print.warning('No variables found')
       return
     }
 
     if (jsonOutput) {
-      console.log(JSON.stringify({
+      ui.output(JSON.stringify({
         format: 'helm-values',
         project,
         environment,
@@ -62,7 +62,7 @@ export async function runHelmValues(context: HelmContext): Promise<void> {
         service,
         environment
       })
-      console.log(yaml)
+      ui.output(yaml)
     }
   } finally {
     await client.disconnect()

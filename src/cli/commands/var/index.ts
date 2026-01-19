@@ -7,6 +7,7 @@
 
 import type { CLIArgs, VaulterConfig, Environment } from '../../../types.js'
 import { c, colorEnv, print } from '../../lib/colors.js'
+import * as ui from '../../ui.js'
 
 // Re-export individual commands from parent directory
 // This allows gradual migration without moving files
@@ -95,28 +96,28 @@ export async function runVar(context: VarContext): Promise<void> {
 
     default:
       if (!subcommand) {
-        console.error(`${c.label('Usage:')} ${c.command('vaulter var')} ${c.subcommand('<command>')} [options]`)
-        console.error('')
-        console.error(c.header('Commands:'))
-        console.error(`  ${c.subcommand('get')} ${c.muted('<key>')}      Get a single variable`)
-        console.error(`  ${c.subcommand('set')} ${c.muted('<vars>')}     Set variables (see syntax below)`)
-        console.error(`  ${c.subcommand('delete')} ${c.muted('<key>')}   Delete a variable`)
-        console.error(`  ${c.subcommand('list')}           List all variables`)
-        console.error('')
-        console.error(c.header('Set Syntax:'))
-        console.error(`  ${c.key('KEY')}${c.secret('=')}${c.value('value')}        ${c.secretType('secret')} ${c.muted('(encrypted, synced to backend)')}`)
-        console.error(`  ${c.key('KEY')}${c.config('::')}${c.value('value')}       ${c.configType('config')} ${c.muted('(plain text, file only in split mode)')}`)
-        console.error(`  ${c.key('KEY')}${c.muted(':=')}${c.value('123')}          ${c.secretType('secret')} ${c.muted('typed (number/boolean)')}`)
-        console.error('')
-        console.error(c.header('Options:'))
-        console.error(`  ${c.highlight('-e')}, ${c.highlight('--env')}      Environment (${colorEnv('dev')}, ${colorEnv('stg')}, ${colorEnv('prd')})`)
-        console.error(`  ${c.highlight('-s')}, ${c.highlight('--service')}  Service name (for monorepos)`)
-        console.error(`  ${c.highlight('--shared')}       Target shared variables (monorepo)`)
-        console.error(`  ${c.highlight('--json')}         Output in JSON format`)
+        ui.log(`${c.label('Usage:')} ${c.command('vaulter var')} ${c.subcommand('<command>')} [options]`)
+        ui.log('')
+        ui.log(c.header('Commands:'))
+        ui.log(`  ${c.subcommand('get')} ${c.muted('<key>')}      Get a single variable`)
+        ui.log(`  ${c.subcommand('set')} ${c.muted('<vars>')}     Set variables (see syntax below)`)
+        ui.log(`  ${c.subcommand('delete')} ${c.muted('<key>')}   Delete a variable`)
+        ui.log(`  ${c.subcommand('list')}           List all variables`)
+        ui.log('')
+        ui.log(c.header('Set Syntax:'))
+        ui.log(`  ${c.key('KEY')}${c.secret('=')}${c.value('value')}        ${c.secretType('secret')} ${c.muted('(encrypted, synced to backend)')}`)
+        ui.log(`  ${c.key('KEY')}${c.config('::')}${c.value('value')}       ${c.configType('config')} ${c.muted('(plain text, file only in split mode)')}`)
+        ui.log(`  ${c.key('KEY')}${c.muted(':=')}${c.value('123')}          ${c.secretType('secret')} ${c.muted('typed (number/boolean)')}`)
+        ui.log('')
+        ui.log(c.header('Options:'))
+        ui.log(`  ${c.highlight('-e')}, ${c.highlight('--env')}      Environment (${colorEnv('dev')}, ${colorEnv('stg')}, ${colorEnv('prd')})`)
+        ui.log(`  ${c.highlight('-s')}, ${c.highlight('--service')}  Service name (for monorepos)`)
+        ui.log(`  ${c.highlight('--shared')}       Target shared variables (monorepo)`)
+        ui.log(`  ${c.highlight('--json')}         Output in JSON format`)
         process.exit(1)
       } else {
         print.error(`Unknown subcommand: ${c.command('var')} ${c.subcommand(subcommand)}`)
-        console.error(`Run "${c.command('vaulter var --help')}" for usage`)
+        ui.log(`Run "${c.command('vaulter var --help')}" for usage`)
         process.exit(1)
       }
   }

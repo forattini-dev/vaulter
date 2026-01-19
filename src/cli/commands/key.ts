@@ -27,6 +27,8 @@ import {
 import { createClientFromConfig } from '../lib/create-client.js'
 import { createConnectedAuditLogger, disconnectAuditLogger } from '../lib/audit-helper.js'
 import { runKeyRotate as runKeyRotateImpl } from './key/rotate.js'
+import * as ui from '../ui.js'
+import { c, symbols, print } from '../lib/colors.js'
 
 interface KeyContext {
   args: CLIArgs
@@ -89,32 +91,32 @@ export async function runKey(context: KeyContext): Promise<void> {
 
 function printKeyHelp(subcommand?: string): void {
   if (subcommand) {
-    console.error(`Unknown key subcommand: ${subcommand}`)
+    print.error(`Unknown key subcommand: ${subcommand}`)
   }
-  console.error('Available subcommands: generate, export, import, list, show, rotate')
-  console.error('')
-  console.error('Generate keys:')
-  console.error('  vaulter key generate --name master              # Symmetric key (default)')
-  console.error('  vaulter key generate --name master --asymmetric # RSA-4096 key pair')
-  console.error('  vaulter key generate --name master --asym --alg ec-p256')
-  console.error('  vaulter key generate --name shared --global     # Global key')
-  console.error('')
-  console.error('Export/Import keys:')
-  console.error('  vaulter key export --name master -o keys.enc    # Export encrypted bundle')
-  console.error('  vaulter key import -f keys.enc                  # Import from bundle')
-  console.error('')
-  console.error('List and show:')
-  console.error('  vaulter key list                                # List all keys')
-  console.error('  vaulter key show --name master                  # Show key info')
-  console.error('')
-  console.error('Options:')
-  console.error('  --name <name>              Key name (required for generate)')
-  console.error('  --global                   Use global scope instead of project')
-  console.error('  --asymmetric, --asym       Generate asymmetric key pair')
-  console.error('  --algorithm, --alg <alg>   Algorithm: rsa-4096 (default), rsa-2048, ec-p256, ec-p384')
-  console.error('  -o, --output <path>        Output file for export')
-  console.error('  -f, --file <path>          Input file for import')
-  console.error('  --force                    Overwrite existing keys')
+  ui.log('Available subcommands: generate, export, import, list, show, rotate')
+  ui.log('')
+  ui.log('Generate keys:')
+  ui.log('  vaulter key generate --name master              # Symmetric key (default)')
+  ui.log('  vaulter key generate --name master --asymmetric # RSA-4096 key pair')
+  ui.log('  vaulter key generate --name master --asym --alg ec-p256')
+  ui.log('  vaulter key generate --name shared --global     # Global key')
+  ui.log('')
+  ui.log('Export/Import keys:')
+  ui.log('  vaulter key export --name master -o keys.enc    # Export encrypted bundle')
+  ui.log('  vaulter key import -f keys.enc                  # Import from bundle')
+  ui.log('')
+  ui.log('List and show:')
+  ui.log('  vaulter key list                                # List all keys')
+  ui.log('  vaulter key show --name master                  # Show key info')
+  ui.log('')
+  ui.log('Options:')
+  ui.log('  --name <name>              Key name (required for generate)')
+  ui.log('  --global                   Use global scope instead of project')
+  ui.log('  --asymmetric, --asym       Generate asymmetric key pair')
+  ui.log('  --algorithm, --alg <alg>   Algorithm: rsa-4096 (default), rsa-2048, ec-p256, ec-p384')
+  ui.log('  -o, --output <path>        Output file for export')
+  ui.log('  -f, --file <path>          Input file for import')
+  ui.log('  --force                    Overwrite existing keys')
 }
 
 /**
@@ -130,16 +132,16 @@ async function runKeyGenerate(context: KeyContext): Promise<void> {
 
   // Validate key name is provided
   if (!keyName) {
-    console.error('Error: --name is required')
-    console.error('Example: vaulter key generate --name master')
+    print.error('--name is required')
+    ui.log('Example: vaulter key generate --name master')
     process.exit(1)
   }
 
   // Validate algorithm if asymmetric
   const validAlgorithms: AsymmetricAlgorithm[] = ['rsa-4096', 'rsa-2048', 'ec-p256', 'ec-p384']
   if (isAsymmetric && !validAlgorithms.includes(algorithmArg)) {
-    console.error(`Error: Invalid algorithm: ${algorithmArg}`)
-    console.error(`Valid algorithms: ${validAlgorithms.join(', ')}`)
+    print.error(`Invalid algorithm: ${algorithmArg}`)
+    ui.log(`Valid algorithms: ${validAlgorithms.join(', ')}`)
     process.exit(1)
   }
 
@@ -149,8 +151,8 @@ async function runKeyGenerate(context: KeyContext): Promise<void> {
   // Check if key already exists
   const existing = keyExists(fullKeyName, projectName)
   if (existing.exists && !args.force) {
-    console.error(`Error: Key '${keyName}' already exists${isGlobal ? ' (global)' : ''}`)
-    console.error('Use --force to overwrite')
+    print.error(`Key '${keyName}' already exists${isGlobal ? ' (global)' : ''}`)
+    ui.log('Use --force to overwrite')
     process.exit(1)
   }
 
@@ -173,14 +175,12 @@ async function generateSymmetricKey(
 
   const keyPath = resolveKeyPath(keyName, projectName, false)
 
-  if (verbose) {
-    console.error('Generating new AES-256 symmetric key...')
-    console.error(`  Path: ${keyPath}`)
-  }
+  ui.verbose('Generating new AES-256 symmetric key...', verbose)
+  ui.verbose(`  Path: ${keyPath}`, verbose)
 
   if (dryRun) {
     if (jsonOutput) {
-      console.log(JSON.stringify({
+      ui.output(JSON.stringify({
         dryRun: true,
         action: 'generate_key',
         mode: 'symmetric',
@@ -189,7 +189,7 @@ async function generateSymmetricKey(
         algorithm: 'aes-256-gcm'
       }))
     } else {
-      console.log(`Dry run - would generate symmetric key: ${keyPath}`)
+      ui.log(`Dry run - would generate symmetric key: ${keyPath}`)
     }
     return
   }
@@ -206,7 +206,7 @@ async function generateSymmetricKey(
   fs.writeFileSync(keyPath, key + '\n', { mode: 0o600 })
 
   if (jsonOutput) {
-    console.log(JSON.stringify({
+    ui.output(JSON.stringify({
       success: true,
       mode: 'symmetric',
       keyName,
@@ -215,14 +215,14 @@ async function generateSymmetricKey(
     }))
   } else {
     const { scope, name } = parseKeyName(keyName)
-    console.log(`✓ Generated symmetric key: ${name}${scope === 'global' ? ' (global)' : ''}`)
-    console.log(`  Path: ${keyPath}`)
-    console.log('')
-    console.log('To use this key in config.yaml:')
-    console.log('  encryption:')
-    console.log('    mode: symmetric')
-    console.log('    key_source:')
-    console.log(`      - file: ${keyPath}`)
+    ui.success(`Generated symmetric key: ${name}${scope === 'global' ? ' (global)' : ''}`)
+    ui.log(`  Path: ${keyPath}`)
+    ui.log('')
+    ui.log('To use this key in config.yaml:')
+    ui.log('  encryption:')
+    ui.log('    mode: symmetric')
+    ui.log('    key_source:')
+    ui.log(`      - file: ${keyPath}`)
   }
 }
 
@@ -239,15 +239,13 @@ async function generateAsymmetricKey(
 
   const paths = resolveKeyPaths(keyName, projectName)
 
-  if (verbose) {
-    console.error(`Generating new ${algorithm} key pair...`)
-    console.error(`  Private: ${paths.privateKey}`)
-    console.error(`  Public:  ${paths.publicKey}`)
-  }
+  ui.verbose(`Generating new ${algorithm} key pair...`, verbose)
+  ui.verbose(`  Private: ${paths.privateKey}`, verbose)
+  ui.verbose(`  Public:  ${paths.publicKey}`, verbose)
 
   if (dryRun) {
     if (jsonOutput) {
-      console.log(JSON.stringify({
+      ui.output(JSON.stringify({
         dryRun: true,
         action: 'generate_keypair',
         mode: 'asymmetric',
@@ -257,9 +255,9 @@ async function generateAsymmetricKey(
         publicKeyPath: paths.publicKey
       }))
     } else {
-      console.log(`Dry run - would generate ${algorithm} key pair:`)
-      console.log(`  Private: ${paths.privateKey}`)
-      console.log(`  Public:  ${paths.publicKey}`)
+      ui.log(`Dry run - would generate ${algorithm} key pair:`)
+      ui.log(`  Private: ${paths.privateKey}`)
+      ui.log(`  Public:  ${paths.publicKey}`)
     }
     return
   }
@@ -280,7 +278,7 @@ async function generateAsymmetricKey(
   fs.writeFileSync(paths.publicKey, keyPair.publicKey, { mode: 0o644 })
 
   if (jsonOutput) {
-    console.log(JSON.stringify({
+    ui.output(JSON.stringify({
       success: true,
       mode: 'asymmetric',
       keyName,
@@ -290,16 +288,16 @@ async function generateAsymmetricKey(
     }))
   } else {
     const { scope, name } = parseKeyName(keyName)
-    console.log(`✓ Generated ${algorithm} key pair: ${name}${scope === 'global' ? ' (global)' : ''}`)
-    console.log(`  Private: ${paths.privateKey} (mode 600 - keep secret!)`)
-    console.log(`  Public:  ${paths.publicKey} (mode 644)`)
-    console.log('')
-    console.log('To use these keys in config.yaml:')
-    console.log('  encryption:')
-    console.log('    mode: asymmetric')
-    console.log('    asymmetric:')
-    console.log(`      algorithm: ${algorithm}`)
-    console.log(`      key_name: ${scope === 'global' ? 'global:' : ''}${name}`)
+    ui.success(`Generated ${algorithm} key pair: ${name}${scope === 'global' ? ' (global)' : ''}`)
+    ui.log(`  Private: ${paths.privateKey} (mode 600 - keep secret!)`)
+    ui.log(`  Public:  ${paths.publicKey} (mode 644)`)
+    ui.log('')
+    ui.log('To use these keys in config.yaml:')
+    ui.log('  encryption:')
+    ui.log('    mode: asymmetric')
+    ui.log('    asymmetric:')
+    ui.log(`      algorithm: ${algorithm}`)
+    ui.log(`      key_name: ${scope === 'global' ? 'global:' : ''}${name}`)
   }
 }
 
@@ -314,14 +312,14 @@ async function runKeyExport(context: KeyContext): Promise<void> {
   const isGlobal = args.global
 
   if (!keyName) {
-    console.error('Error: --name is required')
-    console.error('Example: vaulter key export --name master -o keys.enc')
+    print.error('--name is required')
+    ui.log('Example: vaulter key export --name master -o keys.enc')
     process.exit(1)
   }
 
   if (!outputPath) {
-    console.error('Error: -o/--output is required')
-    console.error('Example: vaulter key export --name master -o keys.enc')
+    print.error('-o/--output is required')
+    ui.log('Example: vaulter key export --name master -o keys.enc')
     process.exit(1)
   }
 
@@ -332,19 +330,17 @@ async function runKeyExport(context: KeyContext): Promise<void> {
   // Check if keys exist
   const existing = keyExists(fullKeyName, projectName)
   if (!existing.exists) {
-    console.error(`Error: Key '${keyName}' not found${isGlobal ? ' (global)' : ''}`)
+    print.error(`Key '${keyName}' not found${isGlobal ? ' (global)' : ''}`)
     process.exit(1)
   }
 
-  if (verbose) {
-    console.error(`Exporting key: ${keyName}`)
-    console.error(`  Private: ${existing.privateKey ? 'found' : 'not found'}`)
-    console.error(`  Public:  ${existing.publicKey ? 'found' : 'not found'}`)
-  }
+  ui.verbose(`Exporting key: ${keyName}`, verbose)
+  ui.verbose(`  Private: ${existing.privateKey ? 'found' : 'not found'}`, verbose)
+  ui.verbose(`  Public:  ${existing.publicKey ? 'found' : 'not found'}`, verbose)
 
   if (dryRun) {
     if (jsonOutput) {
-      console.log(JSON.stringify({
+      ui.output(JSON.stringify({
         dryRun: true,
         action: 'export_key',
         keyName: fullKeyName,
@@ -353,7 +349,7 @@ async function runKeyExport(context: KeyContext): Promise<void> {
         hasPublicKey: existing.publicKey
       }))
     } else {
-      console.log(`Dry run - would export key '${keyName}' to ${outputPath}`)
+      ui.log(`Dry run - would export key '${keyName}' to ${outputPath}`)
     }
     return
   }
@@ -413,7 +409,7 @@ async function runKeyExport(context: KeyContext): Promise<void> {
   fs.writeFileSync(absPath, output)
 
   if (jsonOutput) {
-    console.log(JSON.stringify({
+    ui.output(JSON.stringify({
       success: true,
       action: 'export_key',
       keyName: fullKeyName,
@@ -422,13 +418,13 @@ async function runKeyExport(context: KeyContext): Promise<void> {
       hasPublicKey: existing.publicKey
     }))
   } else {
-    console.log(`✓ Exported key '${keyName}' to ${absPath}`)
-    console.log('')
-    console.log('To import on another machine:')
-    console.log(`  vaulter key import -f ${outputPath}`)
+    ui.success(`Exported key '${keyName}' to ${absPath}`)
+    ui.log('')
+    ui.log('To import on another machine:')
+    ui.log(`  vaulter key import -f ${outputPath}`)
     if (process.env.VAULTER_EXPORT_PASSPHRASE) {
-      console.log('')
-      console.log('Note: Set VAULTER_EXPORT_PASSPHRASE to the same value when importing')
+      ui.log('')
+      ui.log('Note: Set VAULTER_EXPORT_PASSPHRASE to the same value when importing')
     }
   }
 }
@@ -443,14 +439,14 @@ async function runKeyImport(context: KeyContext): Promise<void> {
   const isGlobal = args.global
 
   if (!inputPath) {
-    console.error('Error: -f/--file is required')
-    console.error('Example: vaulter key import -f keys.enc')
+    print.error('-f/--file is required')
+    ui.log('Example: vaulter key import -f keys.enc')
     process.exit(1)
   }
 
   const absPath = path.resolve(inputPath)
   if (!fs.existsSync(absPath)) {
-    console.error(`Error: File not found: ${absPath}`)
+    print.error(`File not found: ${absPath}`)
     process.exit(1)
   }
 
@@ -482,19 +478,17 @@ async function runKeyImport(context: KeyContext): Promise<void> {
     const decrypted = Buffer.concat([decipher.update(encrypted), decipher.final()])
     bundle = JSON.parse(decrypted.toString('utf8'))
   } catch (err) {
-    console.error('Error: Failed to decrypt bundle')
-    console.error('  Check that VAULTER_EXPORT_PASSPHRASE is correct')
+    print.error('Failed to decrypt bundle')
+    ui.log('  Check that VAULTER_EXPORT_PASSPHRASE is correct')
     process.exit(1)
   }
 
-  if (verbose) {
-    console.error('Bundle contents:')
-    console.error(`  Key name: ${bundle.keyName}`)
-    console.error(`  Project: ${bundle.projectName}`)
-    console.error(`  Algorithm: ${bundle.algorithm || 'symmetric'}`)
-    console.error(`  Has private key: ${!!bundle.privateKey}`)
-    console.error(`  Has public key: ${!!bundle.publicKey}`)
-  }
+  ui.verbose('Bundle contents:', verbose)
+  ui.verbose(`  Key name: ${bundle.keyName}`, verbose)
+  ui.verbose(`  Project: ${bundle.projectName}`, verbose)
+  ui.verbose(`  Algorithm: ${bundle.algorithm || 'symmetric'}`, verbose)
+  ui.verbose(`  Has private key: ${!!bundle.privateKey}`, verbose)
+  ui.verbose(`  Has public key: ${!!bundle.publicKey}`, verbose)
 
   // Determine target key name
   const projectName = getProjectName(context)
@@ -508,14 +502,14 @@ async function runKeyImport(context: KeyContext): Promise<void> {
   // Check if keys already exist
   const existing = keyExists(targetKeyName, projectName)
   if (existing.exists && !args.force) {
-    console.error(`Error: Key '${targetKeyName}' already exists`)
-    console.error('Use --force to overwrite')
+    print.error(`Key '${targetKeyName}' already exists`)
+    ui.log('Use --force to overwrite')
     process.exit(1)
   }
 
   if (dryRun) {
     if (jsonOutput) {
-      console.log(JSON.stringify({
+      ui.output(JSON.stringify({
         dryRun: true,
         action: 'import_key',
         sourceKeyName: bundle.keyName,
@@ -526,9 +520,9 @@ async function runKeyImport(context: KeyContext): Promise<void> {
         publicKeyPath: paths.publicKey
       }))
     } else {
-      console.log(`Dry run - would import key '${targetKeyName}'`)
-      console.log(`  Private: ${paths.privateKey}`)
-      console.log(`  Public:  ${paths.publicKey}`)
+      ui.log(`Dry run - would import key '${targetKeyName}'`)
+      ui.log(`  Private: ${paths.privateKey}`)
+      ui.log(`  Public:  ${paths.publicKey}`)
     }
     return
   }
@@ -548,7 +542,7 @@ async function runKeyImport(context: KeyContext): Promise<void> {
   }
 
   if (jsonOutput) {
-    console.log(JSON.stringify({
+    ui.output(JSON.stringify({
       success: true,
       action: 'import_key',
       keyName: targetKeyName,
@@ -559,12 +553,12 @@ async function runKeyImport(context: KeyContext): Promise<void> {
     }))
   } else {
     const { scope, name } = parseKeyName(targetKeyName)
-    console.log(`✓ Imported key: ${name}${scope === 'global' ? ' (global)' : ''}`)
+    ui.success(`Imported key: ${name}${scope === 'global' ? ' (global)' : ''}`)
     if (bundle.privateKey) {
-      console.log(`  Private: ${paths.privateKey}`)
+      ui.log(`  Private: ${paths.privateKey}`)
     }
     if (bundle.publicKey) {
-      console.log(`  Public:  ${paths.publicKey}`)
+      ui.log(`  Public:  ${paths.publicKey}`)
     }
   }
 }
@@ -673,26 +667,26 @@ async function runKeyList(context: KeyContext): Promise<void> {
   }
 
   if (jsonOutput) {
-    console.log(JSON.stringify({ keys, projectName, projectKeysDir, globalKeysDir }))
+    ui.output(JSON.stringify({ keys, projectName, projectKeysDir, globalKeysDir }))
   } else {
-    console.log(`Keys for project: ${projectName}`)
-    console.log(`  Project keys: ${projectKeysDir}`)
-    console.log(`  Global keys:  ${globalKeysDir}`)
-    console.log('')
+    ui.log(`Keys for project: ${projectName}`)
+    ui.log(`  Project keys: ${projectKeysDir}`)
+    ui.log(`  Global keys:  ${globalKeysDir}`)
+    ui.log('')
 
     if (keys.length === 0) {
-      console.log('No keys found')
-      console.log('')
-      console.log('Generate a new key:')
-      console.log('  vaulter key generate --name master --asymmetric')
+      ui.log('No keys found')
+      ui.log('')
+      ui.log('Generate a new key:')
+      ui.log('  vaulter key generate --name master --asymmetric')
     } else {
       for (const key of keys) {
         const scopeLabel = key.scope === 'global' ? ' (global)' : ''
         const typeLabel = key.type === 'asymmetric' ? ` [${key.algorithm || 'asymmetric'}]` : ' [symmetric]'
         const privLabel = key.hasPrivateKey ? '✓' : '✗'
         const pubLabel = key.hasPublicKey ? '✓' : '✗'
-        console.log(`  ${key.name}${scopeLabel}${typeLabel}`)
-        console.log(`    Private: ${privLabel}  Public: ${pubLabel}`)
+        ui.log(`  ${key.name}${scopeLabel}${typeLabel}`)
+        ui.log(`    Private: ${privLabel}  Public: ${pubLabel}`)
       }
     }
   }
@@ -715,7 +709,7 @@ async function runKeyShow(context: KeyContext): Promise<void> {
     const existing = keyExists(fullKeyName, projectName)
 
     if (!existing.exists) {
-      console.error(`Error: Key '${keyName}' not found${isGlobal ? ' (global)' : ''}`)
+      print.error(`Key '${keyName}' not found${isGlobal ? ' (global)' : ''}`)
       process.exit(1)
     }
 
@@ -729,7 +723,7 @@ async function runKeyShow(context: KeyContext): Promise<void> {
     }
 
     if (jsonOutput) {
-      console.log(JSON.stringify({
+      ui.output(JSON.stringify({
         keyName: fullKeyName,
         algorithm,
         hasPrivateKey: existing.privateKey,
@@ -739,18 +733,18 @@ async function runKeyShow(context: KeyContext): Promise<void> {
       }))
     } else {
       const { scope, name } = parseKeyName(fullKeyName)
-      console.log(`Key: ${name}${scope === 'global' ? ' (global)' : ''}`)
-      console.log(`  Algorithm: ${algorithm || 'symmetric'}`)
-      console.log(`  Private key: ${existing.privateKey ? paths.privateKey : '(not found)'}`)
-      console.log(`  Public key:  ${existing.publicKey ? paths.publicKey : '(not found)'}`)
+      ui.log(`Key: ${name}${scope === 'global' ? ' (global)' : ''}`)
+      ui.log(`  Algorithm: ${algorithm || 'symmetric'}`)
+      ui.log(`  Private key: ${existing.privateKey ? paths.privateKey : '(not found)'}`)
+      ui.log(`  Public key:  ${existing.publicKey ? paths.publicKey : '(not found)'}`)
     }
     return
   }
 
   // Show config info
   if (!config) {
-    console.error('Error: No vaulter configuration found')
-    console.error('Run "vaulter init" first')
+    print.error('No vaulter configuration found')
+    ui.log('Run "vaulter init" first')
     process.exit(1)
   }
 
@@ -758,7 +752,7 @@ async function runKeyShow(context: KeyContext): Promise<void> {
   const mode = encryptionConfig.mode || 'symmetric'
 
   if (jsonOutput) {
-    console.log(JSON.stringify({
+    ui.output(JSON.stringify({
       mode,
       keyName: encryptionConfig.asymmetric?.key_name || null,
       algorithm: encryptionConfig.asymmetric?.algorithm || null,
@@ -766,33 +760,32 @@ async function runKeyShow(context: KeyContext): Promise<void> {
       asymmetricConfig: encryptionConfig.asymmetric || null
     }))
   } else {
-    console.log('Encryption Configuration:')
-    console.log(`  Mode: ${mode}`)
+    ui.log('Encryption Configuration:')
+    ui.log(`  Mode: ${mode}`)
 
     if (mode === 'asymmetric' && encryptionConfig.asymmetric) {
       const asymConfig = encryptionConfig.asymmetric
-      console.log(`  Algorithm: ${asymConfig.algorithm || 'rsa-4096'}`)
+      ui.log(`  Algorithm: ${asymConfig.algorithm || 'rsa-4096'}`)
       if (asymConfig.key_name) {
-        console.log(`  Key name: ${asymConfig.key_name}`)
+        ui.log(`  Key name: ${asymConfig.key_name}`)
         const existing = keyExists(asymConfig.key_name, projectName)
-        console.log(`    Private: ${existing.privateKey ? '✓' : '✗'}  Public: ${existing.publicKey ? '✓' : '✗'}`)
+        ui.log(`    Private: ${existing.privateKey ? '✓' : '✗'}  Public: ${existing.publicKey ? '✓' : '✗'}`)
       }
     }
 
     if (encryptionConfig.key_source && encryptionConfig.key_source.length > 0) {
-      console.log('  Key sources:')
+      ui.log('  Key sources:')
       for (const source of encryptionConfig.key_source) {
         if ('env' in source) {
           const available = !!process.env[source.env]
-          console.log(`    ${available ? '✓' : '✗'} env: ${source.env}`)
+          ui.log(`    ${available ? '✓' : '✗'} env: ${source.env}`)
         } else if ('file' in source) {
           const available = fs.existsSync(path.resolve(source.file))
-          console.log(`    ${available ? '✓' : '✗'} file: ${source.file}`)
+          ui.log(`    ${available ? '✓' : '✗'} file: ${source.file}`)
         } else if ('s3' in source) {
-          console.log(`    ? s3: ${source.s3}`)
+          ui.log(`    ? s3: ${source.s3}`)
         }
       }
     }
   }
 }
-

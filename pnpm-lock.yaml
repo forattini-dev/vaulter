@@ -24,11 +24,11 @@ importers:
         specifier: ^7.2.0
         version: 7.2.0
       recker:
-        specifier: ^1.0.64
-        version: 1.0.64
+        specifier: ^1.0.66
+        version: 1.0.66
       s3db.js:
-        specifier: ^19.3.10
-        version: 19.3.10(@hono/node-server@1.19.9(hono@4.11.4))(express@5.2.1)(hono@4.11.4)(jose@6.1.3)(zod@4.3.5)
+        specifier: ^19.3.16
+        version: 19.3.16(@hono/node-server@1.19.9(hono@4.11.4))(express@5.2.1)(hono@4.11.4)(jose@6.1.3)(zod@4.3.5)
       tinyglobby:
         specifier: ^0.2.15
         version: 0.2.15
@@ -1660,24 +1660,8 @@ packages:
     resolution: {integrity: sha512-57frrGM/OCTLqLOAh0mhVA9VBMHd+9U7Zb2THMGdBUoZVOtGbJzjxsYGDJ3A9AYYCP4hn6y1TVbaOfzWtm5GFg==}
     engines: {node: '>= 12.13.0'}
 
-  recker@1.0.64:
-    resolution: {integrity: sha512-VXYD2nqcKO/hzG/3x4axQbvWN/7nJR12lK8AZzn/zbe/mQ387w5D06Mbwspov3cSMdwsKc7wADr4Ys38y6f2Zw==}
-    engines: {node: '>=18'}
-    hasBin: true
-    peerDependencies:
-      cardinal: ^2.1.0
-      ioredis: ^5.0.0
-      ssh2-sftp-client: ^11.0.0
-    peerDependenciesMeta:
-      cardinal:
-        optional: true
-      ioredis:
-        optional: true
-      ssh2-sftp-client:
-        optional: true
-
-  recker@1.0.65:
-    resolution: {integrity: sha512-040+yVc5bq0adhK353YwtwitxC71pi0LoI2MQXNrk/wdB1x+hiZaX4NyCDSxiCuJqv9YeHwrCGLULU+QX51u5w==}
+  recker@1.0.66:
+    resolution: {integrity: sha512-Q81q7A/aqOeC/mm7KggPtg3kzYAaWsu3ATSMzMFTBaoFKOvEBfE9jRVjB42S5s/QSnOKWq9vmPtQ0pLLGPX41g==}
     engines: {node: '>=18'}
     hasBin: true
     peerDependencies:
@@ -1717,8 +1701,8 @@ packages:
     resolution: {integrity: sha512-nLTrUKm2UyiL7rlhapu/Zl45FwNgkZGaCpZbIHajDYgwlJCOzLSk+cIPAnsEqV955GjILJnKbdQC1nVPz+gAYQ==}
     engines: {node: '>= 18'}
 
-  s3db.js@19.3.10:
-    resolution: {integrity: sha512-QyQTmpZFo2D3MzjeL4cuZeUm+NGY1uRs7JifLVfx598UOSdLsFPof5m9ZVmZYfc4ISULdWH33YT9IDC/kVyH4g==}
+  s3db.js@19.3.16:
+    resolution: {integrity: sha512-JyYeqC7APddaEiXgycM9p97pKHi007MIVSHpvZSxjGrmsU9CzJZWxZHUJQCv7nXGtP4M2qez7vCxcMsAOYyyKA==}
     hasBin: true
     peerDependencies:
       '@aws-sdk/client-acm': ^3.0.0
@@ -4319,18 +4303,7 @@ snapshots:
 
   real-require@0.2.0: {}
 
-  recker@1.0.64:
-    dependencies:
-      '@maxmind/geoip2-node': 6.3.4
-      cli-args-parser: 1.0.3
-      css-select: 6.0.0
-      fuse.js: 7.1.0
-      he: 1.2.0
-      tuiuiu.js: 1.0.50
-      undici: 7.18.2
-      zod: 4.3.5
-
-  recker@1.0.65:
+  recker@1.0.66:
     dependencies:
       '@maxmind/geoip2-node': 6.3.4
       cli-args-parser: 1.0.3
@@ -4394,7 +4367,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  s3db.js@19.3.10(@hono/node-server@1.19.9(hono@4.11.4))(express@5.2.1)(hono@4.11.4)(jose@6.1.3)(zod@4.3.5):
+  s3db.js@19.3.16(@hono/node-server@1.19.9(hono@4.11.4))(express@5.2.1)(hono@4.11.4)(jose@6.1.3)(zod@4.3.5):
     dependencies:
       '@aws-sdk/client-s3': 3.971.0
       '@aws-sdk/credential-providers': 3.971.0
@@ -4405,7 +4378,7 @@ snapshots:
       nanoid: 5.1.6
       pino: 10.2.0
       pino-pretty: 13.1.3
-      recker: 1.0.65
+      recker: 1.0.66
     optionalDependencies:
       '@hono/node-server': 1.19.9(hono@4.11.4)
       '@modelcontextprotocol/sdk': 1.25.2(hono@4.11.4)(zod@4.3.5)

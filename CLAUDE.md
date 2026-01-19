@@ -98,23 +98,40 @@ await client.deleteManyByKeys(['OLD1', 'OLD2'], 'project', 'dev')
 
 ---
 
-## MCP Server (30 Tools)
+## MCP Server
 
-**Core (8):** `vaulter_get`, `vaulter_set`, `vaulter_delete`, `vaulter_list`, `vaulter_export`, `vaulter_sync`, `vaulter_pull`, `vaulter_push`
+**30 Tools | 5 Resources | 8 Prompts**
 
-**Batch (3):** `vaulter_multi_get`, `vaulter_multi_set`, `vaulter_multi_delete`
+### Tools (30)
 
-**Analysis (3):** `vaulter_compare`, `vaulter_search`, `vaulter_scan`
+| Category | Tools |
+|----------|-------|
+| **Core (5)** | `vaulter_get`, `vaulter_set`, `vaulter_delete`, `vaulter_list`, `vaulter_export` |
+| **Batch (3)** | `vaulter_multi_get`, `vaulter_multi_set`, `vaulter_multi_delete` |
+| **Sync (3)** | `vaulter_sync`, `vaulter_pull`, `vaulter_push` |
+| **Analysis (2)** | `vaulter_compare`, `vaulter_search` |
+| **Status (2)** | `vaulter_status`, `vaulter_audit_list` |
+| **K8s (2)** | `vaulter_k8s_secret`, `vaulter_k8s_configmap` |
+| **IaC (2)** | `vaulter_helm_values`, `vaulter_tf_vars` |
+| **Keys (5)** | `vaulter_key_generate`, `vaulter_key_list`, `vaulter_key_show`, `vaulter_key_export`, `vaulter_key_import` |
+| **Monorepo (5)** | `vaulter_init`, `vaulter_scan`, `vaulter_services`, `vaulter_shared_list`, `vaulter_inheritance_info` |
+| **Other (1)** | `vaulter_categorize_vars` |
 
-**Status (2):** `vaulter_status`, `vaulter_audit_list`
+### Resources (5)
 
-**K8s (2):** `vaulter_k8s_secret`, `vaulter_k8s_configmap`
+| URI | Description |
+|-----|-------------|
+| `vaulter://instructions` | **Read first!** s3db.js architecture |
+| `vaulter://tools-guide` | Which tool for each scenario |
+| `vaulter://mcp-config` | MCP settings sources |
+| `vaulter://config` | Project YAML config |
+| `vaulter://services` | Monorepo services |
 
-**IaC (2):** `vaulter_helm_values`, `vaulter_tf_vars`
+### Prompts (8)
 
-**Keys (5):** `vaulter_key_generate`, `vaulter_key_list`, `vaulter_key_show`, `vaulter_key_export`, `vaulter_key_import`
+`setup_project`, `migrate_dotenv`, `deploy_secrets`, `compare_environments`, `security_audit`, `rotation_workflow`, `shared_vars_workflow`, `batch_operations`
 
-**Monorepo (5):** `vaulter_services`, `vaulter_init`, `vaulter_shared_list`, `vaulter_inheritance_info`, `vaulter_categorize_vars`
+**Full reference:** See [docs/MCP.md](docs/MCP.md)
 
 ---
 

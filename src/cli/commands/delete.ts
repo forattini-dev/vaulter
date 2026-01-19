@@ -10,6 +10,7 @@ import { createClientFromConfig } from '../lib/create-client.js'
 import { createConnectedAuditLogger, logDeleteOperation, disconnectAuditLogger } from '../lib/audit-helper.js'
 import { c, symbols, colorEnv, print } from '../lib/colors.js'
 import { SHARED_SERVICE } from '../../lib/shared.js'
+import * as ui from '../ui.js'
 
 interface DeleteContext {
   args: CLIArgs
@@ -45,13 +46,13 @@ export async function runDelete(context: DeleteContext): Promise<void> {
 
   if (!key) {
     print.error('Key name is required')
-    console.error(`${c.label('Usage:')} ${c.command('vaulter var delete')} ${c.key('<key>')} ${c.highlight('-e')} ${colorEnv('<env>')}`)
+    ui.log(`${c.label('Usage:')} ${c.command('vaulter var delete')} ${c.key('<key>')} ${c.highlight('-e')} ${colorEnv('<env>')}`)
     process.exit(1)
   }
 
   if (!project) {
     print.error('Project not specified and no config found')
-    console.error(`Run "${c.command('vaulter init')}" or specify ${c.highlight('--project')}`)
+    ui.log(`Run "${c.command('vaulter init')}" or specify ${c.highlight('--project')}`)
     process.exit(1)
   }
 
@@ -61,18 +62,16 @@ export async function runDelete(context: DeleteContext): Promise<void> {
   // Production confirmation
   if (isProdEnvironment(environment) && config?.security?.confirm_production && !args.force) {
     print.warning(`You are deleting from ${colorEnv(environment)} (production) environment`)
-    console.error(`Use ${c.highlight('--force')} to confirm this action`)
+    ui.log(`Use ${c.highlight('--force')} to confirm this action`)
     process.exit(1)
   }
 
-  if (verbose) {
-    const scope = isShared ? c.env('shared') : c.service(service || '(no service)')
-    console.error(`${symbols.info} Deleting ${c.key(key)} from ${c.project(project)}/${scope}/${colorEnv(environment)}`)
-  }
+  const scope = isShared ? c.env('shared') : c.service(service || '(no service)')
+  ui.verbose(`${symbols.info} Deleting ${c.key(key)} from ${c.project(project)}/${scope}/${colorEnv(environment)}`, verbose)
 
   if (dryRun) {
     if (jsonOutput) {
-      console.log(JSON.stringify({
+      ui.output(JSON.stringify({
         action: 'delete',
         key,
         project,
@@ -82,8 +81,8 @@ export async function runDelete(context: DeleteContext): Promise<void> {
         dryRun: true
       }))
     } else {
-      const scope = isShared ? c.env('shared') : colorEnv(environment)
-      console.log(`${c.muted('Dry run')} - would delete ${c.key(key)} from ${c.project(project)}/${scope}`)
+      const dryRunScope = isShared ? c.env('shared') : colorEnv(environment)
+      ui.log(`${c.muted('Dry run')} - would delete ${c.key(key)} from ${c.project(project)}/${dryRunScope}`)
     }
     return
   }
@@ -102,7 +101,7 @@ export async function runDelete(context: DeleteContext): Promise<void> {
 
     if (!deleted) {
       if (jsonOutput) {
-        console.log(JSON.stringify({ error: 'not_found', key, project, environment }))
+        ui.output(JSON.stringify({ error: 'not_found', key, project, environment }))
       } else {
         print.error(`Variable ${c.key(key)} not found`)
       }
@@ -120,7 +119,7 @@ export async function runDelete(context: DeleteContext): Promise<void> {
     })
 
     if (jsonOutput) {
-      console.log(JSON.stringify({
+      ui.output(JSON.stringify({
         success: true,
         deleted: key,
         project,
@@ -129,8 +128,8 @@ export async function runDelete(context: DeleteContext): Promise<void> {
         shared: isShared
       }))
     } else {
-      const scope = isShared ? c.env('shared') : colorEnv(environment)
-      console.log(`${symbols.success} Deleted ${c.key(key)} from ${c.project(project)}/${scope}`)
+      const successScope = isShared ? c.env('shared') : colorEnv(environment)
+      ui.success(`Deleted ${c.key(key)} from ${c.project(project)}/${successScope}`)
     }
   } finally {
     await client.disconnect()

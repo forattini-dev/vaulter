@@ -16,6 +16,8 @@
 
 import type { CLIArgs, VaulterConfig, Environment } from '../../../types.js'
 import { SHARED_SERVICE } from '../../../lib/shared.js'
+import * as ui from '../../ui.js'
+import { c, print } from '../../lib/colors.js'
 
 export interface ExportContext {
   args: CLIArgs
@@ -138,11 +140,11 @@ export async function runExportGroup(context: ExportContext): Promise<void> {
     }
 
     default:
-      console.error(`Unknown export format: ${format}`)
-      console.error('')
-      console.error('Available formats:')
+      print.error(`Unknown export format: ${format}`)
+      ui.log('')
+      ui.log('Available formats:')
       for (const f of EXPORT_FORMATS) {
-        console.error(`  ${f}`)
+        ui.log(`  ${f}`)
       }
       process.exit(1)
   }
@@ -159,7 +161,7 @@ async function runDockerExport(context: ExportContext): Promise<void> {
   const effectiveService = isShared ? SHARED_SERVICE : service
 
   if (!project) {
-    console.error('Error: Project not specified and no config found')
+    print.error('Project not specified and no config found')
     process.exit(1)
   }
 
@@ -172,7 +174,7 @@ async function runDockerExport(context: ExportContext): Promise<void> {
 
     // Docker env-file format: KEY=value (no quotes, no export)
     for (const [key, value] of Object.entries(vars)) {
-      console.log(`${key}=${value}`)
+      ui.output(`${key}=${value}`)
     }
   } finally {
     await client.disconnect()
@@ -190,7 +192,7 @@ async function runVercelExport(context: ExportContext): Promise<void> {
   const effectiveService = isShared ? SHARED_SERVICE : service
 
   if (!project) {
-    console.error('Error: Project not specified and no config found')
+    print.error('Project not specified and no config found')
     process.exit(1)
   }
 
@@ -209,7 +211,7 @@ async function runVercelExport(context: ExportContext): Promise<void> {
       type: 'encrypted'
     }))
 
-    console.log(JSON.stringify(vercelEnv, null, 2))
+    ui.output(JSON.stringify(vercelEnv, null, 2))
   } finally {
     await client.disconnect()
   }
@@ -241,7 +243,7 @@ async function runRailwayExport(context: ExportContext): Promise<void> {
   const effectiveService = isShared ? SHARED_SERVICE : service
 
   if (!project) {
-    console.error('Error: Project not specified and no config found')
+    print.error('Project not specified and no config found')
     process.exit(1)
   }
 
@@ -258,7 +260,7 @@ async function runRailwayExport(context: ExportContext): Promise<void> {
       const escapedValue = value.includes(' ') || value.includes('"')
         ? `"${value.replace(/"/g, '\\"')}"`
         : value
-      console.log(`${key}=${escapedValue}`)
+      ui.output(`${key}=${escapedValue}`)
     }
   } finally {
     await client.disconnect()
@@ -276,7 +278,7 @@ async function runFlyExport(context: ExportContext): Promise<void> {
   const effectiveService = isShared ? SHARED_SERVICE : service
 
   if (!project) {
-    console.error('Error: Project not specified and no config found')
+    print.error('Project not specified and no config found')
     process.exit(1)
   }
 
@@ -289,7 +291,7 @@ async function runFlyExport(context: ExportContext): Promise<void> {
 
     // Fly.io format: KEY=value (can be piped to fly secrets import)
     for (const [key, value] of Object.entries(vars)) {
-      console.log(`${key}=${value}`)
+      ui.output(`${key}=${value}`)
     }
   } finally {
     await client.disconnect()
@@ -307,7 +309,7 @@ async function runGitHubActionsExport(context: ExportContext): Promise<void> {
   const effectiveService = isShared ? SHARED_SERVICE : service
 
   if (!project) {
-    console.error('Error: Project not specified and no config found')
+    print.error('Project not specified and no config found')
     process.exit(1)
   }
 
@@ -321,17 +323,17 @@ async function runGitHubActionsExport(context: ExportContext): Promise<void> {
     const vars = await client.export(project, environment, effectiveService)
 
     // GitHub Actions format: gh secret set commands
-    console.log('# GitHub Actions secrets')
-    console.log('# Run these commands to set secrets:')
-    console.log('')
+    ui.output('# GitHub Actions secrets')
+    ui.output('# Run these commands to set secrets:')
+    ui.output('')
 
     for (const [key, value] of Object.entries(vars)) {
       // Escape value for shell
       const escapedValue = value.replace(/'/g, "'\\''")
       if (repo) {
-        console.log(`gh secret set ${key} --body '${escapedValue}' --repo ${repo}`)
+        ui.output(`gh secret set ${key} --body '${escapedValue}' --repo ${repo}`)
       } else {
-        console.log(`gh secret set ${key} --body '${escapedValue}'`)
+        ui.output(`gh secret set ${key} --body '${escapedValue}'`)
       }
     }
   } finally {
@@ -343,30 +345,30 @@ async function runGitHubActionsExport(context: ExportContext): Promise<void> {
  * Print help for export command group
  */
 export function printExportHelp(): void {
-  console.log('Usage: vaulter export <format> [options]')
-  console.log('')
-  console.log('Formats:')
-  console.log('  shell            Shell eval format (default)')
-  console.log('  k8s-secret       Kubernetes Secret YAML')
-  console.log('  k8s-configmap    Kubernetes ConfigMap YAML')
-  console.log('  helm             Helm values.yaml')
-  console.log('  terraform        Terraform .tfvars')
-  console.log('  docker           Docker --env-file format')
-  console.log('  vercel           Vercel environment JSON')
-  console.log('  railway          Railway CLI format')
-  console.log('  fly              Fly.io secrets format')
-  console.log('  github-actions   GitHub Actions gh secret commands')
-  console.log('')
-  console.log('Options:')
-  console.log('  -e, --env        Environment (dev, stg, prd)')
-  console.log('  -s, --service    Service name (for monorepos)')
-  console.log('  -n, --namespace  Kubernetes namespace')
-  console.log('  --repo           GitHub repository (for github-actions)')
-  console.log('  --shared         Include shared variables (monorepo)')
-  console.log('')
-  console.log('Examples:')
-  console.log('  eval $(vaulter export shell -e dev)')
-  console.log('  vaulter export k8s-secret -e prd | kubectl apply -f -')
-  console.log('  vaulter export vercel -e prd > vercel-env.json')
-  console.log('  vaulter export railway -e prd | railway variables set')
+  ui.log(`${c.label('Usage:')} ${c.command('vaulter export')} ${c.subcommand('<format>')} [options]`)
+  ui.log('')
+  ui.log(c.header('Formats:'))
+  ui.log('  shell            Shell eval format (default)')
+  ui.log('  k8s-secret       Kubernetes Secret YAML')
+  ui.log('  k8s-configmap    Kubernetes ConfigMap YAML')
+  ui.log('  helm             Helm values.yaml')
+  ui.log('  terraform        Terraform .tfvars')
+  ui.log('  docker           Docker --env-file format')
+  ui.log('  vercel           Vercel environment JSON')
+  ui.log('  railway          Railway CLI format')
+  ui.log('  fly              Fly.io secrets format')
+  ui.log('  github-actions   GitHub Actions gh secret commands')
+  ui.log('')
+  ui.log(c.header('Options:'))
+  ui.log(`  ${c.highlight('-e')}, ${c.highlight('--env')}        Environment (dev, stg, prd)`)
+  ui.log(`  ${c.highlight('-s')}, ${c.highlight('--service')}    Service name (for monorepos)`)
+  ui.log(`  ${c.highlight('-n')}, ${c.highlight('--namespace')}  Kubernetes namespace`)
+  ui.log(`  ${c.highlight('--repo')}           GitHub repository (for github-actions)`)
+  ui.log(`  ${c.highlight('--shared')}         Include shared variables (monorepo)`)
+  ui.log('')
+  ui.log(c.header('Examples:'))
+  ui.log(`  ${c.command('eval $(vaulter export shell -e dev)')}`)
+  ui.log(`  ${c.command('vaulter export k8s-secret -e prd | kubectl apply -f -')}`)
+  ui.log(`  ${c.command('vaulter export vercel -e prd > vercel-env.json')}`)
+  ui.log(`  ${c.command('vaulter export railway -e prd | railway variables set')}`)
 }

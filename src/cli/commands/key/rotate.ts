@@ -20,6 +20,8 @@ import {
 } from '../../../lib/config-loader.js'
 import { createClientFromConfig } from '../../lib/create-client.js'
 import { createConnectedAuditLogger, disconnectAuditLogger } from '../../lib/audit-helper.js'
+import * as ui from '../../ui.js'
+import { c, print } from '../../lib/colors.js'
 
 export interface KeyRotateContext {
   args: CLIArgs
@@ -37,8 +39,8 @@ export async function runKeyRotate(context: KeyRotateContext): Promise<void> {
   const { args, config, verbose, dryRun, jsonOutput, getProjectName } = context
 
   if (!config) {
-    console.error('Error: No vaulter configuration found')
-    console.error('Run "vaulter init" first')
+    print.error('No vaulter configuration found')
+    ui.log(`Run "${c.command('vaulter init')}" first`)
     process.exit(1)
   }
 
@@ -50,15 +52,13 @@ export async function runKeyRotate(context: KeyRotateContext): Promise<void> {
   const keyName = args.name || args.n || config?.encryption?.asymmetric?.key_name || 'master'
   const keysDir = getProjectKeysDir(project)
 
-  if (!jsonOutput && verbose) {
-    console.error(`Key rotation for project: ${project}`)
-    console.error(`Key name: ${keyName}`)
-    console.error(`Environments: ${environments.join(', ')}`)
-  }
+  ui.verbose(`Key rotation for project: ${project}`, verbose && !jsonOutput)
+  ui.verbose(`Key name: ${keyName}`, verbose && !jsonOutput)
+  ui.verbose(`Environments: ${environments.join(', ')}`, verbose && !jsonOutput)
 
   // Step 1: Export all variables from all environments
   if (!jsonOutput) {
-    console.log('Step 1: Exporting all variables (decrypted)...')
+    ui.log('Step 1: Exporting all variables (decrypted)...')
   }
 
   const exportedData: Map<string, Record<string, string>> = new Map()
@@ -73,9 +73,7 @@ export async function runKeyRotate(context: KeyRotateContext): Promise<void> {
 
       if (varCount > 0) {
         exportedData.set(env, vars)
-        if (!jsonOutput && verbose) {
-          console.error(`  [${env}] Exported ${varCount} variables`)
-        }
+        ui.verbose(`  [${env}] Exported ${varCount} variables`, verbose && !jsonOutput)
       }
     }
   } finally {
@@ -89,25 +87,25 @@ export async function runKeyRotate(context: KeyRotateContext): Promise<void> {
 
   if (totalVars === 0) {
     if (jsonOutput) {
-      console.log(JSON.stringify({
+      ui.output(JSON.stringify({
         success: true,
         message: 'No variables to rotate',
         rotated: 0
       }))
     } else {
-      console.log('No variables found to rotate.')
+      ui.log('No variables found to rotate.')
     }
     return
   }
 
   if (!jsonOutput) {
-    console.log(`  Found ${totalVars} variables across ${exportedData.size} environments`)
+    ui.log(`  Found ${totalVars} variables across ${exportedData.size} environments`)
   }
 
   // Step 2: Generate new key
   if (!jsonOutput) {
-    console.log('')
-    console.log('Step 2: Generating new encryption key...')
+    ui.log('')
+    ui.log('Step 2: Generating new encryption key...')
   }
 
   const isAsymmetric = config?.encryption?.mode === 'asymmetric'
@@ -121,7 +119,7 @@ export async function runKeyRotate(context: KeyRotateContext): Promise<void> {
     const { privateKey: privateKeyPath, publicKey: publicKeyPath } = resolveKeyPaths(keyName, project)
 
     if (!fs.existsSync(privateKeyPath)) {
-      console.error(`Error: Private key not found: ${privateKeyPath}`)
+      print.error(`Private key not found: ${privateKeyPath}`)
       process.exit(1)
     }
 
@@ -138,10 +136,8 @@ export async function runKeyRotate(context: KeyRotateContext): Promise<void> {
       fs.writeFileSync(privateKeyPath, privateKey, { mode: 0o600 })
       fs.writeFileSync(publicKeyPath, publicKey)
 
-      if (!jsonOutput && verbose) {
-        console.error(`  Old keys backed up to: ${oldKeyBackupPath}`)
-        console.error(`  New keys generated: ${keyName}`)
-      }
+      ui.verbose(`  Old keys backed up to: ${oldKeyBackupPath}`, verbose && !jsonOutput)
+      ui.verbose(`  New keys generated: ${keyName}`, verbose && !jsonOutput)
     }
   } else {
     // Symmetric key rotation - use the key file path directly
@@ -160,26 +156,24 @@ export async function runKeyRotate(context: KeyRotateContext): Promise<void> {
       fs.mkdirSync(path.dirname(keyFilePath), { recursive: true })
       fs.writeFileSync(keyFilePath, newPassphrase, { mode: 0o600 })
 
-      if (!jsonOutput && verbose) {
-        console.error(`  Old key backed up to: ${oldKeyBackupPath}`)
-        console.error(`  New key generated: ${keyFilePath}`)
-      }
+      ui.verbose(`  Old key backed up to: ${oldKeyBackupPath}`, verbose && !jsonOutput)
+      ui.verbose(`  New key generated: ${keyFilePath}`, verbose && !jsonOutput)
     }
   }
 
   if (!jsonOutput) {
-    console.log('  New key generated successfully')
+    ui.log('  New key generated successfully')
   }
 
   // Step 3: Re-import all variables with new key
   if (!jsonOutput) {
-    console.log('')
-    console.log('Step 3: Re-encrypting all variables with new key...')
+    ui.log('')
+    ui.log('Step 3: Re-encrypting all variables with new key...')
   }
 
   if (dryRun) {
     if (jsonOutput) {
-      console.log(JSON.stringify({
+      ui.output(JSON.stringify({
         dryRun: true,
         project,
         keyName,
@@ -188,13 +182,13 @@ export async function runKeyRotate(context: KeyRotateContext): Promise<void> {
         message: 'Would rotate key and re-encrypt all variables'
       }))
     } else {
-      console.log('')
-      console.log('Dry run - changes that would be made:')
+      ui.log('')
+      ui.log('Dry run - changes that would be made:')
       for (const [env, vars] of exportedData) {
-        console.log(`  [${env}] Re-encrypt ${Object.keys(vars).length} variables`)
+        ui.log(`  [${env}] Re-encrypt ${Object.keys(vars).length} variables`)
       }
-      console.log('')
-      console.log('Run without --dry-run to perform the rotation.')
+      ui.log('')
+      ui.log('Run without --dry-run to perform the rotation.')
     }
     return
   }
@@ -224,9 +218,7 @@ export async function runKeyRotate(context: KeyRotateContext): Promise<void> {
         rotatedCount++
       }
 
-      if (!jsonOutput && verbose) {
-        console.error(`  [${env}] Re-encrypted ${Object.keys(vars).length} variables`)
-      }
+      ui.verbose(`  [${env}] Re-encrypted ${Object.keys(vars).length} variables`, verbose && !jsonOutput)
     }
 
     // Log rotation to audit
@@ -253,7 +245,7 @@ export async function runKeyRotate(context: KeyRotateContext): Promise<void> {
     }
 
     if (jsonOutput) {
-      console.log(JSON.stringify({
+      ui.output(JSON.stringify({
         success: true,
         project,
         keyName,
@@ -263,14 +255,14 @@ export async function runKeyRotate(context: KeyRotateContext): Promise<void> {
         backupPath: oldKeyBackupPath
       }))
     } else {
-      console.log('')
-      console.log(`✓ Key rotation complete`)
-      console.log(`  Variables re-encrypted: ${rotatedCount}`)
-      console.log(`  Environments: ${Array.from(exportedData.keys()).join(', ')}`)
-      console.log(`  Old key backup: ${oldKeyBackupPath}`)
-      console.log('')
-      console.log('Important: The old key backup should be securely deleted after')
-      console.log('verifying the rotation was successful.')
+      ui.log('')
+      ui.success('Key rotation complete')
+      ui.log(`  Variables re-encrypted: ${rotatedCount}`)
+      ui.log(`  Environments: ${Array.from(exportedData.keys()).join(', ')}`)
+      ui.log(`  Old key backup: ${oldKeyBackupPath}`)
+      ui.log('')
+      ui.log('Important: The old key backup should be securely deleted after')
+      ui.log('verifying the rotation was successful.')
     }
   } finally {
     await newClient.disconnect()

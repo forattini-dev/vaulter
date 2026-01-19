@@ -7,6 +7,8 @@
 import path from 'node:path'
 import type { CLIArgs, VaulterConfig } from '../../types.js'
 import { discoverServices, findMonorepoRoot } from '../../lib/monorepo.js'
+import { print } from '../lib/colors.js'
+import * as ui from '../ui.js'
 
 interface ServicesContext {
   args: CLIArgs
@@ -31,13 +33,13 @@ export async function runServices(context: ServicesContext): Promise<void> {
       break
 
     default:
-      console.error(`Unknown services subcommand: ${subcommand}`)
-      console.error('Available subcommands: list')
-      console.error('')
-      console.error('Examples:')
-      console.error('  vaulter services                  # List all services')
-      console.error('  vaulter services list             # Same as above')
-      console.error('  vaulter services list --json      # JSON output')
+      print.error(`Unknown services subcommand: ${subcommand}`)
+      ui.log('Available subcommands: list')
+      ui.log('')
+      ui.log('Examples:')
+      ui.log('  vaulter services                  # List all services')
+      ui.log('  vaulter services list             # Same as above')
+      ui.log('  vaulter services list --json      # JSON output')
       process.exit(1)
   }
 }
@@ -53,13 +55,13 @@ async function runServicesList(context: ServicesContext): Promise<void> {
 
   if (!root) {
     if (jsonOutput) {
-      console.log(JSON.stringify({
+      ui.output(JSON.stringify({
         error: 'not_in_monorepo',
         message: 'Not inside a vaulter project'
       }))
     } else {
-      console.error('Not inside a vaulter project')
-      console.error('Run "vaulter init" first')
+      print.error('Not inside a vaulter project')
+      ui.log('Run "vaulter init" first')
     }
     process.exit(1)
   }
@@ -68,7 +70,7 @@ async function runServicesList(context: ServicesContext): Promise<void> {
   const services = discoverServices(root)
 
   if (jsonOutput) {
-    console.log(JSON.stringify({
+    ui.output(JSON.stringify({
       root: root,
       count: services.length,
       services: services.map(s => ({
@@ -81,26 +83,26 @@ async function runServicesList(context: ServicesContext): Promise<void> {
     }))
   } else {
     if (services.length === 0) {
-      console.log('No services found')
-      console.log('')
-      console.log('This might be a single-project setup (no nested .vaulter directories)')
+      ui.log('No services found')
+      ui.log('')
+      ui.log('This might be a single-project setup (no nested .vaulter directories)')
     } else {
-      console.log(`Found ${services.length} service(s) in monorepo:`)
-      console.log('')
+      ui.log(`Found ${services.length} service(s) in monorepo:`)
+      ui.log('')
 
       for (const service of services) {
         const relativePath = path.relative(process.cwd(), service.path) || '.'
-        console.log(`  ${service.name}`)
-        console.log(`    Path: ${relativePath}`)
-        console.log(`    Project: ${service.config.project}`)
+        ui.log(`  ${service.name}`)
+        ui.log(`    Path: ${relativePath}`)
+        ui.log(`    Project: ${service.config.project}`)
         if (verbose) {
-          console.log(`    Environments: ${(service.config.environments || ['dev', 'stg', 'prd']).join(', ')}`)
-          console.log(`    Default: ${service.config.default_environment || 'dev'}`)
+          ui.log(`    Environments: ${(service.config.environments || ['dev', 'stg', 'prd']).join(', ')}`)
+          ui.log(`    Default: ${service.config.default_environment || 'dev'}`)
           if (service.config.backend?.url) {
-            console.log(`    Backend: ${service.config.backend.url}`)
+            ui.log(`    Backend: ${service.config.backend.url}`)
           }
         }
-        console.log('')
+        ui.log('')
       }
     }
   }

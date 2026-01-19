@@ -59,7 +59,7 @@ export async function runList(context: ListContext): Promise<void> {
 
   if (!project) {
     print.error('Project not specified and no config found')
-    console.error(`Run "${c.command('vaulter init')}" or specify ${c.highlight('--project')}`)
+    ui.log(`Run "${c.command('vaulter init')}" or specify ${c.highlight('--project')}`)
     process.exit(1)
   }
 
@@ -146,7 +146,7 @@ export async function runList(context: ListContext): Promise<void> {
       const varCount = displayVars ? displayVars.size : vars.length
 
       if (varCount === 0) {
-        console.error(`${symbols.info} ${c.muted('No variables found')}`)
+        ui.log(`${symbols.info} ${c.muted('No variables found')}`)
         return
       }
 
@@ -179,7 +179,7 @@ export async function runList(context: ListContext): Promise<void> {
         const overrides = Array.from(resolvedVars.values()).filter(v => v.source === 'override').length
         const local = Array.from(resolvedVars.values()).filter(v => v.source === 'service').length
 
-        console.error(`\n${c.muted('Source:')} ${c.env('inherited')}=${inherited} ${c.warning('override')}=${overrides} ${c.muted('local')}=${local}`)
+        ui.log(`\n${c.muted('Source:')} ${c.env('inherited')}=${inherited} ${c.warning('override')}=${overrides} ${c.muted('local')}=${local}`)
       } else {
         // Simple listing (shared vars or no service)
         const tableData = vars.map(v => ({

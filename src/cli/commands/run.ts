@@ -14,6 +14,7 @@ import { spawn } from 'node:child_process'
 import { config, type ConfigResult } from '../../config.js'
 import { c, print, dim } from '../lib/colors.js'
 import type { CLIArgs, VaulterConfig, Environment } from '../../types.js'
+import * as ui from '../ui.js'
 
 interface RunContext {
   args: CLIArgs
@@ -38,8 +39,8 @@ export async function runRun(context: RunContext): Promise<void> {
   const commandIndex = process.argv.indexOf('--')
   if (commandIndex === -1 || commandIndex === process.argv.length - 1) {
     print.error('No command specified')
-    console.error(`Usage: ${c.command('vaulter run -- <command>')}`)
-    console.error(`Example: ${c.command('vaulter run -- pnpm build')}`)
+    ui.log(`Usage: ${c.command('vaulter run -- <command>')}`)
+    ui.log(`Example: ${c.command('vaulter run -- pnpm build')}`)
     process.exit(1)
   }
 
@@ -66,22 +67,22 @@ export async function runRun(context: RunContext): Promise<void> {
 
   // Dry run - just show what would happen
   if (dryRun) {
-    console.log()
-    console.log(c.label('Would execute:'))
-    console.log(`  ${c.command(commandArgs.join(' '))}`)
-    console.log()
-    console.log(c.label('With env vars from:'))
+    ui.log('')
+    ui.log(c.label('Would execute:'))
+    ui.log(`  ${c.command(commandArgs.join(' '))}`)
+    ui.log('')
+    ui.log(c.label('With env vars from:'))
     for (const file of result.loadedFiles) {
-      console.log(`  ${c.success('✓')} ${file}`)
+      ui.log(`  ${c.success('✓')} ${file}`)
     }
     return
   }
 
   // Execute command with inherited env (process.env is already populated by config())
   if (verbose) {
-    console.log()
-    console.log(c.label(`Executing: ${c.command(commandArgs.join(' '))}`))
-    console.log()
+    ui.log('')
+    ui.log(c.label(`Executing: ${c.command(commandArgs.join(' '))}`))
+    ui.log('')
   }
 
   const child = spawn(command, cmdArgs, {
@@ -106,41 +107,41 @@ export async function runRun(context: RunContext): Promise<void> {
  */
 function printLoadInfo(result: ConfigResult, verbose: boolean): void {
   if (result.skipped) {
-    console.log(dim(`[vaulter] ${result.skipReason}`))
+    ui.log(dim(`[vaulter] ${result.skipReason}`))
     return
   }
 
   if (result.loadedFiles.length === 0) {
-    console.log(c.warning('[vaulter] No env files found'))
+    ui.log(c.warning('[vaulter] No env files found'))
     return
   }
 
   // Compact output by default
   if (!verbose) {
-    console.log(dim(`[vaulter] Loaded ${result.varsLoaded} vars (${result.detectedEnv} mode)`))
+    ui.log(dim(`[vaulter] Loaded ${result.varsLoaded} vars (${result.detectedEnv} mode)`))
     return
   }
 
   // Verbose output
-  console.log(c.label('[vaulter] Environment Detection'))
-  console.log(`  Mode: ${c.value(result.mode)}`)
-  console.log(`  Detected: ${c.value(result.detectedEnv)}`)
-  console.log()
+  ui.log(c.label('[vaulter] Environment Detection'))
+  ui.log(`  Mode: ${c.value(result.mode)}`)
+  ui.log(`  Detected: ${c.value(result.detectedEnv)}`)
+  ui.log('')
 
   if (result.loadedFiles.length > 0) {
-    console.log(c.label('[vaulter] Loaded Files'))
+    ui.log(c.label('[vaulter] Loaded Files'))
     for (const file of result.loadedFiles) {
-      console.log(`  ${c.success('✓')} ${file}`)
+      ui.log(`  ${c.success('✓')} ${file}`)
     }
   }
 
   if (result.skippedFiles.length > 0) {
-    console.log(c.label('[vaulter] Skipped (not found)'))
+    ui.log(c.label('[vaulter] Skipped (not found)'))
     for (const file of result.skippedFiles) {
-      console.log(`  ${dim('○')} ${dim(file)}`)
+      ui.log(`  ${dim('○')} ${dim(file)}`)
     }
   }
 
-  console.log()
-  console.log(dim(`Total: ${result.varsLoaded} variables loaded`))
+  ui.log('')
+  ui.log(dim(`Total: ${result.varsLoaded} variables loaded`))
 }

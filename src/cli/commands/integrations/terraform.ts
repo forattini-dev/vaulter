@@ -6,6 +6,8 @@
 
 import type { CLIArgs, VaulterConfig, Environment } from '../../../types.js'
 import { createClientFromConfig } from '../../lib/create-client.js'
+import { print } from '../../lib/colors.js'
+import * as ui from '../../ui.js'
 
 interface TerraformContext {
   args: CLIArgs
@@ -24,13 +26,11 @@ export async function runTfVars(context: TerraformContext): Promise<void> {
   const { args, config, project, service, environment, verbose, jsonOutput } = context
 
   if (!project) {
-    console.error('Error: Project not specified')
+    print.error('Project not specified')
     process.exit(1)
   }
 
-  if (verbose) {
-    console.error(`Generating Terraform tfvars for ${project}/${environment}`)
-  }
+  ui.verbose(`Generating Terraform tfvars for ${project}/${environment}`, verbose)
 
   const client = await createClientFromConfig({ args, config, project, verbose })
 
@@ -40,12 +40,12 @@ export async function runTfVars(context: TerraformContext): Promise<void> {
     const vars = await client.export(project, environment, service)
 
     if (Object.keys(vars).length === 0) {
-      console.error('Warning: No variables found')
+      print.warning('No variables found')
       return
     }
 
     if (jsonOutput) {
-      console.log(JSON.stringify({
+      ui.output(JSON.stringify({
         format: 'tfvars',
         project,
         environment,
@@ -58,7 +58,7 @@ export async function runTfVars(context: TerraformContext): Promise<void> {
         service,
         environment
       })
-      console.log(tfvars)
+      ui.output(tfvars)
     }
   } finally {
     await client.disconnect()
@@ -72,13 +72,11 @@ export async function runTfJson(context: TerraformContext): Promise<void> {
   const { args, config, project, service, environment, verbose } = context
 
   if (!project) {
-    console.error('Error: Project not specified')
+    print.error('Project not specified')
     process.exit(1)
   }
 
-  if (verbose) {
-    console.error(`Generating Terraform JSON for ${project}/${environment}`)
-  }
+  ui.verbose(`Generating Terraform JSON for ${project}/${environment}`, verbose)
 
   const client = await createClientFromConfig({ args, config, project, verbose })
 
@@ -88,7 +86,7 @@ export async function runTfJson(context: TerraformContext): Promise<void> {
     const vars = await client.export(project, environment, service)
 
     if (Object.keys(vars).length === 0) {
-      console.error('Warning: No variables found')
+      print.warning('No variables found')
       return
     }
 
@@ -109,7 +107,7 @@ export async function runTfJson(context: TerraformContext): Promise<void> {
       env_vars: vars
     }
 
-    console.log(JSON.stringify(output, null, 2))
+    ui.output(JSON.stringify(output, null, 2))
   } finally {
     await client.disconnect()
   }

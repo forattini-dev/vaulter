@@ -16,6 +16,8 @@ import {
   getAsymmetricAlgorithm
 } from '../../lib/config-loader.js'
 import { resolveBackendUrls } from '../../index.js'
+import { print } from './colors.js'
+import * as ui from '../ui.js'
 
 export interface CreateClientOptions {
   args: CLIArgs
@@ -75,11 +77,9 @@ export async function createClientFromConfig(options: CreateClientOptions): Prom
       )
     }
 
-    if (verbose) {
-      console.error(`Using asymmetric encryption (${algorithm}) for project: ${projectForKeys}`)
-      if (publicKey) console.error('  Public key: loaded')
-      if (privateKey) console.error('  Private key: loaded')
-    }
+    ui.verbose(`Using asymmetric encryption (${algorithm}) for project: ${projectForKeys}`, verbose)
+    if (verbose && publicKey) ui.verbose('  Public key: loaded', true)
+    if (verbose && privateKey) ui.verbose('  Private key: loaded', true)
 
     return new VaulterClient({
       connectionStrings: connectionStrings.length > 0 ? connectionStrings : undefined,
@@ -114,8 +114,8 @@ export async function createClientFromConfig(options: CreateClientOptions): Prom
     if (config?.security?.paranoid) {
       throw new Error('No encryption key found. Set VAULTER_KEY or use --key.')
     }
-    console.error(
-      'Warning: No encryption key found. Falling back to the default dev key. ' +
+    print.warning(
+      'No encryption key found. Falling back to the default dev key. ' +
       'Set VAULTER_KEY or use --key to avoid insecure encryption.'
     )
   }

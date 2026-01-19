@@ -9,6 +9,7 @@ import type { CLIArgs, VaulterConfig, Environment } from '../../types.js'
 import { createClientFromConfig } from '../lib/create-client.js'
 import { c, symbols, colorEnv, print } from '../lib/colors.js'
 import { SHARED_SERVICE, formatSource } from '../../lib/shared.js'
+import * as ui from '../ui.js'
 
 interface GetContext {
   args: CLIArgs
@@ -36,23 +37,21 @@ export async function runGet(context: GetContext): Promise<void> {
 
   if (!key) {
     print.error('Key name is required')
-    console.error(`${c.label('Usage:')} ${c.command('vaulter var get')} ${c.key('<key>')} ${c.highlight('-e')} ${colorEnv('<env>')}`)
+    ui.log(`${c.label('Usage:')} ${c.command('vaulter var get')} ${c.key('<key>')} ${c.highlight('-e')} ${colorEnv('<env>')}`)
     process.exit(1)
   }
 
   if (!project) {
     print.error('Project not specified and no config found')
-    console.error(`Run "${c.command('vaulter init')}" or specify ${c.highlight('--project')}`)
+    ui.log(`Run "${c.command('vaulter init')}" or specify ${c.highlight('--project')}`)
     process.exit(1)
   }
 
   // Determine effective service
   const effectiveService = isShared ? SHARED_SERVICE : service
 
-  if (verbose) {
-    const scope = isShared ? c.env('shared') : c.service(service || '(no service)')
-    console.error(`${symbols.info} Getting ${c.key(key)} for ${c.project(project)}/${scope}/${colorEnv(environment)}`)
-  }
+  const scope = isShared ? c.env('shared') : c.service(service || '(no service)')
+  ui.verbose(`${symbols.info} Getting ${c.key(key)} for ${c.project(project)}/${scope}/${colorEnv(environment)}`, verbose)
 
   const client = await createClientFromConfig({ args, config, project, verbose })
 
@@ -80,7 +79,7 @@ export async function runGet(context: GetContext): Promise<void> {
 
     if (!envVar) {
       if (jsonOutput) {
-        console.log(JSON.stringify({ error: 'not_found', key, project, environment }))
+        ui.output(JSON.stringify({ error: 'not_found', key, project, environment }))
       } else {
         print.error(`Variable ${c.key(key)} not found`)
       }
@@ -88,7 +87,7 @@ export async function runGet(context: GetContext): Promise<void> {
     }
 
     if (jsonOutput) {
-      console.log(JSON.stringify({
+      ui.output(JSON.stringify({
         key: envVar.key,
         value: envVar.value,
         project: envVar.project,
@@ -102,7 +101,7 @@ export async function runGet(context: GetContext): Promise<void> {
       }))
     } else {
       // Output just the value for easy piping
-      console.log(envVar.value)
+      ui.output(envVar.value)
     }
   } finally {
     await client.disconnect()

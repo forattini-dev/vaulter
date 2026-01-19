@@ -474,7 +474,7 @@ import 'vaulter/load'  // Auto-loads .env into process.env
 
 ## MCP Server
 
-Claude AI integration via Model Context Protocol.
+Claude AI integration via Model Context Protocol. **30 tools, 5 resources, 8 prompts.**
 
 ```bash
 vaulter mcp
@@ -493,28 +493,49 @@ vaulter mcp
 }
 ```
 
-### Tools
+### Tools (30)
 
 | Category | Tools |
 |:---------|:------|
-| **Variables** | `var_get`, `var_set`, `var_delete`, `var_list` |
-| **Sync** | `sync_push`, `sync_pull`, `sync_merge`, `sync_diff` |
-| **Export** | `export_shell`, `export_k8s_secret`, `export_k8s_configmap`, `export_helm`, `export_terraform` |
-| **Discovery** | `compare`, `search`, `services`, `init` |
-| **Keys** | `key_generate`, `key_list`, `key_show`, `key_export`, `key_import` |
-| **Audit** | `audit_list`, `audit_stats` |
-| **Rotation** | `rotation_list`, `rotation_run` |
+| **Core (5)** | `vaulter_get`, `vaulter_set`, `vaulter_delete`, `vaulter_list`, `vaulter_export` |
+| **Batch (3)** | `vaulter_multi_get`, `vaulter_multi_set`, `vaulter_multi_delete` |
+| **Sync (3)** | `vaulter_sync`, `vaulter_pull`, `vaulter_push` |
+| **Analysis (2)** | `vaulter_compare`, `vaulter_search` |
+| **Status (2)** | `vaulter_status`, `vaulter_audit_list` |
+| **K8s (2)** | `vaulter_k8s_secret`, `vaulter_k8s_configmap` |
+| **IaC (2)** | `vaulter_helm_values`, `vaulter_tf_vars` |
+| **Keys (5)** | `vaulter_key_generate`, `vaulter_key_list`, `vaulter_key_show`, `vaulter_key_export`, `vaulter_key_import` |
+| **Monorepo (5)** | `vaulter_init`, `vaulter_scan`, `vaulter_services`, `vaulter_shared_list`, `vaulter_inheritance_info` |
+| **Other (1)** | `vaulter_categorize_vars` |
 
-### Resources (4)
+### Resources (5)
 
 Static data views (no input required). For actions with parameters, use tools.
 
 | URI | Description |
 |:----|:------------|
-| `vaulter://instructions` | **Read first!** How vaulter stores data |
-| `vaulter://mcp-config` | MCP settings sources |
+| `vaulter://instructions` | **Read first!** How vaulter stores data (s3db.js architecture) |
+| `vaulter://tools-guide` | Which tool to use for each scenario |
+| `vaulter://mcp-config` | MCP settings sources (priority chain) |
 | `vaulter://config` | Project configuration (YAML) |
 | `vaulter://services` | Monorepo services list |
+
+### Prompts (8)
+
+Pre-configured workflows for common tasks.
+
+| Prompt | Description |
+|:-------|:------------|
+| `setup_project` | Initialize new vaulter project |
+| `migrate_dotenv` | Migrate existing .env files |
+| `deploy_secrets` | Deploy to Kubernetes |
+| `compare_environments` | Compare dev vs prd |
+| `security_audit` | Audit secrets for issues |
+| `rotation_workflow` | Check/rotate/report on rotation |
+| `shared_vars_workflow` | Manage monorepo shared vars |
+| `batch_operations` | Multi-set/get/delete operations |
+
+> **Full MCP documentation:** See [docs/MCP.md](docs/MCP.md) for complete tool reference with parameters.
 
 ---
 

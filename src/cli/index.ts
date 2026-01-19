@@ -728,13 +728,13 @@ async function main(): Promise<void> {
 
   // Handle help first (before error check, so `get --help` works)
   if (opts.help || result.command.length === 0) {
-    console.log(cli.help(result.command))
+    ui.output(cli.help(result.command))
     return
   }
 
   // Handle version
   if (opts.version) {
-    console.log(`vaulter v${VERSION}`)
+    ui.output(`vaulter v${VERSION}`)
     return
   }
 
@@ -795,7 +795,7 @@ async function main(): Promise<void> {
         // MCP server - dynamically loaded (not available in standalone binaries)
         if (IS_STANDALONE) {
           print.error('MCP server is not available in standalone binaries')
-          console.error(`Install via npm/pnpm to use MCP: ${c.command('pnpm add -g vaulter')}`)
+          ui.log(`Install via npm/pnpm to use MCP: ${c.command('pnpm add -g vaulter')}`)
           process.exit(1)
         }
         const { startServer } = await import('../mcp/server.js')
@@ -812,7 +812,7 @@ async function main(): Promise<void> {
         // TUI - dynamically loaded (not available in standalone binaries)
         if (IS_STANDALONE) {
           print.error('TUI is not available in standalone binaries')
-          console.error(`Install via npm/pnpm to use TUI: ${c.command('pnpm add -g vaulter')}`)
+          ui.log(`Install via npm/pnpm to use TUI: ${c.command('pnpm add -g vaulter')}`)
           process.exit(1)
         }
         const tuiScreen = context.args._[1] || 'menu'
@@ -856,7 +856,7 @@ async function main(): Promise<void> {
         break
 
       case 'config':
-        console.log('config command not yet implemented')
+        ui.log('config command not yet implemented')
         break
 
       case 'audit':
@@ -869,12 +869,12 @@ async function main(): Promise<void> {
 
       default:
         print.error(`Unknown command: ${c.command(command)}`)
-        console.error(`Run "${c.command('vaulter --help')}" for usage information`)
+        ui.log(`Run "${c.command('vaulter --help')}" for usage information`)
         process.exit(1)
     }
   } catch (err) {
     if (context.verbose) {
-      console.error(err)
+      ui.log(String(err))
     } else {
       print.error((err as Error).message)
     }

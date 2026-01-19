@@ -17,6 +17,8 @@ import { compileGlobPatterns } from '../../lib/pattern-matcher.js'
 import { discoverServices, filterServices, findMonorepoRoot, formatServiceList, type ServiceInfo } from '../../lib/monorepo.js'
 import { runBatch, formatBatchResult, formatBatchResultJson } from '../../lib/batch-runner.js'
 import { createConnectedAuditLogger, logSyncOperation, disconnectAuditLogger } from '../lib/audit-helper.js'
+import * as ui from '../ui.js'
+import { c, print } from '../lib/colors.js'
 
 interface SyncContext {
   args: CLIArgs
@@ -61,9 +63,7 @@ async function syncSingleService(
 
   if (hasStdinData() && !serviceInfo) {
     // Read from stdin (only for single service mode)
-    if (verbose) {
-      console.error('Reading variables from stdin...')
-    }
+    ui.verbose('Reading variables from stdin...', verbose)
     localVars = await parseEnvFromStdin()
   } else {
     // Read from file
@@ -87,17 +87,13 @@ async function syncSingleService(
       throw new Error(`File not found: ${resolvedPath}`)
     }
 
-    if (verbose) {
-      console.error(`Reading variables from ${resolvedPath}`)
-    }
+    ui.verbose(`Reading variables from ${resolvedPath}`, verbose)
 
     envFilePath = resolvedPath
     localVars = parseEnvFile(resolvedPath)
   }
 
-  if (verbose) {
-    console.error(`Found ${Object.keys(localVars).length} local variables`)
-  }
+  ui.verbose(`Found ${Object.keys(localVars).length} local variables`, verbose)
 
   if (!dryRun) {
     runHook(effectiveConfig?.hooks?.pre_sync, 'pre_sync', verbose)
@@ -263,15 +259,15 @@ export async function runSync(context: SyncContext): Promise<void> {
   }
 
   if (!project) {
-    console.error('Error: Project not specified and no config found')
-    console.error('Run "vaulter init" or specify --project')
+    print.error('Project not specified and no config found')
+    ui.log(`Run "${c.command('vaulter init')}" or specify ${c.highlight('--project')}`)
     process.exit(1)
   }
 
   // Production confirmation
   if (isProdEnvironment(environment) && config?.security?.confirm_production && !args.force) {
-    console.error(`Warning: You are syncing to ${environment} (production) environment`)
-    console.error('Use --force to confirm this action')
+    print.error(`You are syncing to ${environment} (production) environment`)
+    ui.log(`Use ${c.highlight('--force')} to confirm this action`)
     process.exit(1)
   }
 
@@ -279,7 +275,7 @@ export async function runSync(context: SyncContext): Promise<void> {
     const result = await syncSingleService(context)
 
     if (jsonOutput) {
-      console.log(JSON.stringify({
+      ui.output(JSON.stringify({
         success: true,
         dryRun,
         project,
@@ -295,24 +291,24 @@ export async function runSync(context: SyncContext): Promise<void> {
         localDeleted: result.localDeleted || []
       }))
     } else if (dryRun) {
-      console.log('Dry run - changes that would be made:')
+      ui.log('Dry run - changes that would be made:')
       if (result.added.length > 0) {
-        console.log(`  Remote add (${result.added.length}): ${result.added.join(', ')}`)
+        ui.log(`  Remote add (${result.added.length}): ${result.added.join(', ')}`)
       }
       if (result.updated.length > 0) {
-        console.log(`  Remote update (${result.updated.length}): ${result.updated.join(', ')}`)
+        ui.log(`  Remote update (${result.updated.length}): ${result.updated.join(', ')}`)
       }
       if ((result.localAdded || []).length > 0) {
-        console.log(`  Local add (${result.localAdded?.length}): ${result.localAdded?.join(', ')}`)
+        ui.log(`  Local add (${result.localAdded?.length}): ${result.localAdded?.join(', ')}`)
       }
       if ((result.localUpdated || []).length > 0) {
-        console.log(`  Local update (${result.localUpdated?.length}): ${result.localUpdated?.join(', ')}`)
+        ui.log(`  Local update (${result.localUpdated?.length}): ${result.localUpdated?.join(', ')}`)
       }
       if (result.unchanged.length > 0) {
-        console.log(`  Unchanged: ${result.unchanged.length} variables`)
+        ui.log(`  Unchanged: ${result.unchanged.length} variables`)
       }
       if (result.conflicts.length > 0) {
-        console.log(`  Conflicts (${result.conflicts.length}): ${result.conflicts.map(c => c.key).join(', ')}`)
+        ui.log(`  Conflicts (${result.conflicts.length}): ${result.conflicts.map(conf => conf.key).join(', ')}`)
       }
       if (
         result.added.length === 0 &&
@@ -320,31 +316,31 @@ export async function runSync(context: SyncContext): Promise<void> {
         (result.localAdded || []).length === 0 &&
         (result.localUpdated || []).length === 0
       ) {
-        console.log('  No changes needed')
+        ui.log('  No changes needed')
       }
     } else {
-      console.log(`✓ Synced ${project}/${environment}`)
+      ui.success(`Synced ${c.project(project)}/${environment}`)
       if (result.added.length > 0) {
-        console.log(`  Remote added: ${result.added.length} (${result.added.join(', ')})`)
+        ui.log(`  Remote added: ${result.added.length} (${result.added.join(', ')})`)
       }
       if (result.updated.length > 0) {
-        console.log(`  Remote updated: ${result.updated.length} (${result.updated.join(', ')})`)
+        ui.log(`  Remote updated: ${result.updated.length} (${result.updated.join(', ')})`)
       }
       if ((result.localAdded || []).length > 0) {
-        console.log(`  Local added: ${result.localAdded?.length} (${result.localAdded?.join(', ')})`)
+        ui.log(`  Local added: ${result.localAdded?.length} (${result.localAdded?.join(', ')})`)
       }
       if ((result.localUpdated || []).length > 0) {
-        console.log(`  Local updated: ${result.localUpdated?.length} (${result.localUpdated?.join(', ')})`)
+        ui.log(`  Local updated: ${result.localUpdated?.length} (${result.localUpdated?.join(', ')})`)
       }
       if (result.unchanged.length > 0) {
-        console.log(`  Unchanged: ${result.unchanged.length}`)
+        ui.log(`  Unchanged: ${result.unchanged.length}`)
       }
       if (result.conflicts.length > 0) {
-        console.log(`  Conflicts: ${result.conflicts.map(c => c.key).join(', ')}`)
+        ui.log(`  Conflicts: ${result.conflicts.map(conf => conf.key).join(', ')}`)
       }
     }
   } catch (err) {
-    console.error(`Error: ${(err as Error).message}`)
+    print.error((err as Error).message)
     process.exit(1)
   }
 }
@@ -358,8 +354,8 @@ async function runBatchSync(context: SyncContext): Promise<void> {
   // Find monorepo root
   const root = findMonorepoRoot()
   if (!root) {
-    console.error('Error: Not inside a monorepo')
-    console.error('Run this command from within a project that has nested .vaulter directories')
+    print.error('Not inside a monorepo')
+    ui.log('Run this command from within a project that has nested .vaulter directories')
     process.exit(1)
   }
 
@@ -367,7 +363,7 @@ async function runBatchSync(context: SyncContext): Promise<void> {
   let services = discoverServices(root)
 
   if (services.length === 0) {
-    console.error('Error: No services found in monorepo')
+    print.error('No services found in monorepo')
     process.exit(1)
   }
 
@@ -376,26 +372,24 @@ async function runBatchSync(context: SyncContext): Promise<void> {
   if (serviceFilter && !args.all) {
     services = filterServices(services, serviceFilter)
     if (services.length === 0) {
-      console.error(`Error: No services match pattern: ${serviceFilter}`)
-      console.error('')
-      console.error('Available services:')
+      print.error(`No services match pattern: ${serviceFilter}`)
+      ui.log('')
+      ui.log('Available services:')
       const allServices = discoverServices(root)
       for (const svc of allServices) {
-        console.error(`  • ${svc.name}`)
+        ui.log(`  • ${svc.name}`)
       }
       process.exit(1)
     }
   }
 
-  if (verbose) {
-    console.error(formatServiceList(services))
-    console.error('')
-  }
+  ui.verbose(formatServiceList(services), verbose)
+  ui.verbose('', verbose)
 
   // Production confirmation for batch
   if (isProdEnvironment(environment) && !args.force) {
-    console.error(`Warning: You are syncing ${services.length} services to ${environment} (production)`)
-    console.error('Use --force to confirm this action')
+    print.error(`You are syncing ${services.length} services to ${environment} (production)`)
+    ui.log(`Use ${c.highlight('--force')} to confirm this action`)
     process.exit(1)
   }
 
@@ -408,16 +402,16 @@ async function runBatchSync(context: SyncContext): Promise<void> {
     },
     {
       onProgress: verbose ? (completed, total, current) => {
-        console.error(`[${completed + 1}/${total}] Syncing ${current.name}...`)
+        ui.verbose(`[${completed + 1}/${total}] Syncing ${current.name}...`, true)
       } : undefined
     }
   )
 
   // Output results
   if (jsonOutput) {
-    console.log(JSON.stringify(formatBatchResultJson(batchResult)))
+    ui.output(JSON.stringify(formatBatchResultJson(batchResult)))
   } else {
-    console.log(formatBatchResult(batchResult, (op) => {
+    ui.log(formatBatchResult(batchResult, (op) => {
       if (op.error) {
         return `✗ ${op.service.name}: ${op.error.message}`
       }

@@ -24,6 +24,8 @@ import {
   getConfigsFilePath,
   isSplitMode
 } from '../../../lib/config-loader.js'
+import { print } from '../../lib/colors.js'
+import * as ui from '../../ui.js'
 
 interface K8sContext {
   args: CLIArgs
@@ -117,7 +119,7 @@ export async function runK8sSecret(context: K8sContext): Promise<void> {
   const { args, config, project, service, environment, verbose, jsonOutput } = context
 
   if (!project) {
-    console.error('Error: Project not specified')
+    print.error('Project not specified')
     process.exit(1)
   }
 
@@ -129,9 +131,7 @@ export async function runK8sSecret(context: K8sContext): Promise<void> {
   const secretName = config?.integrations?.kubernetes?.secret_name ||
     (service ? `${service}-secrets` : `${project}-secrets`)
 
-  if (verbose) {
-    console.error(`Generating K8s Secret: ${namespace}/${secretName}`)
-  }
+  ui.verbose(`Generating K8s Secret: ${namespace}/${secretName}`, verbose)
 
   // Check for local file mode (explicit -f or split mode)
   const localPath = resolveSecretsPath(config, environment, args.file || args.f)
@@ -139,9 +139,7 @@ export async function runK8sSecret(context: K8sContext): Promise<void> {
 
   if (localPath) {
     // Read from local file (split mode or explicit -f)
-    if (verbose) {
-      console.error(`Reading secrets from local file: ${localPath}`)
-    }
+    ui.verbose(`Reading secrets from local file: ${localPath}`, verbose)
     vars = getLocalVariables(localPath)
   } else {
     // Fetch from backend
@@ -156,7 +154,7 @@ export async function runK8sSecret(context: K8sContext): Promise<void> {
   }
 
   if (Object.keys(vars).length === 0) {
-    console.error('Warning: No variables found')
+    print.warning('No variables found')
     return
   }
 
@@ -174,7 +172,7 @@ export async function runK8sSecret(context: K8sContext): Promise<void> {
     secretVars = Object.keys(secrets).length > 0 ? secrets : vars
 
     if (Object.keys(secrets).length === 0 && patterns.length > 0) {
-      console.error('Warning: No variables matched secret patterns, exporting all variables')
+      print.warning('No variables matched secret patterns, exporting all variables')
     }
   }
 
@@ -192,7 +190,7 @@ export async function runK8sSecret(context: K8sContext): Promise<void> {
   )
 
   if (jsonOutput) {
-    console.log(JSON.stringify({
+    ui.output(JSON.stringify({
       kind: 'Secret',
       name: secretName,
       namespace,
@@ -200,7 +198,7 @@ export async function runK8sSecret(context: K8sContext): Promise<void> {
       source: localPath ? 'local' : 'backend'
     }))
   } else {
-    console.log(yaml)
+    ui.output(yaml)
   }
 }
 
@@ -214,7 +212,7 @@ export async function runK8sConfigMap(context: K8sContext): Promise<void> {
   const { args, config, project, service, environment, verbose, jsonOutput } = context
 
   if (!project) {
-    console.error('Error: Project not specified')
+    print.error('Project not specified')
     process.exit(1)
   }
 
@@ -226,9 +224,7 @@ export async function runK8sConfigMap(context: K8sContext): Promise<void> {
   const configMapName = config?.integrations?.kubernetes?.configmap_name ||
     (service ? `${service}-config` : `${project}-config`)
 
-  if (verbose) {
-    console.error(`Generating K8s ConfigMap: ${namespace}/${configMapName}`)
-  }
+  ui.verbose(`Generating K8s ConfigMap: ${namespace}/${configMapName}`, verbose)
 
   // Check for local file mode (explicit -f or split mode)
   const localPath = resolveConfigsPath(config, environment, args.file || args.f)
@@ -236,9 +232,7 @@ export async function runK8sConfigMap(context: K8sContext): Promise<void> {
 
   if (localPath) {
     // Read from local file (split mode or explicit -f)
-    if (verbose) {
-      console.error(`Reading configs from local file: ${localPath}`)
-    }
+    ui.verbose(`Reading configs from local file: ${localPath}`, verbose)
     const allVars = getLocalVariables(localPath)
 
     // SECURITY: Filter out secrets even when reading from local file
@@ -247,8 +241,8 @@ export async function runK8sConfigMap(context: K8sContext): Promise<void> {
     const { plain } = splitVarsBySecret(allVars, patterns)
 
     if (Object.keys(plain).length === 0 && Object.keys(allVars).length > 0) {
-      console.error('Warning: All variables matched secret patterns, none available for ConfigMap')
-      console.error('Hint: Use k8s:secret for sensitive variables')
+      print.warning('All variables matched secret patterns, none available for ConfigMap')
+      ui.log('Hint: Use k8s:secret for sensitive variables')
       return
     }
     configVars = plain
@@ -261,14 +255,14 @@ export async function runK8sConfigMap(context: K8sContext): Promise<void> {
       const vars = await client.export(project, environment, service)
 
       if (Object.keys(vars).length === 0) {
-        console.error('Warning: No variables found')
+        print.warning('No variables found')
         return
       }
 
       const patterns = getSecretPatterns(config)
       const { plain } = splitVarsBySecret(vars, patterns)
       if (Object.keys(plain).length === 0) {
-        console.error('Warning: No non-secret variables found for ConfigMap')
+        print.warning('No non-secret variables found for ConfigMap')
         return
       }
       configVars = plain
@@ -278,7 +272,7 @@ export async function runK8sConfigMap(context: K8sContext): Promise<void> {
   }
 
   if (Object.keys(configVars).length === 0) {
-    console.error('Warning: No variables found for ConfigMap')
+    print.warning('No variables found for ConfigMap')
     return
   }
 
@@ -296,7 +290,7 @@ export async function runK8sConfigMap(context: K8sContext): Promise<void> {
   )
 
   if (jsonOutput) {
-    console.log(JSON.stringify({
+    ui.output(JSON.stringify({
       kind: 'ConfigMap',
       name: configMapName,
       namespace,
@@ -304,7 +298,7 @@ export async function runK8sConfigMap(context: K8sContext): Promise<void> {
       source: localPath ? 'local' : 'backend'
     }))
   } else {
-    console.log(yaml)
+    ui.output(yaml)
   }
 }
 

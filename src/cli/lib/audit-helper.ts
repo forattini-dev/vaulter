@@ -7,6 +7,7 @@
 import type { VaulterConfig, AuditSource } from '../../types.js'
 import { AuditLogger } from '../../lib/audit.js'
 import { resolveBackendUrls, loadEncryptionKey } from '../../index.js'
+import * as ui from '../ui.js'
 
 /**
  * Create and connect an audit logger from config
@@ -31,15 +32,11 @@ export async function createConnectedAuditLogger(
     const logger = new AuditLogger(config.audit)
     await logger.connect(urls[0], passphrase, verbose)
 
-    if (verbose) {
-      console.error('[vaulter] Audit logger connected')
-    }
+    ui.verbose('[vaulter] Audit logger connected', verbose)
 
     return logger
   } catch (err) {
-    if (verbose) {
-      console.error(`[vaulter] Audit logger failed to connect: ${(err as Error).message}`)
-    }
+    ui.verbose(`[vaulter] Audit logger failed to connect: ${(err as Error).message}`, verbose)
     // Don't fail the operation if audit can't connect
     return null
   }

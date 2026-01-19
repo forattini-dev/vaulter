@@ -21,6 +21,7 @@ import { parseEnvFile, serializeEnv } from '../../lib/env-parser.js'
 import { createConnectedAuditLogger, logSetOperation, disconnectAuditLogger } from '../lib/audit-helper.js'
 import { c, symbols, colorEnv, print } from '../lib/colors.js'
 import { SHARED_SERVICE } from '../../lib/shared.js'
+import * as ui from '../ui.js'
 
 type SeparatorValue = string | number | boolean | null
 
@@ -148,9 +149,7 @@ function writeToEnvFile(filePath: string, variables: Map<string, string>, verbos
   const content = serializeEnv(existing)
   fs.writeFileSync(filePath, content + '\n')
 
-  if (verbose) {
-    console.error(`[vaulter] Wrote ${variables.size} variables to ${filePath}`)
-  }
+  ui.verbose(`Wrote ${variables.size} variables to ${filePath}`, verbose)
 }
 
 /**
@@ -175,26 +174,26 @@ export async function runSet(context: SetContext): Promise<void> {
 
   if (totalVars === 0) {
     print.error('No variables specified')
-    console.error('')
-    console.error(c.header('Usage:'))
-    console.error(`  ${c.command('vaulter set')} ${c.key('KEY')} ${c.value('"value"')} ${c.highlight('-e')} ${colorEnv('dev')}                  ${c.muted('# Single secret')}`)
-    console.error(`  ${c.command('vaulter set')} ${c.key('KEY')}${c.secret('=')}${c.value('value')} ${c.highlight('-e')} ${colorEnv('dev')}                    ${c.muted('# Secret (encrypted)')}`)
-    console.error(`  ${c.command('vaulter set')} ${c.key('KEY')}${c.config('::')}${c.value('value')} ${c.highlight('-e')} ${colorEnv('dev')}                   ${c.muted('# Config (file only in split mode)')}`)
-    console.error(`  ${c.command('vaulter set')} ${c.key('K1')}${c.secret('=')}${c.value('v1')} ${c.key('K2')}${c.config('::')}${c.value('v2')} ${c.key('PORT')}${c.muted(':=')}${c.value('3000')}             ${c.muted('# Batch: mix secrets & configs')}`)
-    console.error(`  ${c.command('vaulter set')} ${c.key('KEY')}${c.secret('=')}${c.value('val')} ${c.muted('@tag:db,secret @owner:team')}  ${c.muted('# With metadata')}`)
+    ui.log('')
+    ui.log(c.header('Usage:'))
+    ui.log(`  ${c.command('vaulter set')} ${c.key('KEY')} ${c.value('"value"')} ${c.highlight('-e')} ${colorEnv('dev')}                  ${c.muted('# Single secret')}`)
+    ui.log(`  ${c.command('vaulter set')} ${c.key('KEY')}${c.secret('=')}${c.value('value')} ${c.highlight('-e')} ${colorEnv('dev')}                    ${c.muted('# Secret (encrypted)')}`)
+    ui.log(`  ${c.command('vaulter set')} ${c.key('KEY')}${c.config('::')}${c.value('value')} ${c.highlight('-e')} ${colorEnv('dev')}                   ${c.muted('# Config (file only in split mode)')}`)
+    ui.log(`  ${c.command('vaulter set')} ${c.key('K1')}${c.secret('=')}${c.value('v1')} ${c.key('K2')}${c.config('::')}${c.value('v2')} ${c.key('PORT')}${c.muted(':=')}${c.value('3000')}             ${c.muted('# Batch: mix secrets & configs')}`)
+    ui.log(`  ${c.command('vaulter set')} ${c.key('KEY')}${c.secret('=')}${c.value('val')} ${c.muted('@tag:db,secret @owner:team')}  ${c.muted('# With metadata')}`)
     process.exit(1)
   }
 
   if (!project) {
     print.error('Project not specified and no config found')
-    console.error(`Run "${c.command('vaulter init')}" or specify ${c.highlight('--project')}`)
+    ui.log(`Run "${c.command('vaulter init')}" or specify ${c.highlight('--project')}`)
     process.exit(1)
   }
 
   // Production confirmation
   if (isProdEnvironment(environment) && config?.security?.confirm_production && !args.force) {
     print.warning(`You are modifying ${colorEnv(environment)} (production) environment`)
-    console.error(`Use ${c.highlight('--force')} to confirm this action`)
+    ui.log(`Use ${c.highlight('--force')} to confirm this action`)
     process.exit(1)
   }
 
@@ -203,10 +202,10 @@ export async function runSet(context: SetContext): Promise<void> {
 
   if (verbose) {
     const scope = isShared ? c.env('shared') : c.service(service || '(no service)')
-    console.error(`${symbols.info} Setting variables for ${c.project(project)}/${scope}/${colorEnv(environment)}`)
-    console.error(`${symbols.info} Mode: ${c.value(splitMode ? 'split' : 'unified')}`)
-    if (secrets.size > 0) console.error(`${symbols.info} ${c.secretType('Secrets')}: ${c.key([...secrets.keys()].join(', '))}`)
-    if (configs.size > 0) console.error(`${symbols.info} ${c.configType('Configs')}: ${c.key([...configs.keys()].join(', '))}`)
+    ui.verbose(`Setting variables for ${c.project(project)}/${scope}/${colorEnv(environment)}`, true)
+    ui.verbose(`Mode: ${c.value(splitMode ? 'split' : 'unified')}`, true)
+    if (secrets.size > 0) ui.verbose(`${c.secretType('Secrets')}: ${c.key([...secrets.keys()].join(', '))}`, true)
+    if (configs.size > 0) ui.verbose(`${c.configType('Configs')}: ${c.key([...configs.keys()].join(', '))}`, true)
   }
 
   // Dry run output
@@ -242,24 +241,24 @@ export async function runSet(context: SetContext): Promise<void> {
     }
 
     if (jsonOutput) {
-      console.log(JSON.stringify(result))
+      ui.output(JSON.stringify(result))
     } else {
       if (secrets.size > 0) {
-        console.log(`${c.muted('Dry run')} - would set ${c.secretType(String(secrets.size))} ${c.secretType('secret(s)')}:`)
+        ui.log(`${c.muted('Dry run')} - would set ${c.secretType(String(secrets.size))} ${c.secretType('secret(s)')}:`)
         for (const key of secrets.keys()) {
           const dest = splitMode ? 'secrets file + backend' : 'env file + backend'
-          console.log(`  ${c.key(key)} ${symbols.arrow} ${c.muted(dest)}`)
+          ui.log(`  ${c.key(key)} ${symbols.arrow} ${c.muted(dest)}`)
         }
       }
       if (configs.size > 0) {
-        console.log(`${c.muted('Dry run')} - would set ${c.configType(String(configs.size))} ${c.configType('config(s)')}:`)
+        ui.log(`${c.muted('Dry run')} - would set ${c.configType(String(configs.size))} ${c.configType('config(s)')}:`)
         for (const key of configs.keys()) {
           const dest = splitMode ? 'configs file (no backend)' : 'env file + backend'
-          console.log(`  ${c.key(key)} ${symbols.arrow} ${c.muted(dest)}`)
+          ui.log(`  ${c.key(key)} ${symbols.arrow} ${c.muted(dest)}`)
         }
       }
-      if (tags.length > 0) console.log(`  ${c.muted('[tags:')} ${c.value(tags.join(', '))}${c.muted(']')}`)
-      if (owner) console.log(`  ${c.muted('[owner:')} ${c.value(owner)}${c.muted(']')}`)
+      if (tags.length > 0) ui.log(`  ${c.muted('[tags:')} ${c.value(tags.join(', '))}${c.muted(']')}`)
+      if (owner) ui.log(`  ${c.muted('[owner:')} ${c.value(owner)}${c.muted(']')}`)
     }
     return
   }
@@ -328,19 +327,19 @@ export async function runSet(context: SetContext): Promise<void> {
           results.push({ key, type: 'secret', success: true })
 
           // Show rotation update in verbose mode
-          if (isValueChanged && verbose && !jsonOutput) {
-            console.error(`[vaulter] Updated rotatedAt timestamp for ${key}`)
+          if (isValueChanged && !jsonOutput) {
+            ui.verbose(`Updated rotatedAt timestamp for ${key}`, verbose)
           }
 
           if (!jsonOutput) {
             const scope = isShared ? c.env('shared') : colorEnv(environment)
-            console.log(`${symbols.success} Set ${c.secretType('secret')} ${c.key(key)} in ${c.project(project)}/${scope}`)
+            ui.log(`${symbols.success} Set ${c.secretType('secret')} ${c.key(key)} in ${c.project(project)}/${scope}`)
           }
         } catch (err) {
           results.push({ key, type: 'secret', success: false, error: (err as Error).message })
 
           if (!jsonOutput) {
-            console.error(`${symbols.error} Failed to set ${c.secretType('secret')} ${c.key(key)}: ${c.error((err as Error).message)}`)
+            ui.log(`${symbols.error} Failed to set ${c.secretType('secret')} ${c.key(key)}: ${c.error((err as Error).message)}`)
           }
         }
       }
@@ -361,7 +360,7 @@ export async function runSet(context: SetContext): Promise<void> {
         results.push({ key, type: 'config', success: true })
 
         if (!jsonOutput) {
-          console.log(`${symbols.success} Set ${c.configType('config')} ${c.key(key)} in ${c.muted(configsFilePath)}`)
+          ui.log(`${symbols.success} Set ${c.configType('config')} ${c.key(key)} in ${c.muted(configsFilePath)}`)
         }
       }
     } else if (configDir) {
@@ -421,19 +420,19 @@ export async function runSet(context: SetContext): Promise<void> {
             results.push({ key, type: 'config', success: true })
 
             // Show rotation update in verbose mode
-            if (isValueChanged && verbose && !jsonOutput) {
-              console.error(`[vaulter] Updated rotatedAt timestamp for ${key}`)
+            if (isValueChanged && !jsonOutput) {
+              ui.verbose(`Updated rotatedAt timestamp for ${key}`, verbose)
             }
 
             if (!jsonOutput) {
               const scope = isShared ? c.env('shared') : colorEnv(environment)
-              console.log(`${symbols.success} Set ${c.configType('config')} ${c.key(key)} in ${c.project(project)}/${scope}`)
+              ui.log(`${symbols.success} Set ${c.configType('config')} ${c.key(key)} in ${c.project(project)}/${scope}`)
             }
           } catch (err) {
             results.push({ key, type: 'config', success: false, error: (err as Error).message })
 
             if (!jsonOutput) {
-              console.error(`${symbols.error} Failed to set ${c.configType('config')} ${c.key(key)}: ${c.error((err as Error).message)}`)
+              ui.log(`${symbols.error} Failed to set ${c.configType('config')} ${c.key(key)}: ${c.error((err as Error).message)}`)
             }
           }
         }
@@ -453,7 +452,7 @@ export async function runSet(context: SetContext): Promise<void> {
 
   // JSON output summary
   if (jsonOutput) {
-    console.log(JSON.stringify({
+    ui.output(JSON.stringify({
       success: failed === 0,
       results,
       summary: {
@@ -469,7 +468,7 @@ export async function runSet(context: SetContext): Promise<void> {
       shared: isShared
     }))
   } else if (totalVars > 1) {
-    console.log(`\n${c.success(String(successful))}/${c.value(String(totalVars))} variables set successfully`)
+    ui.log(`\n${c.success(String(successful))}/${c.value(String(totalVars))} variables set successfully`)
   }
 
   // Exit with error code if any failures occurred

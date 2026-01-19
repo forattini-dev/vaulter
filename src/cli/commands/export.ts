@@ -8,6 +8,8 @@ import type { CLIArgs, VaulterConfig, Environment, ExportFormat } from '../../ty
 import { createClientFromConfig } from '../lib/create-client.js'
 import { serializeEnv } from '../../lib/env-parser.js'
 import { SHARED_SERVICE } from '../../lib/shared.js'
+import { print } from '../lib/colors.js'
+import * as ui from '../ui.js'
 
 interface ExportContext {
   args: CLIArgs
@@ -126,8 +128,8 @@ export async function runExport(context: ExportContext): Promise<void> {
   const includeShared = !skipShared
 
   if (!project) {
-    console.error('Error: Project not specified and no config found')
-    console.error('Run "vaulter init" or specify --project')
+    print.error('Project not specified and no config found')
+    ui.log('Run "vaulter init" or specify --project')
     process.exit(1)
   }
 
@@ -136,8 +138,8 @@ export async function runExport(context: ExportContext): Promise<void> {
   if (args.format) {
     const validFormats: ExportFormat[] = ['shell', 'json', 'yaml', 'env', 'tfvars', 'docker-args']
     if (!validFormats.includes(args.format as ExportFormat)) {
-      console.error(`Error: Invalid format "${args.format}"`)
-      console.error(`Valid formats: ${validFormats.join(', ')}`)
+      print.error(`Invalid format "${args.format}"`)
+      ui.log(`Valid formats: ${validFormats.join(', ')}`)
       process.exit(1)
     }
     format = args.format as ExportFormat
@@ -145,10 +147,8 @@ export async function runExport(context: ExportContext): Promise<void> {
     format = 'json'
   }
 
-  if (verbose) {
-    const scope = isShared ? '__shared__' : (effectiveService || '(no service)')
-    console.error(`Exporting ${project}/${scope}/${environment} as ${format}`)
-  }
+  const scope = isShared ? '__shared__' : (effectiveService || '(no service)')
+  ui.verbose(`Exporting ${project}/${scope}/${environment} as ${format}`, verbose)
 
   const client = await createClientFromConfig({ args, config, project, verbose })
 
@@ -182,7 +182,7 @@ export async function runExport(context: ExportContext): Promise<void> {
         output = formatShell(vars)
     }
 
-    console.log(output)
+    ui.output(output)
   } finally {
     await client.disconnect()
   }
