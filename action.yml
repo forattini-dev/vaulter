@@ -1,0 +1,116 @@
+name: 'Vaulter - Pull Secrets'
+description: 'Pull environment variables from Vaulter backend and generate outputs for kubectl, helm, terraform, and more'
+author: 'Forattini'
+branding:
+  icon: 'lock'
+  color: 'purple'
+
+inputs:
+  # ─── Connection ───
+  backend:
+    description: 'Connection string (s3://bucket, file://path, memory://). Can also use VAULTER_BACKEND env var.'
+    required: false
+  passphrase:
+    description: 'Encryption passphrase for symmetric mode. Can also use VAULTER_PASSPHRASE env var.'
+    required: false
+
+  # ─── Filters ───
+  project:
+    description: 'Project name'
+    required: true
+  environment:
+    description: 'Environment (dev/stg/prd or custom)'
+    required: true
+  service:
+    description: 'Service name for monorepo setups'
+    required: false
+
+  # ─── Outputs Selection ───
+  outputs:
+    description: 'Comma-separated list of outputs to generate: env,json,k8s-secret,k8s-configmap,helm-values,tfvars,shell'
+    default: 'env'
+
+  # ─── Output Paths ───
+  env-path:
+    description: 'Path for .env file output'
+    default: '.env'
+  json-path:
+    description: 'Path for JSON output'
+    default: 'vaulter-vars.json'
+  k8s-secret-path:
+    description: 'Path for Kubernetes Secret YAML'
+    default: 'k8s-secret.yaml'
+  k8s-configmap-path:
+    description: 'Path for Kubernetes ConfigMap YAML'
+    default: 'k8s-configmap.yaml'
+  helm-values-path:
+    description: 'Path for Helm values.yaml'
+    default: 'helm-values.yaml'
+  tfvars-path:
+    description: 'Path for Terraform .tfvars file'
+    default: 'terraform.auto.tfvars'
+  shell-path:
+    description: 'Path for shell export script'
+    default: 'vaulter-env.sh'
+
+  # ─── K8s Options ───
+  k8s-secret-name:
+    description: 'Name for Kubernetes Secret resource'
+    required: false
+  k8s-configmap-name:
+    description: 'Name for Kubernetes ConfigMap resource'
+    required: false
+  k8s-namespace:
+    description: 'Kubernetes namespace'
+    default: 'default'
+
+  # ─── Encryption Mode ───
+  encryption-mode:
+    description: 'Encryption mode: symmetric or asymmetric'
+    default: 'symmetric'
+  public-key:
+    description: 'Public key PEM content (asymmetric mode)'
+    required: false
+  private-key:
+    description: 'Private key PEM content (asymmetric mode)'
+    required: false
+  asymmetric-algorithm:
+    description: 'Algorithm for asymmetric mode: rsa-4096, rsa-2048, ec-p256, ec-p384'
+    default: 'rsa-4096'
+
+  # ─── Shared Vars ───
+  include-shared:
+    description: 'Include shared variables when service is specified'
+    default: 'true'
+
+  # ─── Export to GitHub Env ───
+  export-to-env:
+    description: 'Export variables to GITHUB_ENV for subsequent steps'
+    default: 'false'
+  mask-values:
+    description: 'Mask secret values in logs'
+    default: 'true'
+
+outputs:
+  env-file:
+    description: 'Path to generated .env file'
+  json-file:
+    description: 'Path to generated JSON file'
+  k8s-secret-file:
+    description: 'Path to generated Kubernetes Secret YAML'
+  k8s-configmap-file:
+    description: 'Path to generated Kubernetes ConfigMap YAML'
+  helm-values-file:
+    description: 'Path to generated Helm values file'
+  tfvars-file:
+    description: 'Path to generated Terraform .tfvars file'
+  shell-file:
+    description: 'Path to generated shell export script'
+  vars-count:
+    description: 'Number of variables exported'
+  vars-json:
+    description: 'JSON string with all variable names (not values)'
+
+runs:
+  using: 'node20'
+  main: 'dist/action/index.cjs'

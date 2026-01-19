@@ -638,25 +638,41 @@ mode: "split"  # or "unified"
 2. \`vaulter_key_generate\` - Generate encryption key
 3. \`vaulter_set\` - Add variables
 
-### 2. Deploy to Kubernetes
+### 2. CI/CD with GitHub Action (Recommended)
+Use the official GitHub Action for automated deployments:
+
+\`\`\`yaml
+- uses: forattini-dev/vaulter@v1
+  with:
+    backend: \${{ secrets.VAULTER_BACKEND }}
+    project: my-app
+    environment: prd
+    outputs: k8s-secret,helm-values,tfvars
+  env:
+    VAULTER_PASSPHRASE: \${{ secrets.VAULTER_PASSPHRASE }}
+\`\`\`
+
+**Supported outputs:** env, json, k8s-secret, k8s-configmap, helm-values, tfvars, shell
+
+### 3. Deploy to Kubernetes (manual)
 1. \`vaulter_list\` - Review variables
 2. \`vaulter_k8s_secret\` - Generate Secret YAML
 3. Apply with kubectl
 
-### 3. Compare before deploy
+### 4. Compare before deploy
 1. \`vaulter_compare\` - Compare dev vs prd
 2. \`vaulter_sync\` with dry_run - Preview changes
 
-### 4. Check system status
+### 5. Check system status
 1. \`vaulter_status\` - Get encryption, rotation & audit overview
 2. \`vaulter_audit_list\` - Detailed audit log
 
-### 5. Monorepo shared variables
+### 6. Monorepo shared variables
 1. \`vaulter_shared_list\` - See shared vars
 2. \`vaulter_set shared=true\` - Add shared var
 3. \`vaulter_inheritance_info\` - Check service inheritance
 
-### 6. Batch operations
+### 7. Batch operations
 1. \`vaulter_multi_set\` - Set multiple vars: \`{ "VAR1": "a", "VAR2": "b" }\`
 2. \`vaulter_multi_get\` - Get specific vars: \`["VAR1", "VAR2"]\`
 3. \`vaulter_multi_delete\` - Remove deprecated keys: \`["OLD1", "OLD2"]\`

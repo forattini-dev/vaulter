@@ -274,7 +274,7 @@ function loadEnvFile(
     delete process.env.DEBUG
   }
 
-  const result = dotenv.config({ path: filePath, override })
+  const result = dotenv.config({ path: filePath, override, quiet: true })
   const varsCount = result.parsed ? Object.keys(result.parsed).length : 0
 
   // Restore DEBUG
@@ -368,7 +368,7 @@ export function config(options: ConfigOptions = {}): ConfigResult {
       console.log('[vaulter] No .vaulter directory found, falling back to dotenv')
     }
     // Fallback to standard dotenv behavior
-    const result = dotenv.config({ override })
+    const result = dotenv.config({ override, quiet: true })
     const vars = result.parsed ? Object.keys(result.parsed).length : 0
     return {
       mode: effectiveMode,

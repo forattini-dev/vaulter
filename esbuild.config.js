@@ -166,6 +166,33 @@ const standaloneConfig = {
   plugins: [fixImportMetaUrl, stubOptionalNative]
 }
 
+// GitHub Action banner - sets env vars BEFORE any imports
+const actionBanner = `// Vaulter GitHub Action - https://github.com/forattini-dev/vaulter
+// Force silent logging to avoid pino-pretty transport errors in bundled action
+process.env.S3DB_LOG_LEVEL = 'silent';
+process.env.S3DB_LOG_FORMAT = 'json';
+`
+
+// GitHub Action bundle (self-contained, no external deps needed at runtime)
+const actionConfig = {
+  ...commonOptions,
+  entryPoints: ['./src/action/index.ts'],
+  outfile: './dist/action/index.cjs',
+  format: 'cjs',
+  minify: false, // Keep readable for debugging
+  define: {
+    ...commonOptions.define
+  },
+  banner: {
+    js: actionBanner
+  },
+  // Bundle everything for action
+  external: [],
+  plugins: [fixImportMetaUrl, stubOptionalNative]
+}
+
+const isAction = process.argv.includes('--action')
+
 async function build() {
   if (isWatch) {
     const ctx = await esbuild.context(fullConfig)
@@ -175,6 +202,10 @@ async function build() {
     await esbuild.build(standaloneConfig)
     console.log(`✓ Built vaulter-standalone v${pkg.version}`)
     console.log('  → dist/bin/vaulter-standalone.cjs (CLI only, no MCP)')
+  } else if (isAction) {
+    await esbuild.build(actionConfig)
+    console.log(`✓ Built vaulter-action v${pkg.version}`)
+    console.log('  → dist/action/index.js (GitHub Action)')
   } else {
     await esbuild.build(fullConfig)
     console.log(`✓ Built vaulter v${pkg.version}`)

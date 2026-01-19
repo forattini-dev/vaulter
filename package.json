@@ -45,6 +45,7 @@
   },
   "files": [
     "dist",
+    "action.yml",
     "README.md",
     "LICENSE"
   ],
@@ -75,7 +76,8 @@
     "build:bundle": "node esbuild.config.js",
     "build:standalone": "node esbuild.config.js --standalone",
     "build:binaries": "pnpm build:standalone && mkdir -p releases && pnpm exec pkg ./dist/bin/vaulter-standalone.cjs --output releases/vaulter --targets node20-linux-x64,node20-linux-arm64,node20-macos-x64,node20-macos-arm64,node20-win-x64",
-    "build:all": "pnpm build && pnpm build:bundle",
+    "build:action": "node esbuild.config.js --action",
+    "build:all": "pnpm build && pnpm build:bundle && pnpm build:action",
     "test": "vitest run",
     "test:watch": "vitest watch",
     "test:coverage": "vitest run --coverage",

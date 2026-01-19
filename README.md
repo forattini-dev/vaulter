@@ -312,47 +312,164 @@ Vaulter separates **local development** from **deployment** configurations:
 
 ## CI/CD
 
-### GitHub Actions (Recommended)
+### GitHub Action (Recommended)
 
-Use `vaulter run` to execute commands with auto-loaded environment variables:
+Use the official Vaulter GitHub Action for seamless CI/CD integration:
 
 ```yaml
-name: Build & Deploy
-on:
-  push:
-    branches: [main]
-
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-
-      - name: Pull secrets from backend
-        env:
-          VAULTER_KEY: ${{ secrets.VAULTER_KEY }}
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        run: npx vaulter sync pull -e prd
-
-      - name: Build with env vars
-        run: npx vaulter run -e prd -- pnpm build
-
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Deploy secrets to K8s
-        env:
-          VAULTER_KEY: ${{ secrets.VAULTER_KEY }}
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        run: npx vaulter export k8s-secret -e prd | kubectl apply -f -
+- uses: forattini-dev/vaulter@v1
+  id: secrets
+  with:
+    backend: s3://my-bucket/secrets
+    project: my-app
+    environment: prd
+    outputs: env,k8s-secret
+  env:
+    AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+    AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+    VAULTER_PASSPHRASE: ${{ secrets.VAULTER_PASSPHRASE }}
 ```
 
-**Auto-detection in CI:** When `CI=true` or `GITHUB_ACTIONS` is set, vaulter automatically loads from `.vaulter/deploy/` instead of `.vaulter/local/`.
+#### Output Formats
+
+| Output | File | Use Case |
+|:-------|:-----|:---------|
+| `env` | `.env` | Docker, Node.js |
+| `json` | `vaulter-vars.json` | Custom scripts |
+| `k8s-secret` | `k8s-secret.yaml` | `kubectl apply` |
+| `k8s-configmap` | `k8s-configmap.yaml` | `kubectl apply` |
+| `helm-values` | `helm-values.yaml` | `helmfile`, `helm` |
+| `tfvars` | `terraform.auto.tfvars` | `terraform`, `terragrunt` |
+| `shell` | `vaulter-env.sh` | `source` in scripts |
+
+#### Full Examples
+
+**kubectl:**
+```yaml
+- uses: forattini-dev/vaulter@v1
+  with:
+    backend: ${{ secrets.VAULTER_BACKEND }}
+    project: my-app
+    environment: prd
+    outputs: k8s-secret,k8s-configmap
+    k8s-namespace: my-namespace
+  env:
+    AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+    AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+    VAULTER_PASSPHRASE: ${{ secrets.VAULTER_PASSPHRASE }}
+
+- run: |
+    kubectl apply -f k8s-secret.yaml
+    kubectl apply -f k8s-configmap.yaml
+```
+
+**Helmfile:**
+```yaml
+- uses: forattini-dev/vaulter@v1
+  with:
+    backend: ${{ secrets.VAULTER_BACKEND }}
+    project: my-app
+    environment: prd
+    outputs: helm-values
+    helm-values-path: ./helm/secrets.yaml
+  env:
+    AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+    AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+    VAULTER_PASSPHRASE: ${{ secrets.VAULTER_PASSPHRASE }}
+
+- run: helmfile -e prd apply
+```
+
+**Terraform/Terragrunt:**
+```yaml
+- uses: forattini-dev/vaulter@v1
+  with:
+    backend: ${{ secrets.VAULTER_BACKEND }}
+    project: infra
+    environment: prd
+    outputs: tfvars
+    # .auto.tfvars is loaded automatically by Terraform!
+    tfvars-path: ./secrets.auto.tfvars
+  env:
+    AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+    AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+    VAULTER_PASSPHRASE: ${{ secrets.VAULTER_PASSPHRASE }}
+
+- run: terragrunt apply -auto-approve
+```
+
+**Docker Build:**
+```yaml
+- uses: forattini-dev/vaulter@v1
+  with:
+    backend: ${{ secrets.VAULTER_BACKEND }}
+    project: my-app
+    environment: prd
+    outputs: env
+    env-path: .env.production
+  env:
+    AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+    AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+    VAULTER_PASSPHRASE: ${{ secrets.VAULTER_PASSPHRASE }}
+
+- run: docker build --secret id=env,src=.env.production -t app .
+```
+
+**Export to GITHUB_ENV:**
+```yaml
+- uses: forattini-dev/vaulter@v1
+  with:
+    backend: ${{ secrets.VAULTER_BACKEND }}
+    project: my-app
+    environment: prd
+    export-to-env: true  # Makes vars available in subsequent steps
+  env:
+    AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+    AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+    VAULTER_PASSPHRASE: ${{ secrets.VAULTER_PASSPHRASE }}
+
+- run: echo "Database is $DATABASE_URL"  # Available!
+```
+
+#### Action Inputs
+
+| Input | Required | Default | Description |
+|:------|:--------:|:--------|:------------|
+| `backend` | ✓ | - | S3 connection string |
+| `project` | ✓ | - | Project name |
+| `environment` | ✓ | - | Environment (dev/stg/prd) |
+| `service` | | - | Service (monorepo) |
+| `outputs` | | `env` | Comma-separated outputs |
+| `k8s-namespace` | | `default` | K8s namespace |
+| `export-to-env` | | `false` | Export to GITHUB_ENV |
+| `mask-values` | | `true` | Mask secrets in logs |
+
+#### Action Outputs
+
+| Output | Description |
+|:-------|:------------|
+| `env-file` | Path to .env file |
+| `k8s-secret-file` | Path to K8s Secret YAML |
+| `k8s-configmap-file` | Path to K8s ConfigMap YAML |
+| `helm-values-file` | Path to Helm values file |
+| `tfvars-file` | Path to .tfvars file |
+| `vars-count` | Number of variables |
+| `vars-json` | JSON array of variable names |
+
+### CLI in CI/CD
+
+You can also use the CLI directly:
+
+```yaml
+- name: Pull and build
+  env:
+    VAULTER_PASSPHRASE: ${{ secrets.VAULTER_PASSPHRASE }}
+    AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+    AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+  run: |
+    npx vaulter sync pull -e prd
+    npx vaulter run -e prd -- pnpm build
+```
 
 ### Other Platforms
 
