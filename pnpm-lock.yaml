@@ -27,8 +27,8 @@ importers:
         specifier: ^1.0.66
         version: 1.0.66
       s3db.js:
-        specifier: ^19.3.16
-        version: 19.3.16(@hono/node-server@1.19.9(hono@4.11.4))(express@5.2.1)(hono@4.11.4)(jose@6.1.3)(zod@4.3.5)
+        specifier: ^19.3.17
+        version: 19.3.17(@hono/node-server@1.19.9(hono@4.11.4))(express@5.2.1)(hono@4.11.4)(jose@6.1.3)(zod@4.3.5)
       tinyglobby:
         specifier: ^0.2.15
         version: 0.2.15
@@ -1701,8 +1701,8 @@ packages:
     resolution: {integrity: sha512-nLTrUKm2UyiL7rlhapu/Zl45FwNgkZGaCpZbIHajDYgwlJCOzLSk+cIPAnsEqV955GjILJnKbdQC1nVPz+gAYQ==}
     engines: {node: '>= 18'}
 
-  s3db.js@19.3.16:
-    resolution: {integrity: sha512-JyYeqC7APddaEiXgycM9p97pKHi007MIVSHpvZSxjGrmsU9CzJZWxZHUJQCv7nXGtP4M2qez7vCxcMsAOYyyKA==}
+  s3db.js@19.3.17:
+    resolution: {integrity: sha512-JkTujV4Zs+ZlLbVjL9mLa3Gd1diQCbeYGyAvUzshugpTkDqxCKSSiY0dKGxnvi3NDMSEZZQtpvkfy9xZ6G27SA==}
     hasBin: true
     peerDependencies:
       '@aws-sdk/client-acm': ^3.0.0
@@ -4367,7 +4367,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  s3db.js@19.3.16(@hono/node-server@1.19.9(hono@4.11.4))(express@5.2.1)(hono@4.11.4)(jose@6.1.3)(zod@4.3.5):
+  s3db.js@19.3.17(@hono/node-server@1.19.9(hono@4.11.4))(express@5.2.1)(hono@4.11.4)(jose@6.1.3)(zod@4.3.5):
     dependencies:
       '@aws-sdk/client-s3': 3.971.0
       '@aws-sdk/credential-providers': 3.971.0
