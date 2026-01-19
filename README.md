@@ -417,6 +417,112 @@ vaulter export shell -e dev -s api --no-shared
 
 ---
 
+## Output Targets (Multi-Framework)
+
+**One config → multiple `.env` files.** Works with any framework: Next.js, NestJS, Express, NX, Turborepo, etc.
+
+### The Problem
+
+Different apps need different variables in different places:
+
+```
+apps/
+├── web/          # Next.js needs .env.local with NEXT_PUBLIC_*
+├── api/          # NestJS needs .env with DATABASE_*, JWT_*
+└── admin/        # Needs everything
+```
+
+### The Solution
+
+Define outputs once, pull everywhere:
+
+```yaml
+# .vaulter/config.yaml
+outputs:
+  web:
+    path: apps/web
+    filename: .env.local
+    include: [NEXT_PUBLIC_*]      # Only public vars
+
+  api:
+    path: apps/api
+    include: [DATABASE_*, JWT_*]  # Only backend vars
+    exclude: [*_DEV]              # No dev-only vars
+
+  admin: apps/admin               # Shorthand: all vars
+
+# Shared across all outputs (inherited automatically)
+shared:
+  include: [NODE_ENV, LOG_LEVEL, SENTRY_*]
+```
+
+### Pull to All Outputs
+
+```bash
+# Pull to all outputs at once
+vaulter sync pull --all
+
+# Result:
+# ✓ web: apps/web/.env.local (5 vars)
+# ✓ api: apps/api/.env (12 vars)
+# ✓ admin: apps/admin/.env (25 vars)
+```
+
+### Pull to Specific Output
+
+```bash
+# Pull only web
+vaulter sync pull --output web
+
+# Preview without writing
+vaulter sync pull --all --dry-run
+```
+
+### How It Works
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                    Backend (S3)                         │
+│  DATABASE_URL, JWT_SECRET, NEXT_PUBLIC_API, LOG_LEVEL   │
+└────────────────────────┬────────────────────────────────┘
+                         │
+              vaulter sync pull --all
+                         │
+         ┌───────────────┼───────────────┐
+         ▼               ▼               ▼
+   ┌──────────┐    ┌──────────┐    ┌──────────┐
+   │   web    │    │   api    │    │  admin   │
+   │ .env.local│   │  .env    │    │  .env    │
+   │          │    │          │    │          │
+   │ LOG_LEVEL│    │ LOG_LEVEL│    │ LOG_LEVEL│  ← shared (inherited)
+   │ NEXT_*   │    │ DATABASE_│    │ ALL VARS │  ← filtered by include/exclude
+   └──────────┘    │ JWT_*    │    └──────────┘
+                   └──────────┘
+```
+
+### Pattern Syntax
+
+| Pattern | Matches |
+|:--------|:--------|
+| `NEXT_PUBLIC_*` | `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_GA_ID` |
+| `*_SECRET` | `JWT_SECRET`, `API_SECRET` |
+| `DATABASE_*` | `DATABASE_URL`, `DATABASE_HOST` |
+| `*_URL` | `API_URL`, `DATABASE_URL`, `REDIS_URL` |
+
+### Inheritance
+
+By default, `shared.include` vars are added to ALL outputs. Override with `inherit: false`:
+
+```yaml
+outputs:
+  isolated-app:
+    path: apps/isolated
+    inherit: false           # No shared vars
+    include: [ISOLATED_*]
+```
+
+---
+
 ## API Usage
 
 ```typescript

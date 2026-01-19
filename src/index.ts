@@ -15,7 +15,12 @@ export type {
   EnvVarInput,
   EnvVarMetadata,
   VaulterConfig,
-  ExportFormat
+  ExportFormat,
+  // Output targets
+  OutputTarget,
+  OutputTargetInput,
+  NormalizedOutputTarget,
+  SharedVarsConfig
 } from './types.js'
 
 export {
@@ -111,3 +116,19 @@ export type {
   AuditOperation,
   AuditSource
 } from './types.js'
+
+// Output targets (framework-agnostic .env generation)
+export {
+  normalizeOutputTarget,
+  normalizeOutputTargets,
+  filterVarsByPatterns,
+  getSharedVars,
+  formatEnvFile,
+  pullToOutputs,
+  validateOutputsConfig
+} from './lib/outputs.js'
+
+export type {
+  PullToOutputsOptions,
+  PullToOutputsResult
+} from './lib/outputs.js'

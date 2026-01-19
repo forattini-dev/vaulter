@@ -316,7 +316,7 @@ const cliSchema: CLISchema = {
           description: 'Push local to remote (use --prune to delete remote-only)'
         },
         pull: {
-          description: 'Pull remote to local (use --prune to delete local-only)'
+          description: 'Pull remote to local. Use --all for outputs mode, --output <name> for specific output'
         },
         diff: {
           description: 'Show differences between local and remote'

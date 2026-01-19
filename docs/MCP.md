@@ -175,14 +175,29 @@ Bidirectional sync between local .env and backend.
 | `dryRun` | boolean | No | `false` | Preview changes without applying |
 
 #### `vaulter_pull`
-Download from backend to local .env file.
+Download from backend to local .env file or output targets.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `environment` | string | No | `dev` | Environment name |
 | `project` | string | No | auto | Project name |
 | `service` | string | No | - | Service name |
-| `output` | string | No | auto | Output file path |
+| `output` | string | No | auto | Output file path OR output target name (when config has `outputs`) |
+| `all` | boolean | No | `false` | Pull to ALL output targets defined in config |
+
+**Output Targets Mode:**
+
+When config has `outputs` section:
+- `--all` → Pulls to all defined output targets
+- `--output <name>` → Pulls to specific output target (e.g., `web`, `api`)
+
+```bash
+# Pull to all outputs
+vaulter sync pull --all -e dev
+
+# Pull to specific output
+vaulter sync pull --output web -e dev
+```
 
 #### `vaulter_push`
 Upload local .env file to backend.
@@ -567,6 +582,194 @@ Batch operations on multiple variables.
 1. vaulter_shared_list     → See shared vars
 2. vaulter_set shared=true → Add shared var
 3. vaulter_inheritance_info → Check service inheritance
+```
+
+### 6. Output Targets (Multi-Framework)
+
+```
+1. Configure outputs in config.yaml
+2. vaulter_pull all=true   → Pull to all outputs
+3. vaulter_pull output=web → Pull to specific output
+```
+
+---
+
+## Output Targets
+
+Generate multiple `.env` files from a single backend, with filtering and shared variable inheritance.
+
+### Configuration
+
+```yaml
+# .vaulter/config.yaml
+outputs:
+  web:
+    path: apps/web              # Where to write .env
+    filename: .env.local        # Filename (default: .env)
+    include: [NEXT_PUBLIC_*]    # Glob patterns to include
+    exclude: [*_DEV]            # Glob patterns to exclude
+    inherit: true               # Inherit shared vars (default: true)
+
+  api:
+    path: apps/api
+    include: [DATABASE_*, JWT_*, API_*]
+
+  admin: apps/admin             # Shorthand: just the path (all vars)
+
+# Variables shared across ALL outputs
+shared:
+  include: [NODE_ENV, LOG_LEVEL, SENTRY_*]
+```
+
+### Properties
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `path` | string | **required** | Directory for .env file |
+| `filename` | string | `.env` | Filename (supports `{env}` placeholder: `.env.{env}` → `.env.dev`) |
+| `include` | string[] | `[]` | Glob patterns to include (empty = all) |
+| `exclude` | string[] | `[]` | Glob patterns to exclude |
+| `inherit` | boolean | `true` | Include shared vars |
+
+### Pattern Matching
+
+| Pattern | Matches | Doesn't Match |
+|---------|---------|---------------|
+| `NEXT_PUBLIC_*` | `NEXT_PUBLIC_API_URL` | `API_URL` |
+| `*_SECRET` | `JWT_SECRET`, `API_SECRET` | `SECRET_KEY` |
+| `DATABASE_*` | `DATABASE_URL`, `DATABASE_HOST` | `DB_URL` |
+| `*_URL` | `API_URL`, `DATABASE_URL` | `URL_PREFIX` |
+
+### Filter Algorithm
+
+```
+1. If include is empty → include ALL vars
+2. If include is specified → only matching vars
+3. Apply exclude patterns to filter out
+4. If inherit=true → merge with shared vars (output overrides shared)
+```
+
+### CLI Commands
+
+```bash
+# Pull to all outputs
+vaulter sync pull --all -e dev
+
+# Pull to specific output
+vaulter sync pull --output web -e dev
+
+# Dry run (preview without writing)
+vaulter sync pull --all --dry-run -e dev
+
+# With verbose output
+vaulter sync pull --all --verbose -e dev
+```
+
+### MCP Tool Usage
+
+```json
+// Pull to all outputs
+{
+  "tool": "vaulter_pull",
+  "arguments": {
+    "environment": "dev",
+    "all": true
+  }
+}
+
+// Pull to specific output
+{
+  "tool": "vaulter_pull",
+  "arguments": {
+    "environment": "dev",
+    "output": "web"
+  }
+}
+```
+
+### Example: Monorepo with Next.js + NestJS
+
+```yaml
+# .vaulter/config.yaml
+project: my-monorepo
+
+outputs:
+  # Next.js frontend - only public vars
+  web:
+    path: apps/web
+    filename: .env.local
+    include: [NEXT_PUBLIC_*]
+
+  # NestJS API - backend vars
+  api:
+    path: apps/api
+    include: [DATABASE_*, REDIS_*, JWT_*, API_*]
+    exclude: [*_DEV, *_LOCAL]
+
+  # Worker service - minimal vars
+  worker:
+    path: apps/worker
+    include: [REDIS_*, QUEUE_*]
+    inherit: true
+
+# Common vars for all outputs
+shared:
+  include: [NODE_ENV, LOG_LEVEL, SENTRY_DSN]
+```
+
+**Result of `vaulter sync pull --all -e prd`:**
+
+```
+apps/web/.env.local:
+  NODE_ENV=production          ← shared
+  LOG_LEVEL=info               ← shared
+  SENTRY_DSN=...               ← shared
+  NEXT_PUBLIC_API_URL=...      ← filtered by include
+
+apps/api/.env:
+  NODE_ENV=production          ← shared
+  LOG_LEVEL=info               ← shared
+  SENTRY_DSN=...               ← shared
+  DATABASE_URL=...             ← filtered by include
+  REDIS_URL=...                ← filtered by include
+  JWT_SECRET=...               ← filtered by include
+
+apps/worker/.env:
+  NODE_ENV=production          ← shared
+  LOG_LEVEL=info               ← shared
+  SENTRY_DSN=...               ← shared
+  REDIS_URL=...                ← filtered by include
+  QUEUE_URL=...                ← filtered by include
+```
+
+### Programmatic API
+
+```typescript
+import { pullToOutputs, loadConfig, createClient } from 'vaulter'
+
+const config = loadConfig()
+const client = createClient({ config })
+await client.connect()
+
+const result = await pullToOutputs({
+  client,
+  config,
+  environment: 'dev',
+  projectRoot: '/path/to/project',
+  all: true,           // or output: 'web'
+  dryRun: false,
+  verbose: true
+})
+
+// result.files: Array of { output, path, fullPath, varsCount, vars }
+// result.warnings: Array of warning strings
+
+console.log(`Wrote ${result.files.length} files`)
+for (const file of result.files) {
+  console.log(`  ${file.output}: ${file.fullPath} (${file.varsCount} vars)`)
+}
+
+await client.disconnect()
 ```
 
 ---

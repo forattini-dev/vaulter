@@ -349,6 +349,104 @@ export interface MonorepoConfig {
   services_pattern?: string
 }
 
+// ============================================================================
+// Output Targets (Framework-agnostic env file generation)
+// ============================================================================
+
+/**
+ * Output target configuration for generating .env files
+ *
+ * Each output target defines where and how to generate environment files
+ * for a specific service/app in a monorepo or single-repo setup.
+ *
+ * @example
+ * ```yaml
+ * outputs:
+ *   web:
+ *     path: apps/web
+ *     filename: .env.local
+ *     include: [NEXT_PUBLIC_*, API_URL]
+ *     exclude: [DATABASE_*]
+ *     inherit: true
+ * ```
+ */
+export interface OutputTarget {
+  /** Directory path where .env will be generated (relative to project root) */
+  path: string
+
+  /**
+   * Filename to generate (default: '.env')
+   * Supports {env} placeholder: '.env.{env}' → '.env.dev'
+   */
+  filename?: string
+
+  /**
+   * Glob patterns for vars to include.
+   * If omitted, includes all vars.
+   * Patterns use minimatch syntax: '*', '?', '**', etc.
+   *
+   * @example ['NEXT_PUBLIC_*', 'API_URL', 'LOG_*']
+   */
+  include?: string[]
+
+  /**
+   * Glob patterns for vars to exclude.
+   * Applied after include filters.
+   *
+   * @example ['DATABASE_*', '*_SECRET']
+   */
+  exclude?: string[]
+
+  /**
+   * Inherit shared vars? (default: true)
+   * When true, shared vars are merged with service-specific vars.
+   */
+  inherit?: boolean
+}
+
+/**
+ * Shorthand: string = just the path with defaults
+ *
+ * @example
+ * outputs:
+ *   worker: apps/worker  # Equivalent to { path: 'apps/worker' }
+ */
+export type OutputTargetInput = string | OutputTarget
+
+/**
+ * Shared vars configuration
+ *
+ * Shared vars are inherited by all outputs (unless inherit: false).
+ * Useful for common vars like LOG_LEVEL, NODE_ENV, etc.
+ */
+export interface SharedVarsConfig {
+  /**
+   * Glob patterns for shared vars.
+   * These vars will be included in all outputs that have inherit: true
+   *
+   * @example ['LOG_LEVEL', 'NODE_ENV', 'SENTRY_*']
+   */
+  include?: string[]
+}
+
+/**
+ * Normalized output target (after processing shorthand)
+ */
+export interface NormalizedOutputTarget {
+  /** Output name (key from outputs config) */
+  name: string
+  /** Directory path */
+  path: string
+  /** Filename (with {env} placeholder resolved) */
+  filename: string
+  /** Include patterns */
+  include: string[]
+  /** Exclude patterns */
+  exclude: string[]
+  /** Whether to inherit shared vars */
+  inherit: boolean
+}
+
 export interface VaulterConfig {
   version: '1'
   project: string
@@ -383,6 +481,42 @@ export interface VaulterConfig {
   local?: LocalConfig
   /** Deploy configuration (CI/CD → K8s) */
   deploy?: DeployConfig
+
+  // ============================================================================
+  // Output Targets (framework-agnostic env file generation)
+  // ============================================================================
+
+  /**
+   * Output targets for generating .env files
+   *
+   * Each key is an output name (e.g., 'web', 'api'), and the value
+   * defines where and how to generate the .env file.
+   *
+   * @example
+   * ```yaml
+   * outputs:
+   *   web:
+   *     path: apps/web
+   *     filename: .env.local
+   *     include: [NEXT_PUBLIC_*]
+   *   api: apps/api  # Shorthand
+   * ```
+   */
+  outputs?: Record<string, OutputTargetInput>
+
+  /**
+   * Shared vars configuration
+   *
+   * Vars matching these patterns are inherited by all outputs
+   * (unless the output has inherit: false).
+   *
+   * @example
+   * ```yaml
+   * shared:
+   *   include: [LOG_LEVEL, NODE_ENV, SENTRY_*]
+   * ```
+   */
+  shared?: SharedVarsConfig
 }
 
 // ============================================================================

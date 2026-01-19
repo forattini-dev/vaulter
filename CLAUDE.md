@@ -167,6 +167,78 @@ await client.export('project', 'dev', '__shared__')
 
 ---
 
+## Output Targets (Framework-Agnostic)
+
+Gera arquivos `.env` para múltiplos destinos. Funciona com Next.js, NestJS, Express, NX, Turborepo, etc.
+
+### Config
+
+```yaml
+# .vaulter/config.yaml
+outputs:
+  web:
+    path: apps/web
+    filename: .env.local        # ou .env.{env} → .env.dev
+    include: [NEXT_PUBLIC_*]    # glob patterns
+    exclude: [*_SECRET]
+    inherit: true               # herda shared vars (default)
+
+  api: apps/api                 # shorthand: apenas path
+
+shared:
+  include: [LOG_LEVEL, NODE_ENV, SENTRY_*]
+```
+
+### CLI
+
+```bash
+# Pull para todos os outputs
+vaulter sync pull --all
+
+# Pull para output específico
+vaulter sync pull --output web
+
+# Dry-run (mostra o que seria escrito)
+vaulter sync pull --all --dry-run
+```
+
+### Algoritmo de Filtragem
+
+1. Se `include` vazio → inclui todas as vars
+2. Se `include` especificado → só vars que match
+3. Aplica `exclude` para filtrar
+
+### Herança de Shared Vars
+
+- `inherit: true` (default) → vars do `shared.include` são adicionadas
+- Service-specific vars sobrescrevem shared vars com mesmo nome
+
+### Tipos
+
+```typescript
+import {
+  pullToOutputs,
+  filterVarsByPatterns,
+  normalizeOutputTargets,
+  validateOutputsConfig
+} from 'vaulter'
+
+// Pull programático
+const result = await pullToOutputs({
+  client,
+  config,
+  environment: 'dev',
+  projectRoot: '/path/to/project',
+  all: true,
+  dryRun: false
+})
+
+// result.files: { output, path, fullPath, varsCount, vars }[]
+// result.warnings: string[]
+```
+
+---
+
 ## Estrutura
 
 ```
@@ -176,7 +248,10 @@ src/
 ├── types.ts           # Types
 ├── loader.ts          # dotenv loader
 ├── cli/               # CLI
-├── lib/               # Utils
+├── lib/
+│   ├── outputs.ts     # Output targets (pullToOutputs, filterVarsByPatterns)
+│   ├── pattern-matcher.ts  # Glob pattern compilation
+│   └── ...            # Outros utils
 └── mcp/               # MCP server (tools, resources, prompts)
 ```
 
