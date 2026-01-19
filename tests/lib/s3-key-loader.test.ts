@@ -170,8 +170,266 @@ describe('s3-key-loader', () => {
     })
   })
 
-  // Note: fetchKeyFromS3 and loadKeyFromS3 require dynamic import of @aws-sdk/client-s3
-  // Testing these functions requires actual AWS SDK or integration tests with LocalStack/MinIO
-  // The parseS3Url tests above cover the URL parsing logic comprehensively
-  // Coverage for S3 fetch functions is handled via integration tests
+  describe('fetchKeyFromS3', () => {
+    beforeEach(() => {
+      vi.resetModules()
+      vi.unstubAllGlobals()
+    })
+
+    it('should fetch key from S3 successfully', async () => {
+      let capturedConfig: any
+      let capturedCommand: any
+
+      const mockBody = {
+        transformToString: vi.fn().mockResolvedValue('  my-secret-key  ')
+      }
+
+      vi.doMock('@aws-sdk/client-s3', () => {
+        return {
+          S3Client: class MockS3Client {
+            constructor(config: any) {
+              capturedConfig = config
+            }
+            send = vi.fn().mockResolvedValue({ Body: mockBody })
+          },
+          GetObjectCommand: class MockGetObjectCommand {
+            constructor(params: any) {
+              capturedCommand = params
+            }
+          }
+        }
+      })
+
+      const { fetchKeyFromS3 } = await import('../../src/lib/s3-key-loader.js')
+
+      const location: S3KeyLocation = {
+        bucket: 'my-bucket',
+        key: 'keys/master.key'
+      }
+
+      const result = await fetchKeyFromS3(location)
+
+      expect(result).toBe('my-secret-key')
+      expect(capturedCommand).toEqual({
+        Bucket: 'my-bucket',
+        Key: 'keys/master.key'
+      })
+    })
+
+    it('should configure region when provided', async () => {
+      let capturedConfig: any
+
+      vi.doMock('@aws-sdk/client-s3', () => {
+        return {
+          S3Client: class MockS3Client {
+            constructor(config: any) {
+              capturedConfig = config
+            }
+            send = vi.fn().mockResolvedValue({
+              Body: { transformToString: () => Promise.resolve('key') }
+            })
+          },
+          GetObjectCommand: class MockGetObjectCommand {
+            constructor() {}
+          }
+        }
+      })
+
+      const { fetchKeyFromS3 } = await import('../../src/lib/s3-key-loader.js')
+
+      await fetchKeyFromS3({
+        bucket: 'bucket',
+        key: 'key',
+        region: 'us-west-2'
+      })
+
+      expect(capturedConfig.region).toBe('us-west-2')
+    })
+
+    it('should configure endpoint for MinIO/custom endpoints', async () => {
+      let capturedConfig: any
+
+      vi.doMock('@aws-sdk/client-s3', () => {
+        return {
+          S3Client: class MockS3Client {
+            constructor(config: any) {
+              capturedConfig = config
+            }
+            send = vi.fn().mockResolvedValue({
+              Body: { transformToString: () => Promise.resolve('key') }
+            })
+          },
+          GetObjectCommand: class MockGetObjectCommand {
+            constructor() {}
+          }
+        }
+      })
+
+      const { fetchKeyFromS3 } = await import('../../src/lib/s3-key-loader.js')
+
+      await fetchKeyFromS3({
+        bucket: 'bucket',
+        key: 'key',
+        endpoint: 'http://localhost:9000'
+      })
+
+      expect(capturedConfig.endpoint).toBe('http://localhost:9000')
+      expect(capturedConfig.forcePathStyle).toBe(true)
+    })
+
+    it('should configure credentials when provided', async () => {
+      let capturedConfig: any
+
+      vi.doMock('@aws-sdk/client-s3', () => {
+        return {
+          S3Client: class MockS3Client {
+            constructor(config: any) {
+              capturedConfig = config
+            }
+            send = vi.fn().mockResolvedValue({
+              Body: { transformToString: () => Promise.resolve('key') }
+            })
+          },
+          GetObjectCommand: class MockGetObjectCommand {
+            constructor() {}
+          }
+        }
+      })
+
+      const { fetchKeyFromS3 } = await import('../../src/lib/s3-key-loader.js')
+
+      await fetchKeyFromS3({
+        bucket: 'bucket',
+        key: 'key',
+        accessKeyId: 'myAccessKey',
+        secretAccessKey: 'mySecretKey'
+      })
+
+      expect(capturedConfig.credentials).toEqual({
+        accessKeyId: 'myAccessKey',
+        secretAccessKey: 'mySecretKey'
+      })
+    })
+
+    it('should throw error for empty response body', async () => {
+      vi.doMock('@aws-sdk/client-s3', () => {
+        return {
+          S3Client: class MockS3Client {
+            constructor() {}
+            send = vi.fn().mockResolvedValue({ Body: null })
+          },
+          GetObjectCommand: class MockGetObjectCommand {
+            constructor() {}
+          }
+        }
+      })
+
+      const { fetchKeyFromS3 } = await import('../../src/lib/s3-key-loader.js')
+
+      await expect(fetchKeyFromS3({
+        bucket: 'bucket',
+        key: 'key'
+      })).rejects.toThrow(/empty response/i)
+    })
+
+    it('should wrap S3 errors with context', async () => {
+      vi.doMock('@aws-sdk/client-s3', () => {
+        return {
+          S3Client: class MockS3Client {
+            constructor() {}
+            send = vi.fn().mockRejectedValue(new Error('Access Denied'))
+          },
+          GetObjectCommand: class MockGetObjectCommand {
+            constructor() {}
+          }
+        }
+      })
+
+      const { fetchKeyFromS3 } = await import('../../src/lib/s3-key-loader.js')
+
+      await expect(fetchKeyFromS3({
+        bucket: 'bucket',
+        key: 'key'
+      })).rejects.toThrow(/failed to fetch key from s3.*access denied/i)
+    })
+  })
+
+  describe('loadKeyFromS3', () => {
+    beforeEach(() => {
+      vi.resetModules()
+      vi.unstubAllGlobals()
+    })
+
+    it('should parse URL and fetch key', async () => {
+      let capturedConfig: any
+      let capturedCommand: any
+
+      vi.doMock('@aws-sdk/client-s3', () => {
+        return {
+          S3Client: class MockS3Client {
+            constructor(config: any) {
+              capturedConfig = config
+            }
+            send = vi.fn().mockResolvedValue({
+              Body: { transformToString: () => Promise.resolve('loaded-key') }
+            })
+          },
+          GetObjectCommand: class MockGetObjectCommand {
+            constructor(params: any) {
+              capturedCommand = params
+            }
+          }
+        }
+      })
+
+      const { loadKeyFromS3 } = await import('../../src/lib/s3-key-loader.js')
+
+      const result = await loadKeyFromS3('s3://my-bucket/keys/master.key?region=us-east-1')
+
+      expect(result).toBe('loaded-key')
+      expect(capturedConfig.region).toBe('us-east-1')
+      expect(capturedCommand).toEqual({
+        Bucket: 'my-bucket',
+        Key: 'keys/master.key'
+      })
+    })
+
+    it('should propagate parse errors', async () => {
+      const { loadKeyFromS3 } = await import('../../src/lib/s3-key-loader.js')
+
+      await expect(loadKeyFromS3('invalid-url')).rejects.toThrow()
+    })
+
+    it('should work with http endpoints', async () => {
+      let capturedConfig: any
+
+      vi.doMock('@aws-sdk/client-s3', () => {
+        return {
+          S3Client: class MockS3Client {
+            constructor(config: any) {
+              capturedConfig = config
+            }
+            send = vi.fn().mockResolvedValue({
+              Body: { transformToString: () => Promise.resolve('http-key') }
+            })
+          },
+          GetObjectCommand: class MockGetObjectCommand {
+            constructor() {}
+          }
+        }
+      })
+
+      const { loadKeyFromS3 } = await import('../../src/lib/s3-key-loader.js')
+
+      const result = await loadKeyFromS3('http://minioadmin:secret@localhost:9000/bucket/key.txt')
+
+      expect(result).toBe('http-key')
+      expect(capturedConfig.endpoint).toBe('http://localhost:9000')
+      expect(capturedConfig.forcePathStyle).toBe(true)
+      expect(capturedConfig.credentials).toEqual({
+        accessKeyId: 'minioadmin',
+        secretAccessKey: 'secret'
+      })
+    })
+  })
 })

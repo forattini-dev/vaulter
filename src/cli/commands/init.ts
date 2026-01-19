@@ -2,12 +2,20 @@
  * Vaulter CLI - Init Command
  *
  * Initialize a new .vaulter configuration in the current directory
+ * Uses the shared init-generator module.
  */
 
-import fs from 'node:fs'
 import path from 'node:path'
 import type { CLIArgs, VaulterConfig } from '../../types.js'
-import { createDefaultConfig, configExists, findConfigDir } from '../../lib/config-loader.js'
+import { configExists, findConfigDir } from '../../lib/config-loader.js'
+import {
+  generateVaulterStructure,
+  detectMonorepo,
+  getDefaultProjectName,
+  DEFAULT_ENVIRONMENTS,
+  type InitOptions
+} from '../../lib/init-generator.js'
+import { c, print, cyan, yellow, dim } from '../lib/colors.js'
 
 interface InitContext {
   args: CLIArgs
@@ -23,164 +31,120 @@ interface InitContext {
  */
 export async function runInit(context: InitContext): Promise<void> {
   const { args, verbose, dryRun, jsonOutput } = context
-  const splitMode = args.split || false
-  const splitDirectories = {
-    mode: 'split' as const,
-    configs: 'deploy/configs',
-    secrets: 'deploy/secrets'
-  }
 
   // Check if already initialized
-  if (configExists()) {
+  if (configExists() && !args.force) {
     const existingDir = findConfigDir()
-    if (!args.force) {
-      if (jsonOutput) {
-        console.log(JSON.stringify({ error: 'already_initialized', path: existingDir }))
-      } else {
-        console.error(`Vaulter already initialized at ${existingDir}`)
-        console.error('Use --force to reinitialize')
-      }
-      process.exit(1)
+    if (jsonOutput) {
+      console.log(JSON.stringify({ error: 'already_initialized', path: existingDir }))
+    } else {
+      print.error(`Vaulter already initialized at ${existingDir}`)
+      console.error(`Use ${c.highlight('--force')} to reinitialize`)
     }
+    process.exit(1)
   }
 
   // Determine project name
-  const projectName = args.project || args.p || path.basename(process.cwd())
+  const projectName = args.project || args.p || getDefaultProjectName()
 
-  // Config directory path
-  const configDir = path.join(process.cwd(), '.vaulter')
+  // Detect or force monorepo mode
+  const monorepoDetection = detectMonorepo()
+  const isMonorepo = args.monorepo || monorepoDetection.isMonorepo
+  const servicesPattern = monorepoDetection.servicesPattern
 
   if (verbose) {
-    console.log(`Initializing vaulter for project: ${projectName}`)
-    console.log(`Config directory: ${configDir}`)
+    console.log(`Project: ${projectName}`)
+    console.log(`Mode: ${isMonorepo ? 'monorepo' : 'single-repo'}`)
+    if (monorepoDetection.tool) {
+      console.log(`Detected: ${monorepoDetection.tool}`)
+    }
+  }
+
+  // Build options
+  const options: InitOptions = {
+    projectName,
+    isMonorepo,
+    environments: DEFAULT_ENVIRONMENTS,
+    backend: args.backend || args.b,
+    servicesPattern,
+    force: args.force || false,
+    dryRun
+  }
+
+  // Generate structure
+  const result = generateVaulterStructure(process.cwd(), options)
+
+  // Output
+  if (jsonOutput) {
+    console.log(JSON.stringify({
+      success: result.success,
+      project: result.projectName,
+      mode: result.mode,
+      detected: monorepoDetection.tool || null,
+      files: result.createdFiles,
+      dryRun
+    }))
+    return
   }
 
   if (dryRun) {
-    if (jsonOutput) {
-      console.log(JSON.stringify({
-        action: 'init',
-        project: projectName,
-        configDir,
-        splitMode,
-        dryRun: true
-      }))
-    } else {
-      console.log('Dry run - would create:')
-      console.log(`  ${configDir}/config.yaml`)
-      if (splitMode) {
-        console.log(`  ${splitDirectories.configs}/`)
-        console.log(`  ${splitDirectories.secrets}/`)
-      } else {
-        console.log(`  ${configDir}/environments/`)
-      }
+    print.info('Dry run - would create:')
+    for (const file of result.createdFiles) {
+      console.log(`  ${cyan(file)}`)
     }
     return
   }
 
-  // Create configuration
-  createDefaultConfig(configDir, projectName, splitMode ? { directories: splitDirectories } : {})
+  // Success output
+  console.log('')
+  print.success(`Initialized vaulter for project: ${c.project(result.projectName)}`)
+  console.log('')
 
-  // Create .gitignore for sensitive files
-  const gitignorePath = path.join(configDir, '.gitignore')
-  if (!fs.existsSync(gitignorePath)) {
-    fs.writeFileSync(gitignorePath, `# Vaulter sensitive files
-.key
-*.key
-*.pem
-`)
+  if (isMonorepo) {
+    if (monorepoDetection.tool) {
+      console.log(`  ${dim('Detected:')} ${c.value(monorepoDetection.tool)} monorepo`)
+    }
+    console.log(`  ${dim('Mode:')} monorepo (with services/)`)
+  } else {
+    console.log(`  ${dim('Mode:')} single-repo`)
   }
 
-  // Create placeholder environment files
-  const environments = ['dev', 'stg', 'prd', 'sbx', 'dr']
-
-  if (splitMode) {
-    const baseDir = path.dirname(configDir)
-    const configsDir = path.join(baseDir, splitDirectories.configs)
-    const secretsDir = path.join(baseDir, splitDirectories.secrets)
-
-    if (!fs.existsSync(configsDir)) {
-      fs.mkdirSync(configsDir, { recursive: true })
-    }
-    if (!fs.existsSync(secretsDir)) {
-      fs.mkdirSync(secretsDir, { recursive: true })
-    }
-
-    const secretsGitignore = path.join(secretsDir, '.gitignore')
-    if (!fs.existsSync(secretsGitignore)) {
-      fs.writeFileSync(secretsGitignore, `# Vaulter secrets (do not commit)
-*
-!.gitignore
-`)
-    }
-
-    for (const env of environments) {
-      const configsFile = path.join(configsDir, `${env}.env`)
-      if (!fs.existsSync(configsFile)) {
-        fs.writeFileSync(configsFile, `# ${env.toUpperCase()} Config Variables
-# Non-sensitive config values for ${env}
-# Example: NODE_ENV=${env}
-`)
-      }
-
-      const secretsFile = path.join(secretsDir, `${env}.env`)
-      if (!fs.existsSync(secretsFile)) {
-        fs.writeFileSync(secretsFile, `# ${env.toUpperCase()} Secret Variables
-# Sensitive values for ${env} (gitignored)
-# Example: DATABASE_URL=postgres://localhost/${env}_db
-`)
-      }
-    }
-  } else {
-    const envDir = path.join(configDir, 'environments')
-
-    for (const env of environments) {
-      const envFile = path.join(envDir, `${env}.env`)
-      if (!fs.existsSync(envFile)) {
-        fs.writeFileSync(envFile, `# ${env.toUpperCase()} Environment Variables
-# Add your ${env} environment variables here
-# Example: DATABASE_URL=postgres://localhost/${env}_db
-`)
-      }
-    }
+  console.log('')
+  console.log(`${dim('Created files:')}`)
+  for (const file of result.createdFiles.slice(0, 8)) {
+    console.log(`  ${cyan(file)}`)
+  }
+  if (result.createdFiles.length > 8) {
+    console.log(`  ${dim(`... and ${result.createdFiles.length - 8} more`)}`)
   }
 
-  if (jsonOutput) {
-    console.log(JSON.stringify({
-      success: true,
-      project: projectName,
-      configDir,
-      splitMode,
-      files: [
-        'config.yaml',
-        '.gitignore',
-        ...(splitMode
-          ? [
-              `${splitDirectories.secrets}/.gitignore`,
-              ...environments.map(e => `${splitDirectories.configs}/${e}.env`),
-              ...environments.map(e => `${splitDirectories.secrets}/${e}.env`)
-            ]
-          : environments.map(e => `environments/${e}.env`))
-      ]
-    }))
-  } else {
-    console.log(`✓ Initialized vaulter for project: ${projectName}`)
-    console.log(`  Config: ${configDir}/config.yaml`)
-    if (splitMode) {
-      console.log(`  Configs: ${splitDirectories.configs}/`)
-      console.log(`  Secrets: ${splitDirectories.secrets}/`)
-    } else {
-      console.log(`  Environments: ${path.join(configDir, 'environments')}/`)
-    }
+  console.log('')
+  console.log(`${c.header('Next steps:')}`)
+  console.log('')
+
+  if (isMonorepo) {
+    console.log(`  ${yellow('1.')} Copy and fill local secrets:`)
+    console.log(`     ${c.command('cp .vaulter/local/shared.env.example .vaulter/local/shared.env')}`)
     console.log('')
-    console.log('Next steps:')
-    console.log('  1. Edit .vaulter/config.yaml to configure your backend')
-    if (splitMode) {
-      console.log('  2. Add non-sensitive vars to deploy/configs/*.env')
-      console.log('  3. Add secrets to deploy/secrets/*.env')
-      console.log('  4. Run "vaulter sync -e dev" to sync with backend')
-    } else {
-      console.log('  2. Add environment variables to .vaulter/environments/*.env')
-      console.log('  3. Run "vaulter sync -e dev" to sync with backend')
-    }
+    console.log(`  ${yellow('2.')} Configure backend in ${cyan('.vaulter/config.yaml')}`)
+    console.log('')
+    console.log(`  ${yellow('3.')} Generate encryption key:`)
+    console.log(`     ${c.command('vaulter key generate --name master')}`)
+    console.log('')
+    console.log(`  ${yellow('4.')} Run with env vars loaded:`)
+    console.log(`     ${c.command('vaulter run -s api -- pnpm dev')}`)
+  } else {
+    console.log(`  ${yellow('1.')} Copy and fill local secrets:`)
+    console.log(`     ${c.command('cp .vaulter/local/.env.example .vaulter/local/.env')}`)
+    console.log('')
+    console.log(`  ${yellow('2.')} Configure backend in ${cyan('.vaulter/config.yaml')}`)
+    console.log('')
+    console.log(`  ${yellow('3.')} Generate encryption key:`)
+    console.log(`     ${c.command('vaulter key generate --name master')}`)
+    console.log('')
+    console.log(`  ${yellow('4.')} Run with env vars loaded:`)
+    console.log(`     ${c.command('vaulter run -- pnpm dev')}`)
   }
+
+  console.log('')
 }

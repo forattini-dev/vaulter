@@ -421,6 +421,7 @@ export interface CLIArgs {
   format?: string
   // Init command flags
   split?: boolean
+  monorepo?: boolean
   // Key command flags
   asymmetric?: boolean
   asym?: boolean

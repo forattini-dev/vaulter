@@ -1,0 +1,206 @@
+/**
+ * Vaulter MCP Tools - Batch Handlers
+ *
+ * Handlers for multi_get, multi_set, multi_delete operations
+ */
+
+import { VaulterClient } from '../../../client.js'
+import { SHARED_SERVICE } from '../../../lib/shared.js'
+import type { Environment } from '../../../types.js'
+import type { ToolResponse } from '../config.js'
+
+interface VariableInput {
+  key: string
+  value: string
+  tags?: string[]
+}
+
+export async function handleMultiGetCall(
+  client: VaulterClient,
+  project: string,
+  environment: Environment,
+  service: string | undefined,
+  args: Record<string, unknown>
+): Promise<ToolResponse> {
+  const keys = args.keys as string[]
+
+  if (!keys || !Array.isArray(keys) || keys.length === 0) {
+    return {
+      content: [{
+        type: 'text',
+        text: 'Error: keys must be a non-empty array of variable names'
+      }]
+    }
+  }
+
+  // Use optimized getMany - single list query instead of N get queries
+  const resultMap = await client.getMany(keys, project, environment, service)
+
+  const found: Array<{ key: string, value: string }> = []
+  const notFound: string[] = []
+
+  for (const [key, envVar] of resultMap) {
+    if (envVar !== null) {
+      found.push({ key, value: envVar.value })
+    } else {
+      notFound.push(key)
+    }
+  }
+
+  const location = `${project}/${environment}${service ? `/${service}` : ''}`
+  const lines = [
+    `Variables from ${location}:`,
+    '',
+    ...found.map(r => `${r.key}=${r.value}`),
+    '',
+    `Found: ${found.length}/${keys.length}`
+  ]
+
+  if (notFound.length > 0) {
+    lines.push(`Not found: ${notFound.join(', ')}`)
+  }
+
+  return {
+    content: [{
+      type: 'text',
+      text: lines.join('\n')
+    }]
+  }
+}
+
+export async function handleMultiSetCall(
+  client: VaulterClient,
+  project: string,
+  environment: Environment,
+  service: string | undefined,
+  args: Record<string, unknown>
+): Promise<ToolResponse> {
+  const variables = args.variables
+  const shared = args.shared === true
+
+  // If shared flag is set, use __shared__ as service
+  const effectiveService = shared ? SHARED_SERVICE : service
+
+  if (!variables) {
+    return {
+      content: [{
+        type: 'text',
+        text: 'Error: variables is required. Provide an array of {key, value} objects or a {key: value} object'
+      }]
+    }
+  }
+
+  // Normalize to array of {key, value, tags?} objects
+  let varsArray: VariableInput[]
+
+  if (Array.isArray(variables)) {
+    // Already array format: [{ key: "VAR", value: "val", tags?: [...] }]
+    varsArray = variables as VariableInput[]
+  } else if (typeof variables === 'object') {
+    // Object format: { VAR1: "val1", VAR2: "val2" }
+    varsArray = Object.entries(variables as Record<string, string>).map(([key, value]) => ({
+      key,
+      value: String(value)
+    }))
+  } else {
+    return {
+      content: [{
+        type: 'text',
+        text: 'Error: variables must be an array of {key, value} objects or a {key: value} object'
+      }]
+    }
+  }
+
+  if (varsArray.length === 0) {
+    return {
+      content: [{
+        type: 'text',
+        text: 'Error: no variables provided'
+      }]
+    }
+  }
+
+  // Filter valid entries and prepare inputs for setMany
+  const validEntries = varsArray.filter(({ key, value }) => key && value !== undefined)
+  const skipped = varsArray.length - validEntries.length
+
+  // Use optimized setMany - single list query + parallel insert/update
+  const inputs = validEntries.map(({ key, value, tags }) => ({
+    key,
+    value: String(value),
+    project,
+    environment,
+    service: effectiveService,
+    tags,
+    metadata: { source: 'manual' as const }
+  }))
+
+  try {
+    const results = await client.setMany(inputs)
+    const succeeded = results.map(r => r.key)
+
+    const location = shared
+      ? `${project}/${environment} (shared)`
+      : `${project}/${environment}${service ? `/${service}` : ''}`
+
+    const lines = [`Set ${succeeded.length}/${varsArray.length} variable(s) in ${location}:`]
+    if (succeeded.length > 0) lines.push(`✓ ${succeeded.join(', ')}`)
+    if (skipped > 0) lines.push(`⚠ Skipped ${skipped} invalid entries`)
+
+    return {
+      content: [{
+        type: 'text',
+        text: lines.join('\n')
+      }]
+    }
+  } catch (err) {
+    return {
+      content: [{
+        type: 'text',
+        text: `Error setting variables: ${(err as Error).message}`
+      }]
+    }
+  }
+}
+
+export async function handleMultiDeleteCall(
+  client: VaulterClient,
+  project: string,
+  environment: Environment,
+  service: string | undefined,
+  args: Record<string, unknown>
+): Promise<ToolResponse> {
+  const keys = args.keys as string[]
+
+  if (!keys || !Array.isArray(keys) || keys.length === 0) {
+    return {
+      content: [{
+        type: 'text',
+        text: 'Error: keys must be a non-empty array of variable names'
+      }]
+    }
+  }
+
+  // Use optimized deleteManyByKeys - single list query + batch delete
+  const { deleted, notFound } = await client.deleteManyByKeys(keys, project, environment, service)
+
+  const location = `${project}/${environment}${service ? `/${service}` : ''}`
+  const lines = [`Deleted from ${location}:`]
+
+  if (deleted.length > 0) {
+    lines.push(`✓ Deleted: ${deleted.join(', ')}`)
+  }
+
+  if (notFound.length > 0) {
+    lines.push(`⚠ Not found: ${notFound.join(', ')}`)
+  }
+
+  lines.push(`\nTotal: ${deleted.length}/${keys.length} deleted`)
+
+  return {
+    content: [{
+      type: 'text',
+      text: lines.join('\n')
+    }]
+  }
+}

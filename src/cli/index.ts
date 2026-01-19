@@ -217,10 +217,15 @@ const cliSchema: CLISchema = {
     init: {
       description: 'Initialize a new .vaulter configuration',
       options: {
+        monorepo: {
+          type: 'boolean',
+          default: false,
+          description: 'Force monorepo mode (auto-detected from nx.json, turbo.json, etc.)'
+        },
         split: {
           type: 'boolean',
           default: false,
-          description: 'Use split mode (separate configs/secrets directories)'
+          description: 'DEPRECATED: Use default structure instead'
         }
       }
     },
@@ -630,6 +635,7 @@ function toCliArgs(result: CommandParseResult): CLIArgs {
     format: opts.format as string | undefined,
     // Command-specific options
     split: opts.split as boolean | undefined,
+    monorepo: opts.monorepo as boolean | undefined,
     // Key command options
     name: opts.name as string | undefined,
     global: opts.global as boolean | undefined,
