@@ -3,6 +3,7 @@ node_modules/
 
 # Build outputs
 dist/
+!dist/action/  # GitHub Action needs compiled code
 releases/
 *.tsbuildinfo
 
