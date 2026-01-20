@@ -365,9 +365,12 @@ describe('VaulterClient', () => {
     })
 
     it('should list all variables for project+environment', async () => {
+      // Mock returns all data; filtering is done in-memory (partition workaround)
       const vars = [
         { id: '1', key: 'VAR_1', value: 'value1', project: 'test-project', environment: 'dev' },
-        { id: '2', key: 'VAR_2', value: 'value2', project: 'test-project', environment: 'dev' }
+        { id: '2', key: 'VAR_2', value: 'value2', project: 'test-project', environment: 'dev' },
+        { id: '3', key: 'VAR_3', value: 'value3', project: 'other-project', environment: 'dev' },
+        { id: '4', key: 'VAR_4', value: 'value4', project: 'test-project', environment: 'prd' }
       ]
       mockResource.list.mockResolvedValue(vars)
 
@@ -376,18 +379,20 @@ describe('VaulterClient', () => {
         environment: 'dev'
       })
 
+      // Should filter to only matching project+environment
       expect(results.length).toBe(2)
-      expect(mockResource.list).toHaveBeenCalledWith(expect.objectContaining({
-        partition: 'byProjectEnv',
-        partitionValues: { project: 'test-project', environment: 'dev' }
-      }))
+      expect(results.every(r => r.project === 'test-project' && r.environment === 'dev')).toBe(true)
+      // Partitions are disabled; list is called with empty options
+      expect(mockResource.list).toHaveBeenCalledWith({})
     })
 
     it('should list all variables for project', async () => {
+      // Mock returns all data; filtering is done in-memory (partition workaround)
       const vars = [
         { id: '1', key: 'VAR_1', value: 'value1', project: 'test-project', environment: 'dev' },
         { id: '2', key: 'VAR_2', value: 'value2', project: 'test-project', environment: 'dev' },
-        { id: '3', key: 'VAR_3', value: 'value3', project: 'test-project', environment: 'prd' }
+        { id: '3', key: 'VAR_3', value: 'value3', project: 'test-project', environment: 'prd' },
+        { id: '4', key: 'VAR_4', value: 'value4', project: 'other-project', environment: 'dev' }
       ]
       mockResource.list.mockResolvedValue(vars)
 
@@ -395,11 +400,11 @@ describe('VaulterClient', () => {
         project: 'test-project'
       })
 
+      // Should filter to only matching project
       expect(results.length).toBe(3)
-      expect(mockResource.list).toHaveBeenCalledWith(expect.objectContaining({
-        partition: 'byProject',
-        partitionValues: { project: 'test-project' }
-      }))
+      expect(results.every(r => r.project === 'test-project')).toBe(true)
+      // Partitions are disabled; list is called with empty options
+      expect(mockResource.list).toHaveBeenCalledWith({})
     })
 
     it('should return empty array for non-existent project', async () => {
@@ -428,8 +433,11 @@ describe('VaulterClient', () => {
     })
 
     it('should list variables for project+service+environment', async () => {
+      // Mock returns all data; filtering is done in-memory (partition workaround)
       const vars = [
-        { id: '1', key: 'VAR_1', value: 'value1', project: 'test-project', service: 'api', environment: 'dev' }
+        { id: '1', key: 'VAR_1', value: 'value1', project: 'test-project', service: 'api', environment: 'dev' },
+        { id: '2', key: 'VAR_2', value: 'value2', project: 'test-project', service: 'web', environment: 'dev' },
+        { id: '3', key: 'VAR_3', value: 'value3', project: 'test-project', service: 'api', environment: 'prd' }
       ]
       mockResource.list.mockResolvedValue(vars)
 
@@ -439,17 +447,19 @@ describe('VaulterClient', () => {
         environment: 'dev'
       })
 
+      // Should filter to only matching project+service+environment
       expect(results.length).toBe(1)
-      expect(mockResource.list).toHaveBeenCalledWith(expect.objectContaining({
-        partition: 'byProjectServiceEnv',
-        partitionValues: { project: 'test-project', service: 'api', environment: 'dev' }
-      }))
+      expect(results[0].key).toBe('VAR_1')
+      // Partitions are disabled; list is called with empty options
+      expect(mockResource.list).toHaveBeenCalledWith({})
     })
 
     it('should list variables by environment only (cross-project)', async () => {
+      // Mock returns all data; filtering is done in-memory (partition workaround)
       const vars = [
         { id: '1', key: 'VAR_1', value: 'value1', project: 'project-a', environment: 'prd' },
-        { id: '2', key: 'VAR_2', value: 'value2', project: 'project-b', environment: 'prd' }
+        { id: '2', key: 'VAR_2', value: 'value2', project: 'project-b', environment: 'prd' },
+        { id: '3', key: 'VAR_3', value: 'value3', project: 'project-a', environment: 'dev' }
       ]
       mockResource.list.mockResolvedValue(vars)
 
@@ -457,11 +467,11 @@ describe('VaulterClient', () => {
         environment: 'prd'
       })
 
+      // Should filter to only matching environment across all projects
       expect(results.length).toBe(2)
-      expect(mockResource.list).toHaveBeenCalledWith(expect.objectContaining({
-        partition: 'byEnvironment',
-        partitionValues: { environment: 'prd' }
-      }))
+      expect(results.every(r => r.environment === 'prd')).toBe(true)
+      // Partitions are disabled; list is called with empty options
+      expect(mockResource.list).toHaveBeenCalledWith({})
     })
 
     it('should list all variables without filters', async () => {
