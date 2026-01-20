@@ -755,6 +755,107 @@ export class VaulterClient {
   }
 
   /**
+   * DANGER: Nuke all data from the remote storage
+   *
+   * This deletes EVERYTHING: data, partitions, metadata, historical versions.
+   * This operation is IRREVERSIBLE.
+   *
+   * Safety: Requires explicit confirmation token that matches project name.
+   *
+   * @param confirmToken - Must exactly match the project name to proceed
+   * @returns Number of objects deleted
+   */
+  async nukeAllData(confirmToken: string): Promise<{ deletedCount: number; project: string }> {
+    this.ensureConnected()
+
+    // Get project name from the stored resource config
+    // We need to list at least one var to know the project, or use a preview first
+    const vars = await this.resource.list({ limit: 1 })
+    const project = vars.length > 0 ? vars[0].project : null
+
+    if (!project) {
+      // No data to delete
+      return { deletedCount: 0, project: confirmToken }
+    }
+
+    // Safety check: token must match project name
+    if (confirmToken !== project) {
+      throw new Error(
+        `Safety check failed: confirmation token "${confirmToken}" does not match project "${project}". ` +
+        `To delete all data, pass the exact project name as confirmation.`
+      )
+    }
+
+    // Create a new resource with paranoid: false to allow deletion
+    // We need to access the underlying s3db database
+    const nukeResource = await this.db!.createResource({
+      name: 'environment-variables',
+      paranoid: false, // DANGER: allows deleteAllData
+      attributes: {
+        key: 'string|required',
+        value: 'string|required',
+        project: 'string|required',
+        environment: 'string|required'
+      }
+    })
+
+    // Delete everything
+    const result = await nukeResource.deleteAllData()
+
+    return {
+      deletedCount: result.deletedCount,
+      project
+    }
+  }
+
+  /**
+   * Preview what would be deleted by nukeAllData
+   *
+   * @returns Summary of data that would be deleted
+   */
+  async nukePreview(): Promise<{
+    project: string | null
+    environments: string[]
+    services: string[]
+    totalVars: number
+    sampleVars: Array<{ key: string; environment: string; service?: string }>
+  }> {
+    this.ensureConnected()
+
+    const vars = await this.resource.list({ limit: 100 })
+
+    if (vars.length === 0) {
+      return {
+        project: null,
+        environments: [],
+        services: [],
+        totalVars: 0,
+        sampleVars: []
+      }
+    }
+
+    const project = vars[0].project
+    const environments = [...new Set(vars.map((v: any) => v.environment))] as string[]
+    const services = [...new Set(vars.filter((v: any) => v.service).map((v: any) => v.service))] as string[]
+
+    // Get total count (may be more than 100)
+    const allVars = await this.resource.list({})
+    const totalVars = allVars.length
+
+    return {
+      project,
+      environments,
+      services,
+      totalVars,
+      sampleVars: vars.slice(0, 10).map((v: any) => ({
+        key: v.key,
+        environment: v.environment,
+        service: v.service
+      }))
+    }
+  }
+
+  /**
    * Close the connection
    */
   async disconnect(): Promise<void> {

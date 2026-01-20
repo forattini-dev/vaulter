@@ -158,3 +158,57 @@ export async function handleExportCall(
 
   return { content: [{ type: 'text', text: output || '# No variables found' }] }
 }
+
+export async function handleNukePreviewCall(
+  client: VaulterClient,
+  project: string
+): Promise<ToolResponse> {
+  const preview = await client.nukePreview()
+
+  if (preview.totalVars === 0) {
+    return {
+      content: [{
+        type: 'text',
+        text: '✓ No data found in remote storage. Nothing to delete.'
+      }]
+    }
+  }
+
+  const lines: string[] = [
+    '⚠️  NUKE PREVIEW - This shows what would be deleted',
+    '',
+    `Project:      ${preview.project}`,
+    `Total vars:   ${preview.totalVars}`,
+    `Environments: ${preview.environments.join(', ')}`,
+  ]
+
+  if (preview.services.length > 0) {
+    lines.push(`Services:     ${preview.services.join(', ')}`)
+  }
+
+  lines.push('')
+  lines.push('Sample variables that would be deleted:')
+  for (const v of preview.sampleVars) {
+    const scope = v.service ? `${v.environment}/${v.service}` : v.environment
+    lines.push(`  • ${v.key} (${scope})`)
+  }
+  if (preview.totalVars > preview.sampleVars.length) {
+    lines.push(`  ... and ${preview.totalVars - preview.sampleVars.length} more`)
+  }
+
+  lines.push('')
+  lines.push('─'.repeat(60))
+  lines.push('⛔ To execute the nuke, run via CLI (not available in MCP):')
+  lines.push('')
+  lines.push(`   vaulter nuke --confirm=${preview.project}`)
+  lines.push('')
+  lines.push('This requires human confirmation for safety.')
+  lines.push('─'.repeat(60))
+
+  return {
+    content: [{
+      type: 'text',
+      text: lines.join('\n')
+    }]
+  }
+}

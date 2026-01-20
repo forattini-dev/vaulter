@@ -459,6 +459,18 @@ export function registerTools(): Tool[] {
       }
     },
 
+    // === DANGEROUS OPERATIONS (preview only) ===
+    {
+      name: 'vaulter_nuke_preview',
+      description: 'Preview what would be deleted by a nuke operation. Returns summary of data and CLI command to execute. IMPORTANT: The actual nuke must be executed via CLI for safety - this tool only shows the preview.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          project: { type: 'string', description: 'Project name' }
+        }
+      }
+    },
+
     // === STATUS TOOL (consolidated) ===
     {
       name: 'vaulter_status',

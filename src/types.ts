@@ -105,7 +105,16 @@ export interface KeySourceS3 {
   s3: string
 }
 
-export type KeySource = KeySourceEnv | KeySourceFile | KeySourceS3
+/**
+ * Inline key source - key value directly in config
+ * Useful for shared dev keys that can be committed
+ * WARNING: Only use for development environments!
+ */
+export interface KeySourceInline {
+  inline: string
+}
+
+export type KeySource = KeySourceEnv | KeySourceFile | KeySourceS3 | KeySourceInline
 
 // ============================================================================
 // Asymmetric Encryption Types
@@ -588,6 +597,8 @@ export interface CLIArgs {
   // Export options (inheritance control)
   'skip-shared'?: boolean
   skipShared?: boolean
+  // Nuke command
+  confirm?: string
 }
 
 export interface CommandContext {

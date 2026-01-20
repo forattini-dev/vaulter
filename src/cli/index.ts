@@ -55,6 +55,7 @@ import { runKey } from './commands/key.js'
 import { runAudit } from './commands/audit.js'
 import { runRotation } from './commands/rotation.js'
 import { runRun } from './commands/run.js'
+import { runNuke } from './commands/nuke.js'
 
 // Hierarchical command group routers
 import { runVar } from './commands/var/index.js'
@@ -200,6 +201,10 @@ const cliSchema: CLISchema = {
       type: 'boolean',
       default: false,
       description: 'Disable shared vars inheritance when exporting service'
+    },
+    confirm: {
+      type: 'string',
+      description: 'Confirmation token for destructive operations (must match project name)'
     }
   },
 
@@ -519,6 +524,16 @@ const cliSchema: CLISchema = {
       }
     },
 
+    nuke: {
+      description: 'DANGER: Permanently delete ALL data from remote storage',
+      options: {
+        confirm: {
+          type: 'string',
+          description: 'Project name confirmation (required, must match exactly)'
+        }
+      }
+    },
+
     rotation: {
       description: 'Secret rotation management',
       commands: {
@@ -667,7 +682,9 @@ function toCliArgs(result: CommandParseResult): CLIArgs {
     shared: opts.shared as boolean | undefined,
     // Export options
     'skip-shared': opts['skip-shared'] as boolean | undefined,
-    skipShared: opts['skip-shared'] as boolean | undefined  // camelCase alias
+    skipShared: opts['skip-shared'] as boolean | undefined,  // camelCase alias
+    // Nuke command
+    confirm: opts.confirm as string | undefined
   }
 }
 
@@ -862,6 +879,10 @@ async function main(): Promise<void> {
 
       case 'audit':
         await runAudit(context)
+        break
+
+      case 'nuke':
+        await runNuke(context)
         break
 
       case 'rotation':

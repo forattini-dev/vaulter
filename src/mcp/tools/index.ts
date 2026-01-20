@@ -42,7 +42,8 @@ import {
   handleSetCall,
   handleDeleteCall,
   handleListCall,
-  handleExportCall
+  handleExportCall,
+  handleNukePreviewCall
 } from './handlers/core.js'
 import {
   handleMultiGetCall,
@@ -219,6 +220,10 @@ export async function handleToolCall(
       // === STATUS TOOL (consolidated) ===
       case 'vaulter_status':
         return await handleStatusCall(client, config, project, environment, service, args)
+
+      // === DANGEROUS OPERATIONS (preview only) ===
+      case 'vaulter_nuke_preview':
+        return await handleNukePreviewCall(client, project)
 
       default:
         return { content: [{ type: 'text', text: `Unknown tool: ${name}` }] }

@@ -177,3 +177,48 @@ jobs:
         run: pnpm publish --no-git-checks --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  update-major-tag:
+    name: Update Major Version Tag
+    needs: publish-npm
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Extract version info
+        id: version
+        run: |
+          # Get full version from tag (e.g., v1.0.37)
+          FULL_VERSION=${GITHUB_REF#refs/tags/}
+          echo "full=$FULL_VERSION" >> $GITHUB_OUTPUT
+
+          # Extract major version (e.g., v1)
+          MAJOR_VERSION=$(echo $FULL_VERSION | cut -d. -f1)
+          echo "major=$MAJOR_VERSION" >> $GITHUB_OUTPUT
+
+          echo "Full version: $FULL_VERSION"
+          echo "Major version: $MAJOR_VERSION"
+
+      - name: Update major version tag
+        env:
+          MAJOR_TAG: ${{ steps.version.outputs.major }}
+          FULL_TAG: ${{ steps.version.outputs.full }}
+          COMMIT_SHA: ${{ github.sha }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Delete local tag if exists
+          git tag -d "$MAJOR_TAG" 2>/dev/null || true
+
+          # Create new tag pointing to this commit
+          git tag "$MAJOR_TAG" "$COMMIT_SHA"
+
+          # Force push the tag
+          git push origin "$MAJOR_TAG" --force
+
+          echo "✓ Updated $MAJOR_TAG to point to $FULL_TAG ($COMMIT_SHA)"

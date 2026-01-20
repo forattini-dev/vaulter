@@ -572,6 +572,10 @@ export async function loadEncryptionKey(config: VaulterConfig): Promise<string |
           console.warn(`Failed to load key from S3: ${err.message}`)
         }
       }
+    } else if ('inline' in source) {
+      // Inline key (useful for shared dev keys)
+      // WARNING: Only for development environments!
+      if (source.inline) return source.inline
     }
   }
 
