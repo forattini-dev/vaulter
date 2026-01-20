@@ -66,6 +66,15 @@ export async function runList(context: ListContext): Promise<void> {
   const scope = isShared ? c.env('shared') : c.service(service || '(no service)')
   ui.verbose(`Listing variables for ${c.project(project)}/${scope}/${colorEnv(environment)}`, verbose)
 
+  // Show environment banner (respects --quiet and --json)
+  if (!jsonOutput) {
+    ui.showEnvironmentBanner(environment, {
+      project,
+      service: isShared ? 'shared' : service,
+      action: 'Listing variables'
+    })
+  }
+
   const client = await createClientFromConfig({ args, config, project, verbose })
 
   try {

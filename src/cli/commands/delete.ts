@@ -59,6 +59,15 @@ export async function runDelete(context: DeleteContext): Promise<void> {
   // Determine effective service
   const effectiveService = isShared ? SHARED_SERVICE : service
 
+  // Show environment banner (respects --quiet and --json)
+  if (!jsonOutput && !dryRun) {
+    ui.showEnvironmentBanner(environment, {
+      project,
+      service: isShared ? 'shared' : service,
+      action: 'Deleting variable'
+    })
+  }
+
   // Production confirmation
   if (isProdEnvironment(environment) && config?.security?.confirm_production && !args.force) {
     print.warning(`You are deleting from ${colorEnv(environment)} (production) environment`)

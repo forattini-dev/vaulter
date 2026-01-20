@@ -132,6 +132,15 @@ async function runDiff(context: SyncContext): Promise<void> {
 
   ui.verbose(`${symbols.info} Comparing: ${c.muted(resolvedPath)} ${symbols.arrowBoth} remote (${colorEnv(environment)})`, verbose)
 
+  // Show environment banner (respects --quiet and --json)
+  if (!jsonOutput) {
+    ui.showEnvironmentBanner(environment, {
+      project,
+      service,
+      action: 'Comparing'
+    })
+  }
+
   // Get remote vars
   const client = await createClientFromConfig({ args, config, project, verbose })
 

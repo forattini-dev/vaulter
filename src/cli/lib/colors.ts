@@ -1,19 +1,20 @@
 /**
  * Vaulter CLI - Colors Utility
  *
- * 🎨 Vaulter Blue Theme
+ * Vaulter Blue Theme
  * A rich blue palette for the secrets manager CLI
  *
- * Terminal colors using tuiuiu.js text-utils + ANSI 256 for blue palette
+ * Uses tuiuiu.js/colors for terminal styling with ANSI 256 blue palette
  * Supports NO_COLOR environment variable
  */
 
 import {
-  colorize,
-  style,
-  styles as tuiStyles,
+  bold, dim, italic, underline,
+  red, green, yellow, white, gray,
+  bgRed, bgGreen, bgYellow, bgBlue,
+  ansi256, compose, c as chain, tpl,
   stripAnsi
-} from 'tuiuiu.js'
+} from 'tuiuiu.js/colors'
 import type { Formatter } from 'cli-args-parser'
 
 // Check if colors should be enabled
@@ -28,175 +29,186 @@ const isColorEnabled = (): boolean => {
 
 const enabled = isColorEnabled()
 
-// Wrapper that respects NO_COLOR
-const color = (text: string, col: string): string => {
-  if (!enabled) return text
-  return colorize(text, col)
-}
-
-const styled = (text: string, ...styleNames: (keyof typeof tuiStyles)[]): string => {
-  if (!enabled) return text
-  return style(text, ...styleNames)
-}
-
-// Combined color + style
-const colorStyled = (text: string, col: string, ...styleNames: (keyof typeof tuiStyles)[]): string => {
-  if (!enabled) return text
-  // Apply style first, then color
-  const styledText = style(text, ...styleNames)
-  return colorize(styledText, col)
-}
+// Wrapper that respects NO_COLOR for any color function
+const wrap = <T extends (...args: string[]) => string>(fn: T) =>
+  (text: string) => enabled ? fn(text) : text
 
 /**
- * 🎨 Vaulter Blue Palette (ANSI 256)
+ * Vaulter Blue Palette (ANSI 256)
  *
  * Uses ANSI 256 color codes for rich blue palette:
- * - 39:  Neon blue     (#00AFFF) — primary, commands
- * - 45:  Electric blue (#00D7FF) — highlights, bright accents
- * - 33:  Sky blue      (#0087FF) — secondary, options
- * - 27:  Deep blue     (#005FFF) — emphasis, important
- * - 75:  Steel blue    (#5FAFFF) — muted, descriptions
- * - 111: Pale blue     (#87AFFF) — subtle, defaults
- * - 252: Light gray    (#D0D0D0) — text
- * - 245: Medium gray   (#8A8A8A) — muted text
+ * - 39:  Neon blue     (#00AFFF) - primary, commands
+ * - 45:  Electric blue (#00D7FF) - highlights, bright accents
+ * - 33:  Sky blue      (#0087FF) - secondary, options
+ * - 27:  Deep blue     (#005FFF) - emphasis, important
+ * - 75:  Steel blue    (#5FAFFF) - muted, descriptions
+ * - 111: Pale blue     (#87AFFF) - subtle, defaults
+ * - 117: Ice blue      (#87D7FF) - very light
+ * - 252: Light gray    (#D0D0D0) - text
+ * - 245: Medium gray   (#8A8A8A) - muted text
  */
-const ansi = {
-  // Styles
-  bold: (s: string) => enabled ? `\x1b[1m${s}\x1b[22m` : s,
-  dim: (s: string) => enabled ? `\x1b[2m${s}\x1b[22m` : s,
-  italic: (s: string) => enabled ? `\x1b[3m${s}\x1b[23m` : s,
-  underline: (s: string) => enabled ? `\x1b[4m${s}\x1b[24m` : s,
 
-  // Blue palette (ANSI 256)
-  neonBlue: (s: string) => enabled ? `\x1b[38;5;39m${s}\x1b[39m` : s,      // Primary (#00AFFF)
-  electricBlue: (s: string) => enabled ? `\x1b[38;5;45m${s}\x1b[39m` : s,  // Bright accent (#00D7FF)
-  skyBlue: (s: string) => enabled ? `\x1b[38;5;33m${s}\x1b[39m` : s,       // Secondary (#0087FF)
-  deepBlue: (s: string) => enabled ? `\x1b[38;5;27m${s}\x1b[39m` : s,      // Emphasis (#005FFF)
-  steelBlue: (s: string) => enabled ? `\x1b[38;5;75m${s}\x1b[39m` : s,     // Muted (#5FAFFF)
-  paleBlue: (s: string) => enabled ? `\x1b[38;5;111m${s}\x1b[39m` : s,     // Subtle (#87AFFF)
-  iceBlue: (s: string) => enabled ? `\x1b[38;5;117m${s}\x1b[39m` : s,      // Very light (#87D7FF)
+// Blue palette colors
+const neonBlue = ansi256(39)      // Primary (#00AFFF)
+const electricBlue = ansi256(45)  // Bright accent (#00D7FF)
+const skyBlue = ansi256(33)       // Secondary (#0087FF)
+const deepBlue = ansi256(27)      // Emphasis (#005FFF)
+const steelBlue = ansi256(75)     // Muted (#5FAFFF)
+const paleBlue = ansi256(111)     // Subtle (#87AFFF)
+const iceBlue = ansi256(117)      // Very light (#87D7FF)
+
+// Neutrals
+const lightGray = ansi256(252)
+const mediumGray = ansi256(245)
+const darkGray = ansi256(240)
+
+// Backgrounds
+const bgNeonBlue = (s: string) => chain.bgAnsi256(39).white(s)
+const bgElectricBlue = (s: string) => chain.bgAnsi256(45).black(s)
+const bgDeepBlue = (s: string) => chain.bgAnsi256(27).white(s)
+
+// Composed styles using compose()
+const boldNeonBlue = compose(bold, neonBlue)
+const boldElectricBlue = compose(bold, electricBlue)
+const boldDeepBlue = compose(bold, deepBlue)
+const boldWhite = compose(bold, white)
+const boldRed = compose(bold, red)
+const dimPaleBlue = compose(dim, paleBlue)
+const dimGray = compose(dim, gray)
+
+// Export ANSI utilities for external use (wrapped for NO_COLOR)
+export const ansi = {
+  // Styles
+  bold: wrap(bold),
+  dim: wrap(dim),
+  italic: wrap(italic),
+  underline: wrap(underline),
+
+  // Blue palette
+  neonBlue: wrap(neonBlue),
+  electricBlue: wrap(electricBlue),
+  skyBlue: wrap(skyBlue),
+  deepBlue: wrap(deepBlue),
+  steelBlue: wrap(steelBlue),
+  paleBlue: wrap(paleBlue),
+  iceBlue: wrap(iceBlue),
 
   // Neutrals
-  white: (s: string) => enabled ? `\x1b[97m${s}\x1b[39m` : s,
-  gray: (s: string) => enabled ? `\x1b[38;5;245m${s}\x1b[39m` : s,
-  lightGray: (s: string) => enabled ? `\x1b[38;5;252m${s}\x1b[39m` : s,
-  darkGray: (s: string) => enabled ? `\x1b[38;5;240m${s}\x1b[39m` : s,
+  white: wrap(white),
+  gray: wrap(mediumGray),
+  lightGray: wrap(lightGray),
+  darkGray: wrap(darkGray),
 
-  // Semantic (keep for status - don't make everything blue)
-  red: (s: string) => enabled ? `\x1b[91m${s}\x1b[39m` : s,
-  green: (s: string) => enabled ? `\x1b[92m${s}\x1b[39m` : s,
-  yellow: (s: string) => enabled ? `\x1b[93m${s}\x1b[39m` : s,
+  // Semantic (keep for status)
+  red: wrap(red),
+  green: wrap(green),
+  yellow: wrap(yellow),
 }
 
-// Export ANSI utilities for external use
-export { ansi }
-
 /**
- * 🎨 Vaulter Blue Theme Formatter for cli-args-parser
+ * Vaulter Blue Theme Formatter for cli-args-parser
  *
  * Maps help/version tokens to the blue palette
  */
 export const vaulterFormatter: Formatter = {
   // Headers & structure
-  'section-header': s => ansi.bold(ansi.white(s)),
+  'section-header': s => enabled ? boldWhite(s) : s,
 
   // Identity
-  'program-name': s => ansi.bold(ansi.neonBlue(s)),
-  'version': s => ansi.electricBlue(s),
-  'description': s => ansi.lightGray(s),
+  'program-name': s => enabled ? boldNeonBlue(s) : s,
+  'version': s => enabled ? electricBlue(s) : s,
+  'description': s => enabled ? lightGray(s) : s,
 
   // Commands
-  'command-name': s => ansi.neonBlue(s),
-  'command-alias': s => ansi.gray(s),
-  'command-description': s => ansi.lightGray(s),
+  'command-name': s => enabled ? neonBlue(s) : s,
+  'command-alias': s => enabled ? mediumGray(s) : s,
+  'command-description': s => enabled ? lightGray(s) : s,
 
   // Options
-  'option-flag': s => ansi.electricBlue(s),
-  'option-type': s => ansi.steelBlue(s),
-  'option-default': s => ansi.dim(ansi.paleBlue(s)),
-  'option-description': s => ansi.lightGray(s),
+  'option-flag': s => enabled ? electricBlue(s) : s,
+  'option-type': s => enabled ? steelBlue(s) : s,
+  'option-default': s => enabled ? dimPaleBlue(s) : s,
+  'option-description': s => enabled ? lightGray(s) : s,
 
   // Positionals
-  'positional-name': s => ansi.skyBlue(s),
+  'positional-name': s => enabled ? skyBlue(s) : s,
 
   // Errors (keep red for visibility)
-  'error-header': s => ansi.bold(ansi.red(s)),
-  'error-message': s => ansi.red(s),
-  'error-option': s => ansi.neonBlue(s),
+  'error-header': s => enabled ? chain.bgRed.white.bold(` ${s} `) : s,
+  'error-message': s => enabled ? red(s) : s,
+  'error-option': s => enabled ? neonBlue(s) : s,
 }
 
 // Export strip utility
 export { stripAnsi }
 
-// Style functions
-export const bold = (text: string) => styled(text, 'bold')
-export const dim = (text: string) => styled(text, 'dim')
-export const italic = (text: string) => styled(text, 'italic')
-export const underline = (text: string) => styled(text, 'underline')
+// Export template literal for external use
+export { tpl }
 
-// Color functions
-export const black = (text: string) => color(text, 'black')
-export const red = (text: string) => color(text, 'red')
-export const green = (text: string) => color(text, 'green')
-export const yellow = (text: string) => color(text, 'yellow')
-export const blue = (text: string) => color(text, 'blue')
-export const magenta = (text: string) => color(text, 'magenta')
-export const cyan = (text: string) => color(text, 'cyan')
-export const white = (text: string) => color(text, 'white')
-export const gray = (text: string) => color(text, 'gray')
+// Style functions (wrapped for NO_COLOR)
+export { bold, dim, italic, underline }
 
-// Bright color functions
-export const brightRed = (text: string) => color(text, 'redBright')
-export const brightGreen = (text: string) => color(text, 'greenBright')
-export const brightYellow = (text: string) => color(text, 'yellowBright')
-export const brightBlue = (text: string) => color(text, 'blueBright')
-export const brightMagenta = (text: string) => color(text, 'magentaBright')
-export const brightCyan = (text: string) => color(text, 'cyanBright')
-export const brightWhite = (text: string) => color(text, 'whiteBright')
+// Color functions (wrapped for NO_COLOR)
+export { red, green, yellow, white, gray }
+
+// Bright color functions using ANSI 256
+export const brightRed = wrap(ansi256(196))
+export const brightGreen = wrap(ansi256(46))
+export const brightYellow = wrap(ansi256(226))
+export const brightBlue = wrap(ansi256(39))
+export const brightMagenta = wrap(ansi256(201))
+export const brightCyan = wrap(ansi256(51))
+export const brightWhite = wrap(ansi256(15))
+
+// Basic colors for compatibility
+export const black = wrap(ansi256(0))
+export const blue = wrap(ansi256(33))
+export const magenta = wrap(ansi256(165))
+export const cyan = wrap(ansi256(51))
 
 // Semantic colors for vaulter (Blue Theme)
 export const c = {
   // Commands and actions - neon blue
-  command: (text: string) => ansi.bold(ansi.neonBlue(text)),
-  subcommand: (text: string) => ansi.neonBlue(text),
+  command: (text: string) => enabled ? boldNeonBlue(text) : text,
+  subcommand: (text: string) => enabled ? neonBlue(text) : text,
 
   // Values and data - blue variations
-  key: (text: string) => ansi.electricBlue(text),
-  value: (text: string) => ansi.iceBlue(text),
-  secret: (text: string) => ansi.deepBlue(text),
-  config: (text: string) => ansi.steelBlue(text),
+  key: (text: string) => enabled ? electricBlue(text) : text,
+  value: (text: string) => enabled ? iceBlue(text) : text,
+  secret: (text: string) => enabled ? deepBlue(text) : text,
+  config: (text: string) => enabled ? steelBlue(text) : text,
 
   // Type indicators (for set/list)
-  secretType: (text: string) => ansi.bold(ansi.deepBlue(text)),
-  configType: (text: string) => ansi.bold(ansi.steelBlue(text)),
+  secretType: (text: string) => enabled ? boldDeepBlue(text) : text,
+  configType: (text: string) => enabled ? compose(bold, steelBlue)(text) : text,
 
   // Environments - keep distinct for safety
-  env: (text: string) => ansi.skyBlue(text),
-  envDev: (text: string) => ansi.green(text),      // green = safe
-  envStg: (text: string) => ansi.yellow(text),    // yellow = caution
-  envPrd: (text: string) => ansi.bold(ansi.red(text)), // red = danger
+  env: (text: string) => enabled ? skyBlue(text) : text,
+  envDev: (text: string) => enabled ? green(text) : text,      // green = safe
+  envStg: (text: string) => enabled ? yellow(text) : text,    // yellow = caution
+  envPrd: (text: string) => enabled ? boldRed(text) : text,   // red = danger
 
   // Status - keep standard colors for UX
-  success: (text: string) => ansi.green(text),
-  error: (text: string) => ansi.red(text),
-  warning: (text: string) => ansi.yellow(text),
-  info: (text: string) => ansi.neonBlue(text),
+  success: (text: string) => enabled ? green(text) : text,
+  error: (text: string) => enabled ? red(text) : text,
+  warning: (text: string) => enabled ? yellow(text) : text,
+  info: (text: string) => enabled ? neonBlue(text) : text,
 
   // Diff - keep standard for visibility
-  added: (text: string) => ansi.green(text),
-  removed: (text: string) => ansi.red(text),
-  modified: (text: string) => ansi.yellow(text),
-  unchanged: (text: string) => ansi.gray(text),
+  added: (text: string) => enabled ? green(text) : text,
+  removed: (text: string) => enabled ? red(text) : text,
+  modified: (text: string) => enabled ? yellow(text) : text,
+  unchanged: (text: string) => enabled ? mediumGray(text) : text,
 
   // Structure
-  header: (text: string) => ansi.bold(ansi.white(text)),
-  label: (text: string) => ansi.gray(text),
-  highlight: (text: string) => ansi.bold(ansi.electricBlue(text)),
-  muted: (text: string) => ansi.dim(text),
+  header: (text: string) => enabled ? boldWhite(text) : text,
+  label: (text: string) => enabled ? mediumGray(text) : text,
+  highlight: (text: string) => enabled ? boldElectricBlue(text) : text,
+  muted: (text: string) => enabled ? dim(text) : text,
 
   // Projects/Services - blue theme
-  project: (text: string) => ansi.bold(ansi.neonBlue(text)),
-  service: (text: string) => ansi.skyBlue(text),
+  project: (text: string) => enabled ? boldNeonBlue(text) : text,
+  service: (text: string) => enabled ? skyBlue(text) : text,
 }
 
 // Helper to colorize environment name based on type
@@ -211,26 +223,42 @@ export function colorEnv(env: string): string {
   return c.envDev(env)
 }
 
+// Security badges with backgrounds
+export const badge = {
+  encrypted: () => enabled ? chain.bgGreen.black(' ENCRYPTED ') : '[ENCRYPTED]',
+  decrypted: () => enabled ? chain.bgYellow.black(' DECRYPTED ') : '[DECRYPTED]',
+  danger: () => enabled ? chain.bgRed.white.bold(' DANGER ') : '[DANGER]',
+  secret: () => enabled ? chain.bgAnsi256(27).white(' SECRET ') : '[SECRET]',
+  config: () => enabled ? chain.bgAnsi256(75).black(' CONFIG ') : '[CONFIG]',
+}
+
+// Environment badges
+export const envBadge = {
+  dev: () => enabled ? chain.bgGreen.black(' DEV ') : '[DEV]',
+  stg: () => enabled ? chain.bgYellow.black(' STG ') : '[STG]',
+  prd: () => enabled ? chain.bgRed.white.bold(' PRD ') : '[PRD]',
+}
+
 // Symbols with colors (Blue Theme)
 export const symbols = {
   // Status - keep semantic colors
-  success: enabled ? ansi.green('✓') : '[OK]',
-  error: enabled ? ansi.red('✗') : '[ERROR]',
-  warning: enabled ? ansi.yellow('⚠') : '[WARN]',
-  info: enabled ? ansi.neonBlue('ℹ') : '[INFO]',
+  success: enabled ? green('✓') : '[OK]',
+  error: enabled ? red('✗') : '[ERROR]',
+  warning: enabled ? yellow('⚠') : '[WARN]',
+  info: enabled ? neonBlue('ℹ') : '[INFO]',
 
   // Navigation - blue theme
-  bullet: enabled ? ansi.steelBlue('•') : '*',
-  arrow: enabled ? ansi.neonBlue('→') : '->',
-  arrowRight: enabled ? ansi.electricBlue('→') : '->',
-  arrowLeft: enabled ? ansi.paleBlue('←') : '<-',
-  arrowBoth: enabled ? ansi.skyBlue('↔') : '<->',
+  bullet: enabled ? steelBlue('•') : '*',
+  arrow: enabled ? neonBlue('→') : '->',
+  arrowRight: enabled ? electricBlue('→') : '->',
+  arrowLeft: enabled ? paleBlue('←') : '<-',
+  arrowBoth: enabled ? skyBlue('↔') : '<->',
 
   // Diff - keep semantic
-  plus: enabled ? ansi.green('+') : '+',
-  minus: enabled ? ansi.red('-') : '-',
-  equal: enabled ? ansi.gray('=') : '=',
-  tilde: enabled ? ansi.yellow('~') : '~',
+  plus: enabled ? green('+') : '+',
+  minus: enabled ? red('-') : '-',
+  equal: enabled ? mediumGray('=') : '=',
+  tilde: enabled ? yellow('~') : '~',
 
   // Icons - blue accents
   lock: enabled ? '🔒' : '[LOCKED]',

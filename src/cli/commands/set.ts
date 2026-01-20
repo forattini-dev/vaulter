@@ -190,6 +190,15 @@ export async function runSet(context: SetContext): Promise<void> {
     process.exit(1)
   }
 
+  // Show environment banner (respects --quiet and --json)
+  if (!jsonOutput && !dryRun) {
+    ui.showEnvironmentBanner(environment, {
+      project,
+      service: isShared ? 'shared' : service,
+      action: 'Setting variables'
+    })
+  }
+
   // Production confirmation
   if (isProdEnvironment(environment) && config?.security?.confirm_production && !args.force) {
     print.warning(`You are modifying ${colorEnv(environment)} (production) environment`)

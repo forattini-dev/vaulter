@@ -93,6 +93,15 @@ export async function runPull(context: PullContext): Promise<void> {
     }
   }
 
+  // Show environment banner (respects --quiet and --json)
+  if (!jsonOutput && !dryRun) {
+    ui.showEnvironmentBanner(environment, {
+      project,
+      service: context.shared ? 'shared' : effectiveService,
+      action: 'Pulling variables'
+    })
+  }
+
   if (!dryRun) {
     runHook(config?.hooks?.pre_pull, 'pre_pull', verbose)
   }

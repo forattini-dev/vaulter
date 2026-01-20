@@ -33,8 +33,8 @@ importers:
         specifier: ^0.2.15
         version: 0.2.15
       tuiuiu.js:
-        specifier: ^1.0.50
-        version: 1.0.50
+        specifier: ^1.0.51
+        version: 1.0.51
       yaml:
         specifier: ^2.8.2
         version: 2.8.2
@@ -2077,8 +2077,8 @@ packages:
     engines: {node: '>=18.0.0'}
     hasBin: true
 
-  tuiuiu.js@1.0.50:
-    resolution: {integrity: sha512-WAncxcVQ2cuL7lK5GCFPtARxN0ste9XI0+XRH+7Z7tqLXwpE0YJSDDFHQmfrg7Wfuv5vQX6R/Yfn/Duds+lWnw==}
+  tuiuiu.js@1.0.51:
+    resolution: {integrity: sha512-SyMZtPNDJsGqmFEzqiegwLtfHDc4M2R4K6+gMJAZxXF/YULo7bvnnwAuTAiOXZL4S5YQWZbTDlYSXYQDm2/p/Q==}
     engines: {node: '>=18'}
     hasBin: true
 
@@ -4310,7 +4310,7 @@ snapshots:
       css-select: 6.0.0
       fuse.js: 7.1.0
       he: 1.2.0
-      tuiuiu.js: 1.0.50
+      tuiuiu.js: 1.0.51
       undici: 7.18.2
       zod: 4.3.5
 
@@ -4624,7 +4624,7 @@ snapshots:
     optionalDependencies:
       fsevents: 2.3.3
 
-  tuiuiu.js@1.0.50: {}
+  tuiuiu.js@1.0.51: {}
 
   tunnel-agent@0.6.0:
     dependencies:

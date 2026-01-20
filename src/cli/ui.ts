@@ -7,7 +7,8 @@
 
 import { Table, renderToString, getSpinnerConfig } from 'tuiuiu.js'
 import type { SpinnerStyle } from 'tuiuiu.js'
-import { c, symbols, colorEnv, print } from './lib/colors.js'
+import { c, symbols, colorEnv, print, envBadge } from './lib/colors.js'
+import type { Environment } from '../types.js'
 
 // Detect if running in interactive terminal
 export const isTTY = process.stdout.isTTY ?? false
@@ -261,5 +262,43 @@ export function divider(): void {
   }
 }
 
+/**
+ * Show environment banner with badge
+ * Helps users be aware of which environment they're working with
+ * Suppressed in quiet mode or when json output is used
+ */
+export function showEnvironmentBanner(
+  environment: Environment,
+  options: {
+    project?: string
+    service?: string
+    action?: string  // e.g., 'Listing', 'Setting', 'Deleting'
+  } = {}
+): void {
+  if (quietMode || !isTTY) return
+
+  const { project, service, action } = options
+
+  // Get the appropriate badge based on environment
+  let badge: string
+  if (environment === 'prd' || environment === 'prod' || environment === 'production') {
+    badge = envBadge.prd()
+  } else if (environment === 'stg' || environment === 'staging' || environment === 'homolog') {
+    badge = envBadge.stg()
+  } else {
+    badge = envBadge.dev()
+  }
+
+  // Build context string
+  const parts: string[] = []
+  if (action) parts.push(action)
+  if (project) parts.push(`in ${c.project(project)}`)
+  if (service) parts.push(`/ ${c.service(service)}`)
+
+  const context = parts.length > 0 ? ` ${parts.join(' ')}` : ''
+
+  console.error(`${badge}${context}\n`)
+}
+
 // Re-export color utilities for use in commands
-export { c, symbols, colorEnv }
+export { c, symbols, colorEnv, envBadge }

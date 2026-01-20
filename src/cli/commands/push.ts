@@ -52,6 +52,15 @@ export async function runPush(context: PushContext): Promise<void> {
     process.exit(1)
   }
 
+  // Show environment banner (respects --quiet and --json)
+  if (!jsonOutput && !dryRun) {
+    ui.showEnvironmentBanner(environment, {
+      project,
+      service: context.shared ? 'shared' : effectiveService,
+      action: 'Pushing variables'
+    })
+  }
+
   // Production confirmation
   if (isProdEnvironment(environment) && config?.security?.confirm_production && !args.force) {
     print.warning(`You are pushing to ${colorEnv(environment)} (production) environment`)

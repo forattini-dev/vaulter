@@ -104,7 +104,7 @@
     "recker": "^1.0.66",
     "s3db.js": "^19.3.17",
     "tinyglobby": "^0.2.15",
-    "tuiuiu.js": "^1.0.50",
+    "tuiuiu.js": "^1.0.51",
     "yaml": "^2.8.2"
   },
   "devDependencies": {
