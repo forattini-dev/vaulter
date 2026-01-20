@@ -68,11 +68,12 @@
     "./package.json": "./package.json"
   },
   "bin": {
-    "vaulter": "./dist/cli/index.js"
+    "vaulter": "./dist/cli/index.js",
+    "vaulter-mcp": "./dist/mcp/index.js"
   },
   "scripts": {
     "dev": "tsx watch src/cli/index.ts",
-    "build": "tsc && node -e \"const fs=require('fs');const f='dist/cli/index.js';if(fs.existsSync(f)){const c=fs.readFileSync(f,'utf8');if(!c.startsWith('#!')){fs.writeFileSync(f,'#!/usr/bin/env node\\n'+c)}}\"",
+    "build": "tsc && node -e \"const fs=require('fs');const shebang='#!/usr/bin/env -S node --disable-warning=ExperimentalWarning\\n';['dist/cli/index.js','dist/mcp/index.js'].forEach(f=>{if(fs.existsSync(f)){const c=fs.readFileSync(f,'utf8');if(!c.startsWith('#!')){fs.writeFileSync(f,shebang+c)}}})\"",
     "build:bundle": "node esbuild.config.js",
     "build:standalone": "node esbuild.config.js --standalone",
     "build:binaries": "pnpm build:standalone && mkdir -p releases && pnpm exec pkg ./dist/bin/vaulter-standalone.cjs --output releases/vaulter --targets node20-linux-x64,node20-linux-arm64,node20-macos-x64,node20-macos-arm64,node20-win-x64",
@@ -98,11 +99,11 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.25.2",
-    "cli-args-parser": "^1.0.4",
+    "cli-args-parser": "^1.0.6",
     "dotenv": "^17.2.3",
     "p-limit": "^7.2.0",
     "recker": "^1.0.66",
-    "s3db.js": "^19.3.17",
+    "s3db.js": "^19.3.21",
     "tinyglobby": "^0.2.15",
     "tuiuiu.js": "^1.0.51",
     "yaml": "^2.8.2"

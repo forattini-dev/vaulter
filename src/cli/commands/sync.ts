@@ -58,30 +58,36 @@ async function syncSingleService(
   const isIgnored = compileGlobPatterns(ignorePatterns)
 
   // Determine source of variables
+  // Priority: explicit file (-f/--file) > stdin > default path
   let localVars: Record<string, string>
   let envFilePath: string | null = null
 
-  if (hasStdinData() && !serviceInfo) {
-    // Read from stdin (only for single service mode)
+  const explicitFilePath = args.file || args.f
+
+  if (explicitFilePath && !serviceInfo) {
+    // Explicit file specified - always use it
+    const resolvedPath = path.resolve(explicitFilePath)
+
+    if (!fs.existsSync(resolvedPath)) {
+      throw new Error(`File not found: ${resolvedPath}`)
+    }
+
+    ui.verbose(`Reading variables from ${resolvedPath}`, verbose)
+    envFilePath = resolvedPath
+    localVars = parseEnvFile(resolvedPath)
+  } else if (hasStdinData() && !serviceInfo && !explicitFilePath) {
+    // Read from stdin (only for single service mode, and only if no file specified)
     ui.verbose('Reading variables from stdin...', verbose)
     localVars = await parseEnvFromStdin()
   } else {
-    // Read from file
-    const filePath = args.file || args.f
-    let resolvedPath: string
-
-    if (filePath && !serviceInfo) {
-      resolvedPath = path.resolve(filePath)
-    } else {
-      // Default path depends on directories.mode:
-      // - unified: .vaulter/environments/<env>.env
-      // - split: deploy/secrets/<env>.env
-      const configDir = serviceInfo?.configDir || findConfigDir()
-      if (!configDir) {
-        throw new Error('No config directory found and no file specified')
-      }
-      resolvedPath = getEnvFilePathForConfig(effectiveConfig!, configDir, environment)
+    // Default path depends on directories.mode:
+    // - unified: .vaulter/environments/<env>.env
+    // - split: deploy/secrets/<env>.env
+    const configDir = serviceInfo?.configDir || findConfigDir()
+    if (!configDir) {
+      throw new Error('No config directory found and no file specified')
     }
+    const resolvedPath = getEnvFilePathForConfig(effectiveConfig!, configDir, environment)
 
     if (!fs.existsSync(resolvedPath)) {
       throw new Error(`File not found: ${resolvedPath}`)

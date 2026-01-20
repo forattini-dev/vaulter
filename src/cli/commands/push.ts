@@ -69,31 +69,14 @@ export async function runPush(context: PushContext): Promise<void> {
   }
 
   // Determine source of variables
+  // Priority: explicit file (-f/--file) > stdin > default path
   let localVars: Record<string, string>
 
-  if (hasStdinData()) {
-    // Read from stdin
-    ui.verbose('Reading variables from stdin...', verbose)
-    localVars = await parseEnvFromStdin()
-  } else {
-    // Read from file
-    const filePath = args.file || args.f
-    let envFilePath: string
+  const explicitFilePath = args.file || args.f
 
-    if (filePath) {
-      envFilePath = path.resolve(filePath)
-    } else {
-      // Default path depends on directories.mode:
-      // - unified: .vaulter/environments/<env>.env
-      // - split: deploy/secrets/<env>.env
-      const configDir = findConfigDir()
-      if (!configDir || !config) {
-        print.error('No config directory found and no file specified')
-        ui.log(`Use ${c.highlight('-f <file>')} to specify the .env file`)
-        process.exit(1)
-      }
-      envFilePath = getEnvFilePathForConfig(config, configDir, environment)
-    }
+  if (explicitFilePath) {
+    // Explicit file specified - always use it
+    const envFilePath = path.resolve(explicitFilePath)
 
     if (!fs.existsSync(envFilePath)) {
       print.error(`File not found: ${c.muted(envFilePath)}`)
@@ -101,7 +84,29 @@ export async function runPush(context: PushContext): Promise<void> {
     }
 
     ui.verbose(`Reading variables from ${c.muted(envFilePath)}`, verbose)
+    localVars = parseEnvFile(envFilePath)
+  } else if (hasStdinData()) {
+    // Read from stdin (only if no file specified)
+    ui.verbose('Reading variables from stdin...', verbose)
+    localVars = await parseEnvFromStdin()
+  } else {
+    // Default path depends on directories.mode:
+    // - unified: .vaulter/environments/<env>.env
+    // - split: deploy/secrets/<env>.env
+    const configDir = findConfigDir()
+    if (!configDir || !config) {
+      print.error('No config directory found and no file specified')
+      ui.log(`Use ${c.highlight('-f <file>')} to specify the .env file`)
+      process.exit(1)
+    }
+    const envFilePath = getEnvFilePathForConfig(config, configDir, environment)
 
+    if (!fs.existsSync(envFilePath)) {
+      print.error(`File not found: ${c.muted(envFilePath)}`)
+      process.exit(1)
+    }
+
+    ui.verbose(`Reading variables from ${c.muted(envFilePath)}`, verbose)
     localVars = parseEnvFile(envFilePath)
   }
 

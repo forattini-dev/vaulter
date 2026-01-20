@@ -38,6 +38,121 @@ interface KeyContext {
   jsonOutput: boolean
 }
 
+type BackupScope = 'all' | 'project' | 'global'
+
+interface KeyBackupEntry {
+  keyName: string
+  scope: 'project' | 'global'
+  type: 'symmetric' | 'asymmetric'
+  algorithm?: string
+  publicKey?: string
+  privateKey?: string
+  symmetricKey?: string
+}
+
+interface KeyBackupBundle {
+  kind: 'vaulter-key-backup'
+  version: number
+  projectName: string
+  createdAt: string
+  keys: KeyBackupEntry[]
+}
+
+interface KeyBackupSummary {
+  keyName: string
+  scope: 'project' | 'global'
+  type: 'symmetric' | 'asymmetric'
+  algorithm?: string
+  hasPrivateKey: boolean
+  hasPublicKey: boolean
+  hasSymmetricKey: boolean
+}
+
+function parseBackupScope(args: CLIArgs): BackupScope {
+  const rawScope = typeof args.scope === 'string' ? args.scope.trim().toLowerCase() : ''
+  if (rawScope) {
+    if (rawScope === 'all' || rawScope === 'project' || rawScope === 'global') {
+      return rawScope
+    }
+    print.error(`Invalid scope: ${args.scope}`)
+    ui.log('Valid scopes: all, project, global')
+    process.exit(1)
+  }
+
+  if (args.global) return 'global'
+  return 'all'
+}
+
+function listKeyNames(dir: string): string[] {
+  if (!fs.existsSync(dir)) return []
+  const names = new Set<string>()
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (!entry.isFile()) continue
+    const name = entry.name.replace(/\.pub$/, '')
+    names.add(name)
+  }
+  return Array.from(names)
+}
+
+function readKeyFile(filePath: string): string | null {
+  if (!fs.existsSync(filePath)) return null
+  const stat = fs.statSync(filePath)
+  if (!stat.isFile()) return null
+  return fs.readFileSync(filePath, 'utf-8')
+}
+
+function collectBackupEntries(
+  scope: 'project' | 'global',
+  projectName: string
+): KeyBackupEntry[] {
+  const keysDir = scope === 'global' ? getGlobalKeysDir() : getProjectKeysDir(projectName)
+  const keyNames = listKeyNames(keysDir)
+  const entries: KeyBackupEntry[] = []
+
+  for (const keyName of keyNames) {
+    const fullKeyName = scope === 'global' ? `global:${keyName}` : keyName
+    const paths = resolveKeyPaths(fullKeyName, projectName)
+    const publicKey = readKeyFile(paths.publicKey)
+    const privateKey = readKeyFile(paths.privateKey)
+
+    if (!publicKey && !privateKey) continue
+
+    const isPrivatePem = !!privateKey && privateKey.includes('BEGIN') && privateKey.includes('KEY')
+    const isAsymmetric = !!publicKey || isPrivatePem
+
+    const entry: KeyBackupEntry = {
+      keyName,
+      scope,
+      type: isAsymmetric ? 'asymmetric' : 'symmetric'
+    }
+
+    if (isAsymmetric) {
+      if (publicKey) entry.publicKey = publicKey
+      if (privateKey) entry.privateKey = privateKey
+      const alg = detectAlgorithm(publicKey || privateKey || '')
+      if (alg) entry.algorithm = alg
+    } else if (privateKey) {
+      entry.symmetricKey = privateKey
+    }
+
+    entries.push(entry)
+  }
+
+  return entries
+}
+
+function summarizeBackupEntries(entries: KeyBackupEntry[]): KeyBackupSummary[] {
+  return entries.map(entry => ({
+    keyName: entry.keyName,
+    scope: entry.scope,
+    type: entry.type,
+    algorithm: entry.algorithm,
+    hasPrivateKey: !!entry.privateKey,
+    hasPublicKey: !!entry.publicKey,
+    hasSymmetricKey: !!entry.symmetricKey
+  }))
+}
+
 /**
  * Get project name from config or args, with fallback
  */
@@ -67,6 +182,14 @@ export async function runKey(context: KeyContext): Promise<void> {
       await runKeyImport(context)
       break
 
+    case 'backup':
+      await runKeyBackup(context)
+      break
+
+    case 'restore':
+      await runKeyRestore(context)
+      break
+
     case 'list':
     case 'ls':
       await runKeyList(context)
@@ -93,7 +216,7 @@ function printKeyHelp(subcommand?: string): void {
   if (subcommand) {
     print.error(`Unknown key subcommand: ${subcommand}`)
   }
-  ui.log('Available subcommands: generate, export, import, list, show, rotate')
+  ui.log('Available subcommands: generate, export, import, backup, restore, list, show, rotate')
   ui.log('')
   ui.log('Generate keys:')
   ui.log('  vaulter key generate --name master              # Symmetric key (default)')
@@ -104,6 +227,11 @@ function printKeyHelp(subcommand?: string): void {
   ui.log('Export/Import keys:')
   ui.log('  vaulter key export --name master -o keys.enc    # Export encrypted bundle')
   ui.log('  vaulter key import -f keys.enc                  # Import from bundle')
+  ui.log('')
+  ui.log('Backup/Restore keys:')
+  ui.log('  vaulter key backup -o keys-backup.enc           # Backup all keys (project + global)')
+  ui.log('  vaulter key restore -f keys-backup.enc          # Restore keys from backup')
+  ui.log('  vaulter key backup -o keys.enc --scope project  # Backup project keys only')
   ui.log('')
   ui.log('List and show:')
   ui.log('  vaulter key list                                # List all keys')
@@ -116,6 +244,7 @@ function printKeyHelp(subcommand?: string): void {
   ui.log('  --algorithm, --alg <alg>   Algorithm: rsa-4096 (default), rsa-2048, ec-p256, ec-p384')
   ui.log('  -o, --output <path>        Output file for export')
   ui.log('  -f, --file <path>          Input file for import')
+  ui.log('  --scope <scope>            Scope for backup/restore: all, project, global')
   ui.log('  --force                    Overwrite existing keys')
 }
 
@@ -559,6 +688,276 @@ async function runKeyImport(context: KeyContext): Promise<void> {
     }
     if (bundle.publicKey) {
       ui.log(`  Public:  ${paths.publicKey}`)
+    }
+  }
+}
+
+/**
+ * Backup keys to an encrypted bundle
+ */
+async function runKeyBackup(context: KeyContext): Promise<void> {
+  const { args, verbose, dryRun, jsonOutput } = context
+
+  const outputPath = args.output || args.o
+  if (!outputPath) {
+    print.error('-o/--output is required')
+    ui.log('Example: vaulter key backup -o keys-backup.enc')
+    process.exit(1)
+  }
+
+  const scope = parseBackupScope(args)
+  const includeProject = scope === 'all' || scope === 'project'
+  const includeGlobal = scope === 'all' || scope === 'global'
+
+  const projectName = getProjectName(context)
+  const entries: KeyBackupEntry[] = []
+
+  if (includeProject) {
+    entries.push(...collectBackupEntries('project', projectName))
+  }
+  if (includeGlobal) {
+    entries.push(...collectBackupEntries('global', projectName))
+  }
+
+  const scopeOrder: Record<'project' | 'global', number> = { project: 0, global: 1 }
+  entries.sort((a, b) => {
+    const scopeDiff = scopeOrder[a.scope] - scopeOrder[b.scope]
+    return scopeDiff !== 0 ? scopeDiff : a.keyName.localeCompare(b.keyName)
+  })
+
+  const bundle: KeyBackupBundle = {
+    kind: 'vaulter-key-backup',
+    version: 1,
+    projectName,
+    createdAt: new Date().toISOString(),
+    keys: entries
+  }
+
+  const absPath = path.resolve(outputPath)
+  const summaries = summarizeBackupEntries(entries)
+
+  if (dryRun) {
+    if (jsonOutput) {
+      ui.output(JSON.stringify({
+        dryRun: true,
+        action: 'backup_keys',
+        outputPath: absPath,
+        projectName,
+        scope,
+        keyCount: entries.length,
+        keys: summaries
+      }))
+    } else {
+      ui.log(`Dry run - would backup ${entries.length} keys to ${absPath}`)
+      if (verbose && summaries.length > 0) {
+        for (const entry of summaries) {
+          ui.log(`  ${entry.keyName} (${entry.scope}, ${entry.type}${entry.algorithm ? ` ${entry.algorithm}` : ''})`)
+        }
+      }
+    }
+    return
+  }
+
+  const passphrase = process.env.VAULTER_EXPORT_PASSPHRASE || 'vaulter-export-key'
+  const plaintext = JSON.stringify(bundle)
+  const salt = crypto.randomBytes(16)
+  const key = crypto.pbkdf2Sync(passphrase, salt, 100000, 32, 'sha256')
+  const iv = crypto.randomBytes(12)
+  const cipher = crypto.createCipheriv('aes-256-gcm', key, iv)
+  const encrypted = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()])
+  const authTag = cipher.getAuthTag()
+  const output = Buffer.concat([salt, iv, authTag, encrypted])
+
+  fs.writeFileSync(absPath, output)
+
+  if (jsonOutput) {
+    ui.output(JSON.stringify({
+      success: true,
+      action: 'backup_keys',
+      outputPath: absPath,
+      projectName,
+      scope,
+      keyCount: entries.length,
+      keys: summaries
+    }))
+  } else {
+    ui.success(`Backed up ${entries.length} keys to ${absPath}`)
+    ui.log(`  Project: ${projectName}`)
+    ui.log(`  Scope: ${scope}`)
+    if (process.env.VAULTER_EXPORT_PASSPHRASE) {
+      ui.log('  Note: VAULTER_EXPORT_PASSPHRASE was used to encrypt this backup')
+    }
+  }
+}
+
+/**
+ * Restore keys from an encrypted backup
+ */
+async function runKeyRestore(context: KeyContext): Promise<void> {
+  const { args, verbose, dryRun, jsonOutput } = context
+
+  const inputPath = args.file || args.f
+  if (!inputPath) {
+    print.error('-f/--file is required')
+    ui.log('Example: vaulter key restore -f keys-backup.enc')
+    process.exit(1)
+  }
+
+  const absPath = path.resolve(inputPath)
+  if (!fs.existsSync(absPath)) {
+    print.error(`File not found: ${absPath}`)
+    process.exit(1)
+  }
+
+  const scope = parseBackupScope(args)
+  const projectName = getProjectName(context)
+  const input = fs.readFileSync(absPath)
+
+  const passphrase = process.env.VAULTER_EXPORT_PASSPHRASE || 'vaulter-export-key'
+  const salt = input.subarray(0, 16)
+  const iv = input.subarray(16, 28)
+  const authTag = input.subarray(28, 44)
+  const encrypted = input.subarray(44)
+  const key = crypto.pbkdf2Sync(passphrase, salt, 100000, 32, 'sha256')
+
+  let bundle: KeyBackupBundle
+  try {
+    const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv)
+    decipher.setAuthTag(authTag)
+    const decrypted = Buffer.concat([decipher.update(encrypted), decipher.final()])
+    bundle = JSON.parse(decrypted.toString('utf8')) as KeyBackupBundle
+  } catch (err) {
+    print.error('Failed to decrypt backup')
+    ui.log('  Check that VAULTER_EXPORT_PASSPHRASE is correct')
+    process.exit(1)
+  }
+
+  if (bundle.kind !== 'vaulter-key-backup' || !Array.isArray(bundle.keys)) {
+    print.error('Invalid backup bundle')
+    ui.log('  Use "vaulter key import" to restore a single key export')
+    process.exit(1)
+  }
+
+  const filteredKeys = bundle.keys.filter(entry => scope === 'all' || entry.scope === scope)
+  const summaries = summarizeBackupEntries(filteredKeys)
+
+  if (filteredKeys.length === 0) {
+    if (jsonOutput) {
+      ui.output(JSON.stringify({
+        success: true,
+        action: 'restore_keys',
+        restored: 0,
+        scope,
+        message: 'No keys to restore for requested scope'
+      }))
+    } else {
+      ui.log('No keys to restore for requested scope.')
+    }
+    return
+  }
+
+  const conflicts: string[] = []
+  const targets = filteredKeys.map(entry => {
+    const fullKeyName = entry.scope === 'global' ? `global:${entry.keyName}` : entry.keyName
+    const paths = resolveKeyPaths(fullKeyName, projectName)
+    const symmetricKey = entry.symmetricKey || (entry.type === 'symmetric' ? entry.privateKey : undefined)
+    const writePrivate = entry.type === 'asymmetric' ? !!entry.privateKey : !!symmetricKey
+    const writePublic = entry.type === 'asymmetric' && !!entry.publicKey
+
+    if (!args.force) {
+      if (writePrivate && fs.existsSync(paths.privateKey)) {
+        conflicts.push(`${fullKeyName} (private)`)
+      }
+      if (writePublic && fs.existsSync(paths.publicKey)) {
+        conflicts.push(`${fullKeyName} (public)`)
+      }
+    }
+
+    return { entry, fullKeyName, paths, symmetricKey, writePrivate, writePublic }
+  })
+
+  if (conflicts.length > 0 && !args.force) {
+    print.error('Some keys already exist')
+    for (const conflict of conflicts) {
+      ui.log(`  ${conflict}`)
+    }
+    ui.log('Use --force to overwrite')
+    process.exit(1)
+  }
+
+  if (dryRun) {
+    if (jsonOutput) {
+      ui.output(JSON.stringify({
+        dryRun: true,
+        action: 'restore_keys',
+        inputPath: absPath,
+        projectName,
+        scope,
+        keyCount: filteredKeys.length,
+        keys: summaries
+      }))
+    } else {
+      ui.log(`Dry run - would restore ${filteredKeys.length} keys from ${absPath}`)
+      if (verbose && summaries.length > 0) {
+        for (const entry of summaries) {
+          ui.log(`  ${entry.keyName} (${entry.scope}, ${entry.type}${entry.algorithm ? ` ${entry.algorithm}` : ''})`)
+        }
+      }
+    }
+    return
+  }
+
+  let restoredCount = 0
+  let skippedCount = 0
+
+  for (const target of targets) {
+    const dir = path.dirname(target.paths.privateKey)
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true })
+    }
+
+    if (target.entry.type === 'symmetric') {
+      if (!target.symmetricKey) {
+        skippedCount++
+        continue
+      }
+      fs.writeFileSync(target.paths.privateKey, target.symmetricKey, { mode: 0o600 })
+      restoredCount++
+      continue
+    }
+
+    let wrote = false
+    if (target.entry.privateKey) {
+      fs.writeFileSync(target.paths.privateKey, target.entry.privateKey, { mode: 0o600 })
+      wrote = true
+    }
+    if (target.entry.publicKey) {
+      fs.writeFileSync(target.paths.publicKey, target.entry.publicKey, { mode: 0o644 })
+      wrote = true
+    }
+
+    if (wrote) {
+      restoredCount++
+    } else {
+      skippedCount++
+    }
+  }
+
+  if (jsonOutput) {
+    ui.output(JSON.stringify({
+      success: true,
+      action: 'restore_keys',
+      inputPath: absPath,
+      projectName,
+      scope,
+      restored: restoredCount,
+      skipped: skippedCount,
+      keys: summaries
+    }))
+  } else {
+    ui.success(`Restored ${restoredCount} keys from ${absPath}`)
+    if (skippedCount > 0) {
+      ui.log(`  Skipped: ${skippedCount} (missing key material)`)
     }
   }
 }

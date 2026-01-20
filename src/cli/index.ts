@@ -96,6 +96,9 @@ const cliSchema: CLISchema = {
   autoShort: false,
   separators: VAULTER_SEPARATORS,
   formatter: vaulterFormatter,
+  help: {
+    includeGlobalOptionsInCommands: true
+  },
 
   // Global options available to all commands
   options: {
@@ -390,6 +393,34 @@ const cliSchema: CLISchema = {
               type: 'boolean',
               default: false,
               description: 'Import to global scope instead of project scope'
+            }
+          }
+        },
+        backup: {
+          description: 'Backup keys to encrypted bundle',
+          options: {
+            scope: {
+              type: 'string',
+              description: 'Scope to backup: all, project, global'
+            },
+            global: {
+              type: 'boolean',
+              default: false,
+              description: 'Alias for --scope global'
+            }
+          }
+        },
+        restore: {
+          description: 'Restore keys from encrypted backup',
+          options: {
+            scope: {
+              type: 'string',
+              description: 'Scope to restore: all, project, global'
+            },
+            global: {
+              type: 'boolean',
+              default: false,
+              description: 'Alias for --scope global'
             }
           }
         },

@@ -153,6 +153,9 @@ That's it! For most local development, vaulter is just a structured dotenv.
 | `key generate --name <n> --asymmetric` | Generate RSA/EC key pair |
 | `key list` | List all keys |
 | `key export --name <n>` | Export encrypted bundle |
+| `key import -f <file>` | Import encrypted bundle |
+| `key backup -o <file>` | Backup keys to encrypted bundle |
+| `key restore -f <file>` | Restore keys from backup bundle |
 
 ### Run (Execute with Env Vars)
 

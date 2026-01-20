@@ -2,7 +2,7 @@
 
 Complete reference for the Vaulter Model Context Protocol (MCP) server.
 
-**Stats:** 30 tools | 5 resources | 8 prompts
+**Stats:** 31 tools | 5 resources | 8 prompts
 
 ---
 
@@ -39,7 +39,7 @@ Complete reference for the Vaulter Model Context Protocol (MCP) server.
 
 ---
 
-## Tools Reference (30)
+## Tools Reference (31)
 
 ### Core Operations (5)
 
@@ -434,113 +434,417 @@ Shows which variables would be treated as secrets vs configs based on naming pat
 
 ---
 
+### Dangerous Operations (1)
+
+#### `vaulter_nuke_preview`
+Preview what would be deleted by a nuke operation.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `project` | string | No | auto | Project name |
+
+**⚠️ Important:** This tool only previews what would be deleted. The actual deletion must be executed via CLI for safety:
+
+```bash
+# Preview via MCP
+vaulter_nuke_preview project="my-project"
+
+# Execute via CLI (requires --confirm flag)
+vaulter nuke --confirm=my-project
+```
+
+Returns:
+- Summary of data that would be deleted
+- Count of variables per environment
+- CLI command to execute the actual nuke
+
+---
+
 ## Resources Reference (5)
 
-Resources provide static/cached data that doesn't require input parameters.
+Resources provide static/cached data that doesn't require input parameters. They are read-only and ideal for getting context before using tools.
 
-| URI | Description | MIME Type |
-|-----|-------------|-----------|
-| `vaulter://instructions` | **Read first!** How vaulter works, s3db.js architecture | `text/markdown` |
-| `vaulter://tools-guide` | Which tool to use for each scenario | `text/markdown` |
-| `vaulter://mcp-config` | MCP settings sources (priority chain) | `application/json` |
-| `vaulter://config` | Project configuration (YAML) | `application/yaml` |
-| `vaulter://services` | Monorepo services list | `application/json` |
+| URI | Description | MIME Type | When to Use |
+|-----|-------------|-----------|-------------|
+| `vaulter://instructions` | **⚠️ Read first!** How vaulter works | `text/markdown` | Before any other operation |
+| `vaulter://tools-guide` | Which tool to use for each scenario | `text/markdown` | When unsure which tool to use |
+| `vaulter://mcp-config` | MCP settings with sources | `application/json` | Debugging configuration issues |
+| `vaulter://config` | Project configuration (YAML) | `application/yaml` | Understanding project setup |
+| `vaulter://services` | Monorepo services list | `application/json` | Working with monorepos |
+
+---
 
 ### `vaulter://instructions`
 
-**Critical resource - read first before using any tools.**
+**⚠️ CRITICAL - Read this first before using any vaulter tools.**
 
-Contains:
-- Data storage architecture (s3db.js uses S3 metadata, not body)
-- Deterministic ID format: `{project}|{environment}|{service}|{key}`
-- What NOT to do (never upload files directly to S3)
-- MCP configuration options
+Contains essential information about:
+
+1. **Data Storage Architecture**
+   - s3db.js stores data in S3 object **metadata**, NOT the body
+   - Each variable = one S3 object with encrypted value in headers
+
+2. **Deterministic ID Format**
+   ```
+   {project}|{environment}|{service}|{key}
+   ```
+   - Single repo: `myproject|dev||DATABASE_URL`
+   - Monorepo: `myproject|dev|api|DATABASE_URL`
+   - Shared var: `myproject|dev||SHARED_KEY`
+
+3. **What NOT to Do**
+   - ❌ Never upload files directly to S3 (`aws s3 cp`)
+   - ❌ Never create JSON files manually in S3
+   - ❌ Never modify S3 objects using AWS CLI/SDK directly
+
+4. **MCP Configuration Options**
+   - CLI flags, project config, global config priority
+
+---
 
 ### `vaulter://tools-guide`
 
-Quick reference showing which tool to use for each scenario:
-- Single vs batch operations
-- Sync workflows
-- K8s deployment
-- Monorepo shared variables
+Comprehensive guide on which tool to use for each scenario. Includes:
+
+| Scenario | Recommended Tool |
+|----------|------------------|
+| Read a single variable | `vaulter_get` |
+| Set/update a variable | `vaulter_set` |
+| Set shared variable (monorepo) | `vaulter_set` with `shared=true` |
+| Delete a variable | `vaulter_delete` |
+| List all variables | `vaulter_list` |
+| Export to file format | `vaulter_export` |
+| Compare environments | `vaulter_compare` |
+| Batch read multiple | `vaulter_multi_get` |
+| Batch set multiple | `vaulter_multi_set` |
+| Batch delete multiple | `vaulter_multi_delete` |
+
+Also covers:
+- Core operations (8 tools)
+- Batch operations (3 tools)
+- Analysis & Discovery (3 tools)
+- Status & Audit (2 tools)
+- K8s/IaC Integration (4 tools)
+- Key Management (5 tools)
+- Monorepo Support (5 tools)
+
+---
+
+### `vaulter://mcp-config`
+
+Shows WHERE each MCP setting comes from with a priority chain. Useful for debugging configuration issues.
+
+**Example output:**
+```json
+{
+  "config": {
+    "backend": "s3://tetis-vaulter",
+    "project": "apps-lair",
+    "environment": "dev",
+    "service": null
+  },
+  "sources": {
+    "backend": "project",      // from .vaulter/config.yaml → backend.url
+    "project": "project",      // from .vaulter/config.yaml → project
+    "environment": "project.mcp",  // from .vaulter/config.yaml → mcp.default_environment
+    "service": "default"       // no configuration found, using default
+  },
+  "priority": [
+    "1. CLI flags (--backend, --project, etc.)",
+    "2. Project config (.vaulter/config.yaml → backend.url)",
+    "3. Project MCP config (.vaulter/config.yaml → mcp.*)",
+    "4. Global MCP config (~/.vaulter/config.yaml → mcp.*)",
+    "5. Default values"
+  ]
+}
+```
+
+---
+
+### `vaulter://config`
+
+Returns the current project configuration from `.vaulter/config.yaml`.
+
+**Example output:**
+```yaml
+version: "1"
+project: apps-lair
+default_environment: dev
+
+environments:
+  - dev
+  - sdx
+  - prd
+
+backend:
+  url: s3://tetis-vaulter
+  region: us-east-1
+
+encryption:
+  key_source:
+    - env: VAULTER_KEY
+    - file: ~/.vaulter/projects/apps-lair/keys/master
+    - inline: "fallback-dev-key"
+
+outputs:
+  web:
+    path: apps/web
+    filename: .env.local
+    include: [NEXT_PUBLIC_*]
+```
+
+---
+
+### `vaulter://services`
+
+Lists all services discovered in a monorepo. Services are detected by looking for:
+- `.vaulter/config.yaml` in subdirectories
+- `deploy/configs` or `deploy/secrets` directories
+
+**Example output:**
+```json
+{
+  "services": [
+    {
+      "name": "app-landing",
+      "path": "apps/app-landing",
+      "hasVaulterConfig": false
+    },
+    {
+      "name": "svc-auth",
+      "path": "apps/svc-auth",
+      "hasVaulterConfig": true
+    }
+  ],
+  "searchedDirs": ["apps", "services", "packages", "libs"],
+  "monorepoRoot": "/home/user/project"
+}
+```
 
 ---
 
 ## Prompts Reference (8)
 
-Pre-configured workflows for common tasks.
+Prompts are pre-configured workflow templates that guide Claude through common tasks. They combine multiple tools and provide structured guidance.
+
+| Prompt | Purpose | Key Arguments |
+|--------|---------|---------------|
+| `setup_project` | Initialize new project | `project_name`, `mode`, `backend` |
+| `migrate_dotenv` | Import .env files | `file_path`, `environment` |
+| `deploy_secrets` | Deploy to Kubernetes | `environment`, `namespace` |
+| `compare_environments` | Diff two environments | `source_env`, `target_env` |
+| `security_audit` | Check for security issues | `environment`, `strict` |
+| `rotation_workflow` | Manage secret rotation | `environment`, `action` |
+| `shared_vars_workflow` | Manage monorepo shared vars | `action`, `environment` |
+| `batch_operations` | Bulk variable operations | `operation`, `variables` |
+
+---
 
 ### `setup_project`
-Initialize a new vaulter project.
 
-| Argument | Required | Description |
-|----------|----------|-------------|
-| `project_name` | **Yes** | Project name |
-| `mode` | No | `unified` or `split` |
-| `backend` | No | `s3`, `minio`, `r2`, `file`, `memory` |
+Initialize a new vaulter project with guided setup.
+
+| Argument | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `project_name` | **Yes** | - | Project name (e.g., `my-app`, `api-service`) |
+| `mode` | No | `unified` | `unified` (single .env) or `split` (configs/secrets dirs) |
+| `backend` | No | `file` | Storage: `s3`, `minio`, `r2`, `file`, `memory` |
+
+**Example conversation:**
+```
+User: Set up a new vaulter project called "my-api" using S3
+
+Claude: I'll use the setup_project prompt to guide you through initialization...
+→ Uses vaulter_init with project="my-api", backend="s3"
+→ Uses vaulter_key_generate to create encryption key
+→ Provides next steps for configuration
+```
+
+---
 
 ### `migrate_dotenv`
-Migrate existing .env files to vaulter.
 
-| Argument | Required | Description |
-|----------|----------|-------------|
-| `file_path` | **Yes** | Path to .env file |
-| `environment` | **Yes** | Target environment |
-| `dry_run` | No | Preview only (`true`/`false`) |
+Migrate existing .env files to vaulter. Analyzes files, identifies secrets vs configs, and syncs to backend.
+
+| Argument | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `file_path` | **Yes** | - | Path to .env file (e.g., `.env.local`, `.env.production`) |
+| `environment` | **Yes** | - | Target environment: `dev`, `stg`, `prd`, `sbx`, `dr` |
+| `dry_run` | No | `false` | Preview changes without applying |
+
+**Example conversation:**
+```
+User: Migrate my .env.local file to the dev environment
+
+Claude: I'll analyze your .env.local and migrate it to vaulter...
+→ Reads and parses .env.local
+→ Uses vaulter_categorize_vars to identify secrets
+→ Uses vaulter_multi_set to push variables
+→ Reports what was migrated
+```
+
+---
 
 ### `deploy_secrets`
-Deploy secrets to Kubernetes.
 
-| Argument | Required | Description |
-|----------|----------|-------------|
-| `environment` | **Yes** | Environment to deploy |
-| `namespace` | No | K8s namespace |
-| `secret_name` | No | K8s Secret name |
+Deploy secrets to Kubernetes. Generates Secret YAML and provides deployment instructions.
+
+| Argument | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `environment` | **Yes** | - | Environment: `dev`, `stg`, `prd`, `sbx`, `dr` |
+| `namespace` | No | `{project}-{env}` | Kubernetes namespace |
+| `secret_name` | No | `{project}-secrets` | Name of the K8s Secret |
+
+**Example conversation:**
+```
+User: Deploy my production secrets to Kubernetes
+
+Claude: I'll generate the Kubernetes Secret manifest...
+→ Uses vaulter_list to verify variables exist
+→ Uses vaulter_k8s_secret to generate YAML
+→ Provides kubectl apply command
+→ Shows verification steps
+```
+
+---
 
 ### `compare_environments`
-Compare variables between environments.
 
-| Argument | Required | Description |
-|----------|----------|-------------|
-| `source_env` | **Yes** | Source environment |
-| `target_env` | **Yes** | Target environment |
-| `show_values` | No | Show masked values |
+Compare variables between two environments. Shows differences, missing keys, and value changes.
+
+| Argument | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `source_env` | **Yes** | - | Source environment: `dev`, `stg`, `prd`, `sbx`, `dr` |
+| `target_env` | **Yes** | - | Target environment |
+| `show_values` | No | `false` | Show masked values in comparison |
+
+**Example conversation:**
+```
+User: Compare dev and production environments
+
+Claude: I'll compare the variables between dev and prd...
+→ Uses vaulter_compare with source="dev", target="prd"
+→ Shows: variables only in dev, only in prd, different values
+→ Suggests actions for missing variables
+```
+
+---
 
 ### `security_audit`
-Audit secrets for security issues.
 
-| Argument | Required | Description |
-|----------|----------|-------------|
-| `environment` | **Yes** | Environment or `all` |
-| `strict` | No | Enable strict mode |
+Audit environment variables for security issues. Checks for exposed secrets, weak patterns, and best practices.
+
+| Argument | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `environment` | **Yes** | - | Environment to audit: `dev`, `stg`, `prd`, or `all` |
+| `strict` | No | `false` | Enable strict mode with additional checks |
+
+**Checks performed:**
+- Secrets in wrong locations (e.g., committed files)
+- Weak or default values
+- Missing encryption
+- Exposed API keys/tokens
+- Variables with rotation overdue
+
+**Example conversation:**
+```
+User: Run a security audit on production
+
+Claude: I'll perform a comprehensive security audit of your production environment...
+→ Uses vaulter_list to get all variables
+→ Uses vaulter_categorize_vars to identify secrets
+→ Uses vaulter_status for rotation status
+→ Reports findings with severity levels
+```
+
+---
 
 ### `rotation_workflow`
-Check and manage secret rotation.
 
-| Argument | Required | Description |
-|----------|----------|-------------|
-| `environment` | **Yes** | Environment or `all` |
-| `action` | No | `check`, `rotate`, `report` |
-| `key_pattern` | No | Filter pattern |
+Check and manage secret rotation. Identifies overdue secrets and helps with rotation process.
+
+| Argument | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `environment` | **Yes** | - | Environment: `dev`, `stg`, `prd`, `sbx`, `dr`, or `all` |
+| `action` | No | `check` | `check` (list overdue), `rotate` (interactive), `report` (full status) |
+| `key_pattern` | No | - | Filter pattern (e.g., `*_KEY`, `API_*`) |
+
+**Actions:**
+- `check`: List secrets that need rotation
+- `rotate`: Interactive rotation with new value generation
+- `report`: Full rotation status report with recommendations
+
+**Example conversation:**
+```
+User: Check which secrets need rotation in production
+
+Claude: I'll check for overdue secret rotations...
+→ Uses vaulter_status with include=["rotation"], overdue_only=true
+→ Lists secrets with last rotation dates
+→ Prioritizes by age and risk level
+→ Suggests rotation schedule
+```
+
+---
 
 ### `shared_vars_workflow`
-Manage monorepo shared variables.
 
-| Argument | Required | Description |
-|----------|----------|-------------|
-| `action` | **Yes** | `list`, `promote`, `override`, `audit` |
-| `environment` | **Yes** | Environment |
-| `service` | No | Service name (for promote/override) |
+Manage monorepo shared variables. Shared vars apply to all services and can be overridden per-service.
+
+| Argument | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `action` | **Yes** | - | `list`, `promote`, `override`, `audit` |
+| `environment` | **Yes** | - | Environment: `dev`, `stg`, `prd`, `sbx`, `dr` |
+| `service` | No | - | Service name (required for `promote`/`override`) |
+
+**Actions:**
+- `list`: Show shared vars and which services inherit/override them
+- `promote`: Move a service-specific var to shared (applies to all)
+- `override`: Create a service-specific override of a shared var
+- `audit`: Check for inconsistencies between services
+
+**Example conversation:**
+```
+User: Show me how shared variables are inherited in dev
+
+Claude: I'll analyze shared variable inheritance...
+→ Uses vaulter_shared_list to get shared vars
+→ Uses vaulter_services to list all services
+→ For each service, uses vaulter_inheritance_info
+→ Shows inheritance tree with overrides highlighted
+```
+
+---
 
 ### `batch_operations`
-Batch operations on multiple variables.
 
-| Argument | Required | Description |
-|----------|----------|-------------|
-| `operation` | **Yes** | `set`, `get`, `delete` |
-| `environment` | **Yes** | Environment |
-| `variables` | **Yes** | JSON object or comma-separated keys |
-| `shared` | No | For `set`: as shared variables |
+Perform batch operations on multiple variables at once.
+
+| Argument | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `operation` | **Yes** | - | `set`, `get`, `delete` |
+| `environment` | **Yes** | - | Environment: `dev`, `stg`, `prd`, `sbx`, `dr` |
+| `variables` | **Yes** | - | JSON object `{"K":"V"}` or comma-separated keys `K1,K2,K3` |
+| `shared` | No | `false` | For `set`: create as shared variables |
+
+**Example conversations:**
+
+```
+User: Set DATABASE_URL, REDIS_URL, and API_KEY in production
+
+Claude: I'll set these variables in production...
+→ Uses vaulter_multi_set with variables object
+→ Reports success/failure for each variable
+```
+
+```
+User: Delete all the deprecated OLD_* variables from dev
+
+Claude: I'll search for and delete deprecated variables...
+→ Uses vaulter_search with pattern="OLD_*"
+→ Confirms list with user
+→ Uses vaulter_multi_delete to remove them
+```
 
 ---
 

@@ -572,6 +572,7 @@ export interface CLIArgs {
   alg?: string
   name?: string
   global?: boolean
+  scope?: string
   // List command flags
   'all-envs'?: boolean
   // Rotation command flags
@@ -658,6 +659,41 @@ export interface SyncResult {
   localAdded?: string[]
   localUpdated?: string[]
   localDeleted?: string[]
+}
+
+/**
+ * Result of batch operations (setManyChunked, stream writes)
+ */
+export interface BatchResult {
+  /** Successfully processed keys */
+  success: string[]
+  /** Failed operations with error details */
+  failed: Array<{
+    key: string
+    error: string
+  }>
+  /** Total items processed */
+  total: number
+  /** Processing time in milliseconds */
+  durationMs: number
+}
+
+/**
+ * Options for batch operations
+ */
+export interface BatchOptions {
+  /** Number of concurrent operations (default: 5) */
+  concurrency?: number
+  /** Continue on error or abort (default: true - continue) */
+  continueOnError?: boolean
+  /** Progress callback called after each chunk */
+  onProgress?: (progress: {
+    completed: number
+    total: number
+    percentage: number
+    currentChunk: number
+    totalChunks: number
+  }) => void
 }
 
 // ============================================================================

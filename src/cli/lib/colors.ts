@@ -129,6 +129,10 @@ export const vaulterFormatter: Formatter = {
   'option-type': s => enabled ? steelBlue(s) : s,
   'option-default': s => enabled ? dimPaleBlue(s) : s,
   'option-description': s => enabled ? lightGray(s) : s,
+  'global-option-flag': s => enabled ? steelBlue(s) : s,
+  'global-option-type': s => enabled ? paleBlue(s) : s,
+  'global-option-default': s => enabled ? dimPaleBlue(s) : s,
+  'global-option-description': s => enabled ? dimGray(s) : s,
 
   // Positionals
   'positional-name': s => enabled ? skyBlue(s) : s,
