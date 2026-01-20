@@ -1,6 +1,6 @@
 {
   "name": "vaulter",
-  "version": "1.0.36",
+  "version": "1.0.37",
   "description": "Multi-backend environment variable and secrets manager with AES-256-GCM encryption",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
