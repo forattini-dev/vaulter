@@ -98,7 +98,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.25.2",
-    "cli-args-parser": "^1.0.3",
+    "cli-args-parser": "^1.0.4",
     "dotenv": "^17.2.3",
     "p-limit": "^7.2.0",
     "recker": "^1.0.66",

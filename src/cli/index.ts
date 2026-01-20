@@ -13,7 +13,7 @@ import { loadConfig, getProjectName } from '../lib/config-loader.js'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { c, print } from './lib/colors.js'
+import { c, print, vaulterFormatter } from './lib/colors.js'
 import * as ui from './ui.js'
 
 // Version is injected at build time or read from package.json
@@ -94,6 +94,7 @@ const cliSchema: CLISchema = {
   description: 'Multi-backend environment variable and secrets manager',
   autoShort: false,
   separators: VAULTER_SEPARATORS,
+  formatter: vaulterFormatter,
 
   // Global options available to all commands
   options: {
