@@ -134,7 +134,7 @@ export async function listResources(): Promise<Resource[]> {
   resources.push({
     uri: 'vaulter://tools-guide',
     name: 'Tools Guide',
-    description: 'Comprehensive guide on which vaulter tool to use for each scenario. Includes 30 tools organized by category.',
+    description: 'Comprehensive guide on which vaulter tool to use for each scenario. Includes 32 tools organized by category.',
     mimeType: 'text/markdown'
   })
 
@@ -377,7 +377,7 @@ Backend resolution priority (first match wins):
  * Read tools guide resource - Which tool to use for each scenario
  */
 async function handleToolsGuideRead(uri: string): Promise<{ contents: Array<{ uri: string; mimeType: string; text: string }> }> {
-  const guide = `# Vaulter MCP Tools Guide (30 tools)
+  const guide = `# Vaulter MCP Tools Guide (32 tools)
 
 ## Quick Reference
 

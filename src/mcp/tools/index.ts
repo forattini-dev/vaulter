@@ -74,7 +74,8 @@ import {
   handleKeyListCall,
   handleKeyShowCall,
   handleKeyExportCall,
-  handleKeyImportCall
+  handleKeyImportCall,
+  handleKeyRotateCall
 } from './handlers/keys.js'
 import {
   handleCategorizeVarsCall,
@@ -131,6 +132,15 @@ export async function handleToolCall(
 
   if (name === 'vaulter_key_import') {
     return handleKeyImportCall(args, config)
+  }
+
+  if (name === 'vaulter_key_rotate') {
+    // Key rotate needs a client factory to create new client after key generation
+    const createClientForRotation = async () => {
+      const { client: newClient } = await getClientAndConfig()
+      return newClient
+    }
+    return handleKeyRotateCall(args, config, createClientForRotation)
   }
 
   if (!project && !['vaulter_services', 'vaulter_init'].includes(name)) {

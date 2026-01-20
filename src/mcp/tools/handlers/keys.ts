@@ -485,3 +485,186 @@ export async function handleKeyImportCall(
 
   return { content: [{ type: 'text', text: lines.join('\n') }] }
 }
+
+/**
+ * Handle key rotate
+ *
+ * Rotates the encryption key:
+ * 1. Exports all variables (decrypted)
+ * 2. Generates new key
+ * 3. Re-encrypts all variables with new key
+ * 4. Creates backup of old key
+ */
+export async function handleKeyRotateCall(
+  args: Record<string, unknown>,
+  config: VaulterConfig | null,
+  createClient: () => Promise<{ connect: () => Promise<void>; disconnect: () => Promise<void>; export: (project: string, env: string, service?: string) => Promise<Record<string, string>>; set: (input: { key: string; value: string; project: string; environment: string; service?: string; metadata?: Record<string, unknown> }) => Promise<unknown> }>
+): Promise<ToolResponse> {
+  const projectName = getKeyProjectName(args, config)
+  const service = args.service as string | undefined
+  const keyName = (args.keyName as string) || config?.encryption?.asymmetric?.key_name || 'master'
+  const dryRun = args.dryRun as boolean || false
+
+  if (!config) {
+    return { content: [{ type: 'text', text: 'Error: No vaulter configuration found. Run vaulter init first.' }] }
+  }
+
+  const environments = config.environments || ['dev', 'stg', 'prd']
+  const keysDir = getProjectKeysDir(projectName)
+
+  const lines: string[] = []
+  lines.push(`Key Rotation for project: ${projectName}`)
+  lines.push(`Key name: ${keyName}`)
+  lines.push(`Environments: ${environments.join(', ')}`)
+  lines.push('')
+
+  // Step 1: Export all variables from all environments
+  lines.push('Step 1: Exporting all variables (decrypted)...')
+
+  const exportedData: Map<string, Record<string, string>> = new Map()
+  let totalVars = 0
+
+  try {
+    const client = await createClient()
+    await client.connect()
+
+    for (const env of environments) {
+      try {
+        const vars = await client.export(projectName, env, service)
+        const varCount = Object.keys(vars).length
+
+        if (varCount > 0) {
+          exportedData.set(env, vars)
+          totalVars += varCount
+          lines.push(`  [${env}] Exported ${varCount} variables`)
+        }
+      } catch (err) {
+        lines.push(`  [${env}] Error: ${err instanceof Error ? err.message : String(err)}`)
+      }
+    }
+
+    await client.disconnect()
+  } catch (err) {
+    return { content: [{ type: 'text', text: `Error connecting to backend: ${err instanceof Error ? err.message : String(err)}` }] }
+  }
+
+  if (totalVars === 0) {
+    lines.push('')
+    lines.push('No variables found to rotate.')
+    return { content: [{ type: 'text', text: lines.join('\n') }] }
+  }
+
+  lines.push('')
+  lines.push(`Found ${totalVars} variables across ${exportedData.size} environments`)
+
+  if (dryRun) {
+    lines.push('')
+    lines.push('=== DRY RUN ===')
+    lines.push('Would perform the following actions:')
+    lines.push('  1. Backup current key')
+    lines.push('  2. Generate new encryption key')
+    for (const [env, vars] of exportedData) {
+      lines.push(`  3. Re-encrypt ${Object.keys(vars).length} variables in ${env}`)
+    }
+    lines.push('')
+    lines.push('Run without dryRun=true to perform the rotation.')
+    return { content: [{ type: 'text', text: lines.join('\n') }] }
+  }
+
+  // Step 2: Backup and generate new key
+  lines.push('')
+  lines.push('Step 2: Generating new encryption key...')
+
+  const isAsymmetric = config?.encryption?.mode === 'asymmetric'
+  const algorithm = config?.encryption?.asymmetric?.algorithm || 'rsa-4096'
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
+  let oldKeyBackupPath: string
+
+  if (isAsymmetric) {
+    const { privateKey: privateKeyPath, publicKey: publicKeyPath } = resolveKeyPaths(keyName, projectName)
+
+    if (!fs.existsSync(privateKeyPath)) {
+      return { content: [{ type: 'text', text: `Error: Private key not found: ${privateKeyPath}` }] }
+    }
+
+    oldKeyBackupPath = path.join(keysDir, `${keyName}-backup-${timestamp}`)
+
+    // Backup old keys
+    fs.mkdirSync(oldKeyBackupPath, { recursive: true })
+    fs.copyFileSync(privateKeyPath, path.join(oldKeyBackupPath, `${keyName}.key`))
+    fs.copyFileSync(publicKeyPath, path.join(oldKeyBackupPath, `${keyName}.pub`))
+
+    // Generate new key pair
+    const { publicKey, privateKey } = generateKeyPair(algorithm as AsymmetricAlgorithm)
+    fs.writeFileSync(privateKeyPath, privateKey, { mode: 0o600 })
+    fs.writeFileSync(publicKeyPath, publicKey)
+
+    lines.push(`  Old keys backed up to: ${oldKeyBackupPath}`)
+    lines.push(`  New ${algorithm} keys generated`)
+  } else {
+    const keyFilePath = resolveKeyPath(keyName, projectName, false)
+    oldKeyBackupPath = path.join(keysDir, `${keyName}-backup-${timestamp}.key`)
+
+    // Backup old key if exists
+    if (fs.existsSync(keyFilePath)) {
+      fs.copyFileSync(keyFilePath, oldKeyBackupPath)
+    }
+
+    // Generate new passphrase
+    const newPassphrase = generatePassphrase()
+    fs.mkdirSync(path.dirname(keyFilePath), { recursive: true })
+    fs.writeFileSync(keyFilePath, newPassphrase, { mode: 0o600 })
+
+    lines.push(`  Old key backed up to: ${oldKeyBackupPath}`)
+    lines.push(`  New symmetric key generated`)
+  }
+
+  // Step 3: Re-import all variables with new key
+  lines.push('')
+  lines.push('Step 3: Re-encrypting all variables with new key...')
+
+  try {
+    const newClient = await createClient()
+    await newClient.connect()
+
+    let rotatedCount = 0
+
+    for (const [env, vars] of exportedData) {
+      for (const [key, value] of Object.entries(vars)) {
+        await newClient.set({
+          key,
+          value,
+          project: projectName,
+          service,
+          environment: env,
+          metadata: {
+            source: 'rotation',
+            rotatedAt: new Date().toISOString()
+          }
+        })
+        rotatedCount++
+      }
+      lines.push(`  [${env}] Re-encrypted ${Object.keys(vars).length} variables`)
+    }
+
+    await newClient.disconnect()
+
+    lines.push('')
+    lines.push('✓ Key rotation complete')
+    lines.push(`  Variables re-encrypted: ${rotatedCount}`)
+    lines.push(`  Environments: ${Array.from(exportedData.keys()).join(', ')}`)
+    lines.push(`  Old key backup: ${oldKeyBackupPath}`)
+    lines.push('')
+    lines.push('Important: The old key backup should be securely deleted after')
+    lines.push('verifying the rotation was successful.')
+  } catch (err) {
+    lines.push('')
+    lines.push(`Error during re-encryption: ${err instanceof Error ? err.message : String(err)}`)
+    lines.push('')
+    lines.push('⚠️ IMPORTANT: Rotation may be incomplete!')
+    lines.push(`Restore old key from: ${oldKeyBackupPath}`)
+    return { content: [{ type: 'text', text: lines.join('\n') }] }
+  }
+
+  return { content: [{ type: 'text', text: lines.join('\n') }] }
+}

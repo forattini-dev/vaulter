@@ -2,7 +2,7 @@
 
 Complete reference for the Vaulter Model Context Protocol (MCP) server.
 
-**Stats:** 31 tools | 5 resources | 8 prompts
+**Stats:** 32 tools | 5 resources | 8 prompts
 
 ---
 
@@ -39,7 +39,7 @@ Complete reference for the Vaulter Model Context Protocol (MCP) server.
 
 ---
 
-## Tools Reference (31)
+## Tools Reference (32)
 
 ### Core Operations (5)
 
@@ -315,7 +315,7 @@ Generate Terraform .tfvars file.
 
 ---
 
-### Key Management (5)
+### Key Management (6)
 
 #### `vaulter_key_generate`
 Generate a new encryption key.
@@ -367,6 +367,37 @@ Import key from encrypted bundle.
 | `project` | string | No | auto | Project name |
 | `global` | boolean | No | `false` | Import to global scope |
 | `force` | boolean | No | `false` | Overwrite existing key |
+
+#### `vaulter_key_rotate`
+Rotate encryption key. Exports all variables, generates new key, re-encrypts everything.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `project` | string | No | auto | Project name |
+| `service` | string | No | - | Service name (for monorepos) |
+| `keyName` | string | No | `master` | Key name to rotate |
+| `dryRun` | boolean | No | `false` | Preview what would be rotated |
+
+**Process:**
+1. Exports all variables (decrypted) from all environments
+2. Backs up current key to `~/.vaulter/projects/{project}/keys/{key}-backup-{timestamp}`
+3. Generates new encryption key
+4. Re-encrypts all variables with new key
+
+**Example:**
+```json
+// Preview rotation
+{
+  "tool": "vaulter_key_rotate",
+  "arguments": { "dryRun": true }
+}
+
+// Perform rotation
+{
+  "tool": "vaulter_key_rotate",
+  "arguments": {}
+}
+```
 
 ---
 

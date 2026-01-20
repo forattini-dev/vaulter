@@ -397,6 +397,19 @@ export function registerTools(): Tool[] {
         required: ['file']
       }
     },
+    {
+      name: 'vaulter_key_rotate',
+      description: 'Rotate encryption key. Exports all variables (decrypted), generates new key, re-encrypts all variables, and backs up old key. Safe operation with automatic rollback on failure.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          project: { type: 'string', description: 'Project name' },
+          service: { type: 'string', description: 'Service name (for monorepos)' },
+          keyName: { type: 'string', description: 'Key name to rotate (default: master or from config)' },
+          dryRun: { type: 'boolean', description: 'Preview what would be rotated without making changes', default: false }
+        }
+      }
+    },
 
     // === AUDIT TOOLS ===
     {
