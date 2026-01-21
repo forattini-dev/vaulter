@@ -5,8 +5,13 @@
  */
 
 import type { Environment } from '../../types.js'
+import type { VaulterClient } from '../../client.js'
+import { SHARED_SERVICE } from '../../lib/shared.js'
 import {
-  getClientAndConfig,
+  getConfigAndDefaults,
+  getClientForEnvironment,
+  getClientForSharedVars,
+  clearClientCache,
   setMcpOptions,
   getMcpOptions,
   resolveMcpConfigWithSources,
@@ -21,7 +26,10 @@ export { registerTools } from './definitions.js'
 export {
   setMcpOptions,
   getMcpOptions,
-  getClientAndConfig,
+  getConfigAndDefaults,
+  getClientForEnvironment,
+  getClientForSharedVars,
+  clearClientCache,
   resolveMcpConfigWithSources,
   formatResolvedConfig,
   sanitizeK8sName,
@@ -88,17 +96,23 @@ import {
 /**
  * Main tool call dispatcher
  *
- * Routes tool calls to appropriate handlers
+ * Routes tool calls to appropriate handlers.
+ * Uses per-environment clients for proper encryption key handling.
  */
 export async function handleToolCall(
   name: string,
   args: Record<string, unknown>
 ): Promise<ToolResponse> {
-  const { client, config, defaults } = await getClientAndConfig()
-  // Use effective defaults from config chain (project > project.mcp > global mcp > hardcoded)
+  // Step 1: Get config and defaults (without creating client yet)
+  const { config, defaults, connectionStrings } = getConfigAndDefaults()
+
+  // Step 2: Resolve project, environment, service from args/defaults
   const project = (args.project as string) || defaults.project
   const environment = (args.environment as Environment) || defaults.environment
   const service = args.service as string | undefined
+
+  // Determine if this is a shared var operation
+  const isSharedOperation = args.shared === true || service === SHARED_SERVICE
 
   // Tools that don't need backend connection
   if (name === 'vaulter_scan') {
@@ -135,9 +149,12 @@ export async function handleToolCall(
   }
 
   if (name === 'vaulter_key_rotate') {
-    // Key rotate needs a client factory to create new client after key generation
-    const createClientForRotation = async () => {
-      const { client: newClient } = await getClientAndConfig()
+    // Key rotate needs a client factory that creates per-environment clients
+    // Also clears cache to pick up new keys after rotation
+    const createClientForRotation = async (env?: string) => {
+      clearClientCache()
+      const targetEnv = env || environment
+      const newClient = await getClientForEnvironment(targetEnv, { config, connectionStrings, project })
       return newClient
     }
     return handleKeyRotateCall(args, config, createClientForRotation)
@@ -152,7 +169,17 @@ export async function handleToolCall(
     }
   }
 
+  // Step 3: Get client with correct encryption key for this environment
+  // For shared vars, use the shared key environment
+  let client: VaulterClient | undefined
   try {
+    if (isSharedOperation) {
+      const { client: sharedClient } = await getClientForSharedVars({ config, connectionStrings, project })
+      client = sharedClient
+    } else {
+      client = await getClientForEnvironment(environment, { config, connectionStrings, project })
+    }
+
     await client.connect()
 
     switch (name) {
@@ -239,6 +266,8 @@ export async function handleToolCall(
         return { content: [{ type: 'text', text: `Unknown tool: ${name}` }] }
     }
   } finally {
-    await client.disconnect()
+    if (client) {
+      await client.disconnect()
+    }
   }
 }

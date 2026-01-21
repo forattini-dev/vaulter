@@ -323,7 +323,7 @@ export function registerTools(): Tool[] {
           project: { type: 'string', description: 'Project name (auto-detected from directory name if omitted)' },
           backend: { type: 'string', description: 'Backend URL (e.g., s3://bucket/path, file:///path)' },
           monorepo: { type: 'boolean', description: 'Force monorepo mode (auto-detected from nx.json, turbo.json, etc.)', default: false },
-          environments: { type: 'array', items: { type: 'string' }, description: 'Environments to create', default: ['dev', 'sdx', 'prd'] }
+          environments: { type: 'array', items: { type: 'string' }, description: 'Environments to create', default: ['dev', 'stg', 'prd'] }
         }
       }
     },
@@ -331,18 +331,18 @@ export function registerTools(): Tool[] {
     // === KEY MANAGEMENT TOOLS ===
     {
       name: 'vaulter_key_generate',
-      description: 'Generate a new encryption key. Supports symmetric (AES-256) and asymmetric (RSA/EC) keys. Keys are stored in ~/.vaulter/',
+      description: 'Generate a new encryption key. Supports per-environment keys for complete isolation. Keys are stored in ~/.vaulter/projects/{project}/keys/',
       inputSchema: {
         type: 'object',
         properties: {
-          name: { type: 'string', description: 'Key name (e.g., master, deploy)' },
+          name: { type: 'string', description: 'Key name (e.g., master, deploy). If not provided, uses environment name or "master"' },
+          environment: { type: 'string', description: 'Target environment (creates key named after env, e.g., dev, stg, prd)' },
           project: { type: 'string', description: 'Project name (auto-detected from config if omitted)' },
           global: { type: 'boolean', description: 'Store in global scope (~/.vaulter/global/) instead of project scope', default: false },
           asymmetric: { type: 'boolean', description: 'Generate asymmetric key pair instead of symmetric', default: false },
           algorithm: { type: 'string', description: 'Algorithm for asymmetric keys', enum: ['rsa-4096', 'rsa-2048', 'ec-p256', 'ec-p384'], default: 'rsa-4096' },
           force: { type: 'boolean', description: 'Overwrite existing key', default: false }
-        },
-        required: ['name']
+        }
       }
     },
     {

@@ -22,7 +22,6 @@ export {
   // Config utilities
   setMcpOptions,
   getMcpOptions,
-  getClientAndConfig,
   resolveMcpConfigWithSources,
   formatResolvedConfig,
 

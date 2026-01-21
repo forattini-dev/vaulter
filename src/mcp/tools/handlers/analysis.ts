@@ -167,7 +167,7 @@ export async function handleScanCall(
               path: p.relativePath,
               type: p.type,
               hasVaulterConfig: p.hasVaulterConfig,
-              hasEnvFiles: p.hasEnvFiles,
+              envFiles: p.envFiles,
               hasDeployDir: p.hasDeployDir
             }))
           }, null, 2)

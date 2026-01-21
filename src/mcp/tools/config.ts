@@ -7,16 +7,15 @@
 import { VaulterClient } from '../../client.js'
 import {
   loadConfig,
-  loadEncryptionKey,
-  loadPublicKey,
-  loadPrivateKey,
+  loadEncryptionKeyForEnv,
   getEncryptionMode,
-  getAsymmetricAlgorithm,
   findConfigDir,
   loadMcpConfig
 } from '../../lib/config-loader.js'
-import type { VaulterConfig, AsymmetricAlgorithm } from '../../types.js'
+import { loadKeyForEnv } from '../../lib/keys.js'
+import type { VaulterConfig, AsymmetricAlgorithm, Environment } from '../../types.js'
 import { resolveBackendUrls } from '../../index.js'
+import crypto from 'node:crypto'
 import os from 'node:os'
 import path from 'node:path'
 
@@ -87,7 +86,7 @@ export interface McpDefaults {
 /**
  * Config source tracking - shows WHERE each setting came from
  */
-export type ConfigSource = 'cli' | 'project' | 'project.mcp' | 'global.mcp' | 'default'
+export type ConfigSource = 'cli' | 'env' | 'project' | 'project.mcp' | 'global.mcp' | 'default'
 
 export interface ResolvedMcpConfig {
   cwd: { value: string; source: ConfigSource }
@@ -107,29 +106,38 @@ export interface ResolvedMcpConfig {
  * Use this to understand WHERE each setting is coming from
  */
 export function resolveMcpConfigWithSources(): ResolvedMcpConfig {
-  const cwd = process.cwd()
+  // CLI overrides - compute early so we can use cwd for config loading
+  const cliBackend = mcpOptions.backend
+  const cliCwd = mcpOptions.cwd
+  const envCwd = process.env.VAULTER_CWD
 
-  // Try to load project config
+  // Load global MCP config (needed for default_cwd)
+  const globalMcpConfig = loadMcpConfig()
+  const globalConfigPath = path.join(os.homedir(), '.vaulter', 'config.yaml')
+  const hasGlobalConfig = globalMcpConfig !== null
+
+  // Effective cwd: CLI override > env var > global default_cwd > process.cwd()
+  const cwd = cliCwd || envCwd || globalMcpConfig?.default_cwd || process.cwd()
+  const cwdSource: ConfigSource = cliCwd
+    ? 'cli'
+    : envCwd
+      ? 'env'
+      : globalMcpConfig?.default_cwd
+        ? 'global.mcp'
+        : 'default'
+
+  // Try to load project config from effective cwd
   let projectConfig: VaulterConfig | null = null
   let projectConfigPath: string | null = null
   try {
-    projectConfig = loadConfig()
-    const configDir = findConfigDir()
+    projectConfig = loadConfig(cwd)
+    const configDir = findConfigDir(cwd)
     if (configDir) {
       projectConfigPath = path.join(configDir, 'config.yaml')
     }
   } catch {
     // No project config
   }
-
-  // Load global MCP config
-  const globalMcpConfig = loadMcpConfig()
-  const globalConfigPath = path.join(os.homedir(), '.vaulter', 'config.yaml')
-  const hasGlobalConfig = globalMcpConfig !== null
-
-  // CLI overrides
-  const cliBackend = mcpOptions.backend
-  const cliCwd = mcpOptions.cwd || process.env.VAULTER_CWD
 
   // Resolve backend with source tracking
   let backendValue: string
@@ -216,7 +224,7 @@ export function resolveMcpConfigWithSources(): ResolvedMcpConfig {
   return {
     cwd: {
       value: cwd,
-      source: cliCwd ? 'cli' : 'default'
+      source: cwdSource
     },
     backend: { value: backendValue, source: backendSource },
     project: { value: projectValue, source: projectSource },
@@ -275,9 +283,39 @@ export function formatResolvedConfig(config: ResolvedMcpConfig): string {
   return lines.join('\n')
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Shared Config Resolution (DRY - used by multiple functions)
+// ─────────────────────────────────────────────────────────────────────────────
+
+function resolveConnectionStrings(
+  config: VaulterConfig | null,
+  mcpConfig: ReturnType<typeof loadMcpConfig>
+): string[] {
+  const backendOverride = mcpOptions.backend
+
+  if (backendOverride) {
+    return [backendOverride]
+  }
+
+  if (config?.backend) {
+    return resolveBackendUrls(config)
+  }
+
+  if (config?.mcp?.default_backend) {
+    return [config.mcp.default_backend]
+  }
+
+  if (mcpConfig?.default_backend) {
+    return [mcpConfig.default_backend]
+  }
+
+  return []
+}
+
 /**
- * Get current config and client
- * Supports both symmetric and asymmetric encryption modes
+ * Internal: Resolve config, defaults, and connection strings
+ * This is the single source of truth for config resolution - all other
+ * functions should use this to avoid logic drift.
  *
  * Priority order for all settings:
  * 1. CLI flags / tool arguments
@@ -286,20 +324,24 @@ export function formatResolvedConfig(config: ResolvedMcpConfig): string {
  * 4. Global MCP config (~/.vaulter/config.yaml → mcp.*)
  * 5. Defaults
  */
-export async function getClientAndConfig(): Promise<{
-  client: VaulterClient
+function resolveConfigAndConnectionStrings(): {
   config: VaulterConfig | null
+  mcpConfig: ReturnType<typeof loadMcpConfig>
   defaults: McpDefaults
-}> {
+  connectionStrings: string[]
+} {
+  // Load global MCP config as fallback
+  const mcpConfig = loadMcpConfig()
+
+  // Use effective cwd: CLI override > env var > global default_cwd > process.cwd()
+  const cwd = mcpOptions.cwd || process.env.VAULTER_CWD || mcpConfig?.default_cwd || undefined
+
   let config: VaulterConfig | null = null
   try {
-    config = loadConfig()
+    config = loadConfig(cwd)
   } catch {
     // Config not found is OK
   }
-
-  // Load global MCP config as fallback
-  const mcpConfig = loadMcpConfig()
 
   // Resolve effective defaults with priority chain:
   // project config > project mcp > global mcp > hardcoded default
@@ -316,58 +358,195 @@ export async function getClientAndConfig(): Promise<{
       || mcpConfig?.default_key
   }
 
-  // CLI --backend flag takes precedence over config file
-  const backendOverride = mcpOptions.backend
-
   // Determine connection strings with priority:
   // 1. CLI --backend flag
   // 2. Project config backend (config.backend)
   // 3. Project MCP config (config.mcp.default_backend)
   // 4. Global MCP config (~/.vaulter/config.yaml → mcp.default_backend)
-  // 5. Default (file://$HOME/.vaulter/store)
-  let connectionStrings: string[]
-  if (backendOverride) {
-    connectionStrings = [backendOverride]
-  } else if (config?.backend) {
-    connectionStrings = resolveBackendUrls(config)
-  } else if (config?.mcp?.default_backend) {
-    connectionStrings = [config.mcp.default_backend]
-  } else if (mcpConfig?.default_backend) {
-    connectionStrings = [mcpConfig.default_backend]
-  } else {
-    connectionStrings = []
+  // 5. Default (empty - VaulterClient uses filesystem fallback)
+  const connectionStrings = resolveConnectionStrings(config, mcpConfig)
+
+  return { config, mcpConfig, defaults, connectionStrings }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Per-Environment Client Management
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Cache of clients by environment/project
+ * Key format: "{connectionString}:{project}:{environment}:{mode}:{keyHash}"
+ * The keyHash ensures cache is invalidated when encryption keys change.
+ */
+const clientCache = new Map<string, VaulterClient>()
+
+/**
+ * Generate a short hash of key content for cache invalidation
+ * Not cryptographic - just enough to detect key changes
+ */
+function hashKeyContent(content: string | null | undefined): string {
+  if (!content) return 'none'
+  return crypto.createHash('sha256').update(content).digest('hex').substring(0, 12)
+}
+
+/**
+ * Get config and defaults without creating a client
+ * Use this when you need to resolve environment before creating client
+ */
+export function getConfigAndDefaults(): {
+  config: VaulterConfig | null
+  defaults: McpDefaults
+  connectionStrings: string[]
+} {
+  // Use shared resolution function to avoid logic drift
+  const { config, defaults, connectionStrings } = resolveConfigAndConnectionStrings()
+  return { config, defaults, connectionStrings }
+}
+
+/**
+ * Get or create a client for a specific environment
+ *
+ * This is the CORRECT way to get a client - it loads the encryption key
+ * specific to the environment, supporting per-environment keys.
+ *
+ * Clients are cached by environment to avoid recreating them on every request.
+ *
+ * @param environment - Target environment (e.g., 'dev', 'prd')
+ * @param options - Optional overrides
+ */
+export async function getClientForEnvironment(
+  environment: Environment,
+  options?: {
+    config?: VaulterConfig | null
+    connectionStrings?: string[]
+    forceNew?: boolean
+    project?: string
   }
+): Promise<VaulterClient> {
+  const {
+    config: providedConfig,
+    connectionStrings: providedConnStrings,
+    forceNew,
+    project: providedProject
+  } = options || {}
 
-  // Determine encryption mode
-  const encryptionMode = config ? getEncryptionMode(config) : 'symmetric'
+  // Get config if not provided
+  const fallback = providedConfig !== undefined ? null : getConfigAndDefaults()
+  const config = providedConfig !== undefined ? providedConfig : fallback?.config || null
 
-  // For asymmetric mode, load public/private keys
+  const connectionStrings = providedConnStrings
+    ?? (providedConfig !== undefined
+      ? resolveConnectionStrings(config, loadMcpConfig())
+      : (fallback?.connectionStrings || []))
+  const project = providedProject || config?.project || ''
+
+  // Determine encryption mode for this environment
+  const envKeyConfig = config?.encryption?.keys?.[environment]
+  const encryptionMode = envKeyConfig?.mode || (config ? getEncryptionMode(config) : 'symmetric')
+
+  const connKey = connectionStrings.join(',') || 'default'
+  const projectKey = project || 'default'
+
+  let client: VaulterClient
+  let keyHash: string
+
   if (encryptionMode === 'asymmetric' && config) {
-    const publicKey = await loadPublicKey(config, config.project)
-    const privateKey = await loadPrivateKey(config, config.project)
-    const algorithm = getAsymmetricAlgorithm(config) as AsymmetricAlgorithm
-
-    const client = new VaulterClient({
-      connectionStrings: connectionStrings.length > 0 ? connectionStrings : undefined,
-      encryptionMode: 'asymmetric',
-      publicKey: publicKey || undefined,
-      privateKey: privateKey || undefined,
-      asymmetricAlgorithm: algorithm
+    // Load asymmetric keys for this environment
+    const keyResult = await loadKeyForEnv({
+      project: projectKey,
+      environment,
+      config,
+      loadPublicKey: true,
+      loadPrivateKey: true
     })
 
-    return { client, config, defaults }
+    // Hash both public and private keys for cache invalidation
+    keyHash = hashKeyContent((keyResult.publicKey || '') + (keyResult.key || ''))
+
+    // Create cache key including key hash
+    const cacheKey = `${connKey}:${projectKey}:${environment}:${encryptionMode}:${keyHash}`
+
+    // Return cached client if available (unless forceNew)
+    if (!forceNew && clientCache.has(cacheKey)) {
+      return clientCache.get(cacheKey)!
+    }
+
+    client = new VaulterClient({
+      connectionStrings: connectionStrings.length > 0 ? connectionStrings : undefined,
+      encryptionMode: 'asymmetric',
+      publicKey: keyResult.publicKey || undefined,
+      privateKey: keyResult.key || undefined,
+      asymmetricAlgorithm: (keyResult.algorithm || 'rsa-4096') as AsymmetricAlgorithm
+    })
+
+    // Cache the client
+    clientCache.set(cacheKey, client)
+  } else {
+    // Symmetric mode - load key for specific environment
+    const passphrase = await loadEncryptionKeyForEnv(config, projectKey, environment)
+
+    // Hash the passphrase for cache invalidation
+    keyHash = hashKeyContent(passphrase)
+
+    // Create cache key including key hash
+    const cacheKey = `${connKey}:${projectKey}:${environment}:${encryptionMode}:${keyHash}`
+
+    // Return cached client if available (unless forceNew)
+    if (!forceNew && clientCache.has(cacheKey)) {
+      return clientCache.get(cacheKey)!
+    }
+
+    client = new VaulterClient({
+      connectionStrings: connectionStrings.length > 0 ? connectionStrings : undefined,
+      encryptionMode: 'symmetric',
+      passphrase: passphrase || undefined
+    })
+
+    // Cache the client
+    clientCache.set(cacheKey, client)
   }
 
-  // Symmetric mode (default)
-  const passphrase = config ? await loadEncryptionKey(config) : undefined
+  return client
+}
 
-  const client = new VaulterClient({
-    connectionStrings: connectionStrings.length > 0 ? connectionStrings : undefined,
-    encryptionMode: 'symmetric',
-    passphrase: passphrase || undefined
-  })
+/**
+ * Clear the client cache
+ * Use this when encryption keys have changed (e.g., after key rotation)
+ */
+export function clearClientCache(): void {
+  clientCache.clear()
+}
 
-  return { client, config, defaults }
+/**
+ * Get a client for working with shared variables
+ *
+ * Shared vars strategy:
+ * - If config has encryption.shared_key_environment, use that environment's key
+ * - Otherwise, use the default environment's key
+ * - This ensures shared vars are always encrypted with a consistent key
+ */
+export async function getClientForSharedVars(
+  options?: {
+    config?: VaulterConfig | null
+    connectionStrings?: string[]
+    project?: string
+  }
+): Promise<{ client: VaulterClient; sharedKeyEnv: string }> {
+  const { config: providedConfig, connectionStrings, project: providedProject } = options || {}
+  const { config, defaults } = providedConfig !== undefined
+    ? { config: providedConfig, defaults: { environment: 'dev', project: '', key: undefined } }
+    : getConfigAndDefaults()
+
+  // Determine which environment's key to use for shared vars
+  const sharedKeyEnv = config?.encryption?.shared_key_environment
+    || config?.default_environment
+    || defaults.environment
+    || 'dev'
+
+  const project = providedProject || config?.project || defaults.project || 'default'
+  const client = await getClientForEnvironment(sharedKeyEnv, { config, connectionStrings, project })
+
+  return { client, sharedKeyEnv }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

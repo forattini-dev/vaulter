@@ -33,16 +33,21 @@ export async function handleKeyGenerateCall(
   args: Record<string, unknown>,
   config: VaulterConfig | null
 ): Promise<ToolResponse> {
-  const keyName = args.name as string
+  const keyName = args.name as string | undefined
+  const environment = args.environment as string | undefined
   const isGlobal = args.global as boolean || false
   const isAsymmetric = args.asymmetric as boolean || false
   const algorithm = (args.algorithm as AsymmetricAlgorithm) || 'rsa-4096'
   const force = args.force as boolean || false
   const projectName = getKeyProjectName(args, config)
 
-  if (!keyName) {
-    return { content: [{ type: 'text', text: 'Error: name is required' }] }
+  // Name or environment must be provided
+  if (!keyName && !environment) {
+    return { content: [{ type: 'text', text: 'Error: name or environment is required' }] }
   }
+
+  // Determine effective key name: explicit name > environment > 'master'
+  const effectiveKeyName = keyName || environment || 'master'
 
   // Validate algorithm if asymmetric
   const validAlgorithms: AsymmetricAlgorithm[] = ['rsa-4096', 'rsa-2048', 'ec-p256', 'ec-p384']
@@ -50,12 +55,12 @@ export async function handleKeyGenerateCall(
     return { content: [{ type: 'text', text: `Error: Invalid algorithm: ${algorithm}. Valid: ${validAlgorithms.join(', ')}` }] }
   }
 
-  const fullKeyName = isGlobal ? `global:${keyName}` : keyName
+  const fullKeyName = isGlobal ? `global:${effectiveKeyName}` : effectiveKeyName
 
   // Check if key already exists
   const existing = keyExists(fullKeyName, projectName)
   if (existing.exists && !force) {
-    return { content: [{ type: 'text', text: `Error: Key '${keyName}' already exists${isGlobal ? ' (global)' : ''}. Use force=true to overwrite` }] }
+    return { content: [{ type: 'text', text: `Error: Key '${effectiveKeyName}' already exists${isGlobal ? ' (global)' : ''}. Use force=true to overwrite` }] }
   }
 
   if (isAsymmetric) {
@@ -490,15 +495,19 @@ export async function handleKeyImportCall(
  * Handle key rotate
  *
  * Rotates the encryption key:
- * 1. Exports all variables (decrypted)
+ * 1. Exports all variables (decrypted) - using per-env client for each
  * 2. Generates new key
- * 3. Re-encrypts all variables with new key
+ * 3. Re-encrypts all variables with new key - using per-env client for each
  * 4. Creates backup of old key
+ *
+ * IMPORTANT: Uses per-environment clients to support per-env encryption keys.
+ * The createClient factory receives the environment and returns a client
+ * configured with the correct encryption key for that environment.
  */
 export async function handleKeyRotateCall(
   args: Record<string, unknown>,
   config: VaulterConfig | null,
-  createClient: () => Promise<{ connect: () => Promise<void>; disconnect: () => Promise<void>; export: (project: string, env: string, service?: string) => Promise<Record<string, string>>; set: (input: { key: string; value: string; project: string; environment: string; service?: string; metadata?: Record<string, unknown> }) => Promise<unknown> }>
+  createClient: (env?: string) => Promise<{ connect: () => Promise<void>; disconnect: () => Promise<void>; export: (project: string, env: string, service?: string) => Promise<Record<string, string>>; set: (input: { key: string; value: string; project: string; environment: string; service?: string; metadata?: Record<string, unknown> }) => Promise<unknown> }>
 ): Promise<ToolResponse> {
   const projectName = getKeyProjectName(args, config)
   const service = args.service as string | undefined
@@ -519,16 +528,18 @@ export async function handleKeyRotateCall(
   lines.push('')
 
   // Step 1: Export all variables from all environments
+  // Use per-environment clients to decrypt with each env's encryption key
   lines.push('Step 1: Exporting all variables (decrypted)...')
 
   const exportedData: Map<string, Record<string, string>> = new Map()
   let totalVars = 0
 
-  try {
-    const client = await createClient()
-    await client.connect()
+  for (const env of environments) {
+    try {
+      // Create a client with the encryption key for THIS environment
+      const client = await createClient(env)
+      await client.connect()
 
-    for (const env of environments) {
       try {
         const vars = await client.export(projectName, env, service)
         const varCount = Object.keys(vars).length
@@ -538,14 +549,12 @@ export async function handleKeyRotateCall(
           totalVars += varCount
           lines.push(`  [${env}] Exported ${varCount} variables`)
         }
-      } catch (err) {
-        lines.push(`  [${env}] Error: ${err instanceof Error ? err.message : String(err)}`)
+      } finally {
+        await client.disconnect()
       }
+    } catch (err) {
+      lines.push(`  [${env}] Error: ${err instanceof Error ? err.message : String(err)}`)
     }
-
-    await client.disconnect()
-  } catch (err) {
-    return { content: [{ type: 'text', text: `Error connecting to backend: ${err instanceof Error ? err.message : String(err)}` }] }
   }
 
   if (totalVars === 0) {
@@ -620,51 +629,65 @@ export async function handleKeyRotateCall(
   }
 
   // Step 3: Re-import all variables with new key
+  // Use per-environment clients to encrypt with each env's NEW encryption key
+  // The createClient factory will pick up the newly generated key
   lines.push('')
   lines.push('Step 3: Re-encrypting all variables with new key...')
 
-  try {
-    const newClient = await createClient()
-    await newClient.connect()
+  let rotatedCount = 0
+  const failedEnvs: string[] = []
 
-    let rotatedCount = 0
+  for (const [env, vars] of exportedData) {
+    try {
+      // Create a client with the NEW encryption key for THIS environment
+      // The factory clears cache, so it will pick up the new key
+      const newClient = await createClient(env)
+      await newClient.connect()
 
-    for (const [env, vars] of exportedData) {
-      for (const [key, value] of Object.entries(vars)) {
-        await newClient.set({
-          key,
-          value,
-          project: projectName,
-          service,
-          environment: env,
-          metadata: {
-            source: 'rotation',
-            rotatedAt: new Date().toISOString()
-          }
-        })
-        rotatedCount++
+      try {
+        for (const [key, value] of Object.entries(vars)) {
+          await newClient.set({
+            key,
+            value,
+            project: projectName,
+            service,
+            environment: env,
+            metadata: {
+              source: 'rotation',
+              rotatedAt: new Date().toISOString()
+            }
+          })
+          rotatedCount++
+        }
+        lines.push(`  [${env}] Re-encrypted ${Object.keys(vars).length} variables`)
+      } finally {
+        await newClient.disconnect()
       }
-      lines.push(`  [${env}] Re-encrypted ${Object.keys(vars).length} variables`)
+    } catch (err) {
+      failedEnvs.push(env)
+      lines.push(`  [${env}] Error: ${err instanceof Error ? err.message : String(err)}`)
     }
+  }
 
-    await newClient.disconnect()
-
+  if (failedEnvs.length > 0) {
     lines.push('')
-    lines.push('✓ Key rotation complete')
-    lines.push(`  Variables re-encrypted: ${rotatedCount}`)
-    lines.push(`  Environments: ${Array.from(exportedData.keys()).join(', ')}`)
-    lines.push(`  Old key backup: ${oldKeyBackupPath}`)
-    lines.push('')
-    lines.push('Important: The old key backup should be securely deleted after')
-    lines.push('verifying the rotation was successful.')
-  } catch (err) {
-    lines.push('')
-    lines.push(`Error during re-encryption: ${err instanceof Error ? err.message : String(err)}`)
-    lines.push('')
-    lines.push('⚠️ IMPORTANT: Rotation may be incomplete!')
+    lines.push(`⚠️ IMPORTANT: Rotation failed for environments: ${failedEnvs.join(', ')}`)
     lines.push(`Restore old key from: ${oldKeyBackupPath}`)
+    lines.push('')
+    lines.push('To recover:')
+    lines.push('  1. Restore old key from backup')
+    lines.push('  2. Re-run rotation for failed environments only')
     return { content: [{ type: 'text', text: lines.join('\n') }] }
   }
+
+  lines.push('')
+  lines.push('✓ Key rotation complete')
+  lines.push(`  Variables re-encrypted: ${rotatedCount}`)
+  lines.push(`  Environments: ${Array.from(exportedData.keys()).join(', ')}`)
+  lines.push(`  Old key backup: ${oldKeyBackupPath}`)
+  lines.push('')
+  lines.push('Important: The old key backup should be securely deleted after')
+  lines.push('verifying the rotation was successful.')
 
   return { content: [{ type: 'text', text: lines.join('\n') }] }
 }
