@@ -168,28 +168,6 @@ export function keyExists(keyName: string, projectName: string): {
 }
 
 /**
- * Load public key by key_name
- */
-export function loadPublicKeyByName(keyName: string, projectName: string): string | null {
-  const keyPath = resolveKeyPath(keyName, projectName, true)
-  if (fs.existsSync(keyPath)) {
-    return fs.readFileSync(keyPath, 'utf-8')
-  }
-  return null
-}
-
-/**
- * Load private key by key_name
- */
-export function loadPrivateKeyByName(keyName: string, projectName: string): string | null {
-  const keyPath = resolveKeyPath(keyName, projectName, false)
-  if (fs.existsSync(keyPath)) {
-    return fs.readFileSync(keyPath, 'utf-8')
-  }
-  return null
-}
-
-/**
  * Expand environment variables in a string
  * Supports: ${VAR}, ${VAR:-default}, $VAR
  */
@@ -545,55 +523,108 @@ export function configExists(startDir?: string): boolean {
 }
 
 /**
- * Get the encryption key from configured sources
+ * Resolve backend URLs from config
+ *
+ * Supports both single url and urls array formats:
+ * - backend.url: "s3://bucket/path" -> ["s3://bucket/path"]
+ * - backend.urls: ["s3://...", "http://..."] -> ["s3://...", "http://..."]
+ *
+ * @param config - Vaulter configuration
+ * @returns Array of backend URLs (empty if none configured)
  */
-export async function loadEncryptionKey(config: VaulterConfig): Promise<string | null> {
-  const keySources = config.encryption?.key_source || []
-
-  for (const source of keySources) {
-    if ('env' in source) {
-      // Environment variable
-      const value = process.env[source.env]
-      if (value) return value
-    } else if ('file' in source) {
-      // Local file
-      const filePath = path.resolve(source.file)
-      if (fs.existsSync(filePath)) {
-        return fs.readFileSync(filePath, 'utf-8').trim()
-      }
-    } else if ('s3' in source) {
-      // S3 remote key
-      try {
-        const key = await loadKeyFromS3(source.s3)
-        if (key) return key
-      } catch (err: any) {
-        // Log error but continue to next source
-        if (process.env.VAULTER_VERBOSE) {
-          console.warn(`Failed to load key from S3: ${err.message}`)
-        }
-      }
-    } else if ('inline' in source) {
-      // Inline key (useful for shared dev keys)
-      // WARNING: Only for development environments!
-      if (source.inline) return source.inline
-    }
+export function resolveBackendUrls(config: VaulterConfig): string[] {
+  if (!config.backend) {
+    return []
   }
 
-  // Fallback to VAULTER_KEY environment variable
+  // If urls array is provided, use it
+  if (config.backend.urls && config.backend.urls.length > 0) {
+    return config.backend.urls.filter(url => url && url.trim() !== '')
+  }
+
+  // Otherwise use single url
+  if (config.backend.url && config.backend.url.trim() !== '') {
+    return [config.backend.url]
+  }
+
+  return []
+}
+
+/**
+ * Load encryption key for a specific environment
+ *
+ * Resolution order:
+ * 1. VAULTER_KEY_{ENV} env var (e.g., VAULTER_KEY_PRD)
+ * 2. Config encryption.keys.{env}.source (supports env, file, s3, inline)
+ * 3. Key file ~/.vaulter/projects/{project}/keys/{key_name || env}
+ * 4. VAULTER_KEY env var
+ * 5. Config encryption.key_source (supports env, file, s3, inline)
+ * 6. Key file ~/.vaulter/projects/{project}/keys/master
+ *
+ * @param config - Vaulter configuration
+ * @param project - Project name (for key file resolution)
+ * @param environment - Target environment
+ * @returns The encryption key or null if not found
+ */
+export async function loadEncryptionKeyForEnv(
+  config: VaulterConfig | null,
+  project: string,
+  environment: string
+): Promise<string | null> {
+  const envUpper = environment.toUpperCase()
+  const envKeyConfig = config?.encryption?.keys?.[environment]
+
+  // 1. Try VAULTER_KEY_{ENV}
+  const envSpecificKey = process.env[`VAULTER_KEY_${envUpper}`]
+  if (envSpecificKey) {
+    return envSpecificKey
+  }
+
+  // 2. Try config encryption.keys.{env}.source (using canonical helper)
+  if (envKeyConfig?.source) {
+    const key = await loadKeyFromSources(envKeyConfig.source)
+    if (key) return key
+  }
+
+  // 3. Try key file ~/.vaulter/projects/{project}/keys/{keyName}
+  // Supports global: prefix via resolveKeyPath
+  const keyFileName = envKeyConfig?.key_name || environment
+  const envKeyPath = resolveKeyPath(keyFileName, project, false)
+  if (fs.existsSync(envKeyPath)) {
+    const key = fs.readFileSync(envKeyPath, 'utf-8').trim()
+    if (key) return key
+  }
+
+  // 4. Try VAULTER_KEY (global)
   if (process.env.VAULTER_KEY) {
     return process.env.VAULTER_KEY
+  }
+
+  // 5. Try config encryption.key_source (using canonical helper)
+  if (config?.encryption?.key_source) {
+    const key = await loadKeyFromSources(config.encryption.key_source)
+    if (key) return key
+  }
+
+  // 6. Try key file ~/.vaulter/projects/{project}/keys/master
+  const masterKeyPath = path.join(getProjectKeysDir(project), 'master')
+  if (fs.existsSync(masterKeyPath)) {
+    const key = fs.readFileSync(masterKeyPath, 'utf-8').trim()
+    if (key) return key
   }
 
   return null
 }
 
 /**
- * Load a key from asymmetric key sources
+ * Unified key source loader - handles env, file, s3, and inline sources
+ * This is the canonical implementation used across vaulter
+ *
  * @param sources - Array of key sources to try in order
  * @returns The key content or null if not found
  */
-async function loadKeyFromSources(
-  sources: Array<{ env?: string; file?: string; s3?: string }>
+export async function loadKeyFromSources(
+  sources: Array<{ env?: string; file?: string; s3?: string; inline?: string }>
 ): Promise<string | null> {
   for (const source of sources) {
     if ('env' in source && source.env) {
@@ -602,7 +633,7 @@ async function loadKeyFromSources(
     } else if ('file' in source && source.file) {
       const filePath = path.resolve(source.file)
       if (fs.existsSync(filePath)) {
-        return fs.readFileSync(filePath, 'utf-8')
+        return fs.readFileSync(filePath, 'utf-8').trim()
       }
     } else if ('s3' in source && source.s3) {
       try {
@@ -613,78 +644,10 @@ async function loadKeyFromSources(
           console.warn(`Failed to load key from S3: ${err.message}`)
         }
       }
+    } else if ('inline' in source && source.inline) {
+      return source.inline
     }
   }
-  return null
-}
-
-/**
- * Load the public key for asymmetric encryption
- * Resolution order:
- * 1. key_name → ~/.vaulter/projects/<project>/keys/<name>.pub or ~/.vaulter/global/keys/<name>.pub
- * 2. public_key sources (env, file, s3)
- * 3. VAULTER_PUBLIC_KEY environment variable
- *
- * @param config - Vaulter configuration
- * @param projectName - Project name for key_name resolution (optional if using explicit sources)
- * @returns The public key PEM string or null if not found
- */
-export async function loadPublicKey(config: VaulterConfig, projectName?: string): Promise<string | null> {
-  const asymmetricConfig = config.encryption?.asymmetric
-
-  // 1. Try key_name first (requires projectName for non-global keys)
-  if (asymmetricConfig?.key_name) {
-    const resolvedProjectName = projectName || config.project || 'default'
-    const key = loadPublicKeyByName(asymmetricConfig.key_name, resolvedProjectName)
-    if (key) return key
-  }
-
-  // 2. Try explicit public_key sources
-  if (asymmetricConfig?.public_key) {
-    const key = await loadKeyFromSources(asymmetricConfig.public_key)
-    if (key) return key
-  }
-
-  // 3. Fallback to VAULTER_PUBLIC_KEY environment variable
-  if (process.env.VAULTER_PUBLIC_KEY) {
-    return process.env.VAULTER_PUBLIC_KEY
-  }
-
-  return null
-}
-
-/**
- * Load the private key for asymmetric encryption
- * Resolution order:
- * 1. key_name → ~/.vaulter/projects/<project>/keys/<name> or ~/.vaulter/global/keys/<name>
- * 2. private_key sources (env, file, s3)
- * 3. VAULTER_PRIVATE_KEY environment variable
- *
- * @param config - Vaulter configuration
- * @param projectName - Project name for key_name resolution (optional if using explicit sources)
- * @returns The private key PEM string or null if not found
- */
-export async function loadPrivateKey(config: VaulterConfig, projectName?: string): Promise<string | null> {
-  const asymmetricConfig = config.encryption?.asymmetric
-
-  // 1. Try key_name first (requires projectName for non-global keys)
-  if (asymmetricConfig?.key_name) {
-    const resolvedProjectName = projectName || config.project || 'default'
-    const key = loadPrivateKeyByName(asymmetricConfig.key_name, resolvedProjectName)
-    if (key) return key
-  }
-
-  // 2. Try explicit private_key sources
-  if (asymmetricConfig?.private_key) {
-    const key = await loadKeyFromSources(asymmetricConfig.private_key)
-    if (key) return key
-  }
-
-  // 3. Fallback to VAULTER_PRIVATE_KEY environment variable
-  if (process.env.VAULTER_PRIVATE_KEY) {
-    return process.env.VAULTER_PRIVATE_KEY
-  }
-
   return null
 }
 
