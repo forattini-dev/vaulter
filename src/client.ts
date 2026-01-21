@@ -254,7 +254,7 @@ export class VaulterClient {
               description: 'string|optional',
               owner: 'string|optional',
               rotateAfter: 'date|optional',
-              source: { type: 'string', enum: ['manual', 'sync', 'import'], optional: true }
+              source: { type: 'string', enum: ['manual', 'sync', 'import', 'rotation'], optional: true }
             }
           },
 
