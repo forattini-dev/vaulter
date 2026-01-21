@@ -8,7 +8,9 @@
   "sideEffects": [
     "src/cli/preload.ts",
     "src/load.ts",
-    "dist/load.js"
+    "src/runtime/load.ts",
+    "dist/load.js",
+    "dist/runtime/load.js"
   ],
   "keywords": [
     "env",
@@ -64,6 +66,16 @@
       "types": "./dist/loader.d.ts",
       "import": "./dist/loader.js",
       "default": "./dist/loader.js"
+    },
+    "./runtime": {
+      "types": "./dist/runtime/index.d.ts",
+      "import": "./dist/runtime/index.js",
+      "default": "./dist/runtime/index.js"
+    },
+    "./runtime/load": {
+      "types": "./dist/runtime/load.d.ts",
+      "import": "./dist/runtime/load.js",
+      "default": "./dist/runtime/load.js"
     },
     "./package.json": "./package.json"
   },
