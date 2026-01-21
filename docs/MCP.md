@@ -1171,3 +1171,40 @@ Examples:
 - Single repo: `myproject|dev||DATABASE_URL`
 - Monorepo: `myproject|dev|api|DATABASE_URL`
 - Shared: `myproject|dev|__shared__|SHARED_KEY`
+
+### Per-Environment Keys
+
+Vaulter supports different encryption keys per environment for complete isolation:
+
+```yaml
+encryption:
+  keys:
+    dev:
+      source:
+        - env: VAULTER_KEY_DEV
+    prd:
+      source:
+        - env: VAULTER_KEY_PRD
+```
+
+**Key resolution order:**
+1. `VAULTER_KEY_{ENV}` env var
+2. Config `encryption.keys.{env}.source`
+3. File `~/.vaulter/projects/{project}/keys/{env}`
+4. `VAULTER_KEY` env var (global fallback)
+5. Config `encryption.key_source`
+6. File `keys/master`
+
+### Shared Variables Key (Monorepo)
+
+For monorepos with per-environment keys, use `shared_key_environment` to specify which key encrypts shared variables:
+
+```yaml
+encryption:
+  shared_key_environment: dev  # Shared vars always use dev key
+  keys:
+    dev: { source: [{ env: VAULTER_KEY_DEV }] }
+    prd: { source: [{ env: VAULTER_KEY_PRD }] }
+```
+
+This ensures shared variables can be read across all environments using a consistent key.

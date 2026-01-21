@@ -274,6 +274,37 @@ encryption:
 
 Each app has completely isolated secrets - `app-landing/prd` keys cannot decrypt `app-api/prd` secrets.
 
+### Shared Variables Key (Monorepo)
+
+In monorepos, shared variables need a consistent encryption key. Use `shared_key_environment` to specify which environment's key encrypts shared vars:
+
+```yaml
+# .vaulter/config.yaml
+encryption:
+  shared_key_environment: dev  # Use dev key for all shared vars
+  keys:
+    dev:
+      source:
+        - env: VAULTER_KEY_DEV
+    prd:
+      source:
+        - env: VAULTER_KEY_PRD
+```
+
+**Why this matters:**
+- Shared vars (`__shared__` service) need ONE key to encrypt/decrypt
+- Without `shared_key_environment`, vaulter uses the current environment's key
+- This can cause issues when different environments have different keys
+
+**Example flow:**
+```bash
+# Set shared var (uses dev key because shared_key_environment: dev)
+vaulter var set LOG_LEVEL=debug -e dev --shared
+
+# Read shared var from prd (still uses dev key for shared vars)
+vaulter var list -e prd --shared  # Works! Uses dev key for shared
+```
+
 ---
 
 ## Configuration
@@ -881,7 +912,7 @@ const result = await loadRuntime({
 
 ## MCP Server
 
-Claude AI integration via Model Context Protocol. **30 tools, 5 resources, 8 prompts.**
+Claude AI integration via Model Context Protocol. **32 tools, 5 resources, 8 prompts.**
 
 ```bash
 vaulter mcp
