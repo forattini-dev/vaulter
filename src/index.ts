@@ -20,14 +20,17 @@ export type {
   OutputTarget,
   OutputTargetInput,
   NormalizedOutputTarget,
-  SharedVarsConfig
+  SharedVarsConfig,
+  // Per-environment keys
+  EnvironmentKeyConfig,
+  EncryptionMode,
+  AsymmetricAlgorithm
 } from './types.js'
 
 export {
   DEFAULT_ENVIRONMENTS,
   DEFAULT_ENVIRONMENT,
   COMMON_ENVIRONMENT_NAMES,
-  ENVIRONMENTS, // deprecated, use DEFAULT_ENVIRONMENTS
   EXPORT_FORMATS,
   DEFAULT_SECRET_PATTERNS
 } from './types.js'
@@ -38,37 +41,34 @@ export {
   findConfigDir,
   getProjectName,
   configExists,
-  loadEncryptionKey,
+  loadEncryptionKeyForEnv,
   createDefaultConfig,
   getValidEnvironments,
   isValidEnvironment,
-  getDefaultEnvironment
+  getDefaultEnvironment,
+  getProjectKeysDir,
+  getGlobalKeysDir,
+  resolveBackendUrls
 } from './lib/config-loader.js'
 
-// Backend URL resolver
-import type { VaulterConfig } from './types.js'
+// Key management (per-environment keys)
+export {
+  generateKey,
+  loadKeyForEnv,
+  listKeys,
+  keyExistsForEnv,
+  getKeyPathForEnv,
+  deleteKey
+} from './lib/keys.js'
 
-/**
- * Resolve backend URLs from config
- * Supports both single `url` and multiple `urls` with fallback
- */
-export function resolveBackendUrls(config: VaulterConfig): string[] {
-  if (!config.backend) {
-    return []
-  }
-
-  // If urls array is provided, use it
-  if (config.backend.urls && config.backend.urls.length > 0) {
-    return config.backend.urls.filter(url => url && url.trim() !== '')
-  }
-
-  // Otherwise use single url
-  if (config.backend.url && config.backend.url.trim() !== '') {
-    return [config.backend.url]
-  }
-
-  return []
-}
+export type {
+  GenerateKeyOptions,
+  GenerateKeyResult,
+  LoadKeyForEnvOptions,
+  LoadKeyForEnvResult,
+  ListKeysOptions,
+  KeyInfo
+} from './lib/keys.js'
 
 // Env parser
 export {
@@ -132,3 +132,15 @@ export type {
   PullToOutputsOptions,
   PullToOutputsResult
 } from './lib/outputs.js'
+
+// Runtime loader (load secrets from backend at startup)
+export {
+  loadRuntime,
+  isRuntimeAvailable,
+  getRuntimeInfo
+} from './runtime/index.js'
+
+export type {
+  RuntimeLoaderOptions,
+  RuntimeLoaderResult
+} from './runtime/index.js'

@@ -43,10 +43,6 @@ export const COMMON_ENVIRONMENT_NAMES: Record<string, string> = {
   preprod: 'pre-production'
 }
 
-// Legacy exports for backward compatibility
-/** @deprecated Use DEFAULT_ENVIRONMENTS instead */
-export const ENVIRONMENTS = DEFAULT_ENVIRONMENTS
-
 // ============================================================================
 // Environment Variable Types
 // ============================================================================
@@ -190,6 +186,23 @@ export interface HybridEncryptedData {
   tag: string
 }
 
+/**
+ * Per-environment key configuration
+ *
+ * Allows different encryption keys for different environments.
+ * Useful for security isolation (prd key different from dev).
+ */
+export interface EnvironmentKeyConfig {
+  /** Key sources for this environment (tried in order) */
+  source?: KeySource[]
+  /** Key name to use (default: environment name) */
+  key_name?: string
+  /** Override encryption mode for this environment */
+  mode?: EncryptionMode
+  /** Override asymmetric config for this environment */
+  asymmetric?: AsymmetricEncryptionConfig
+}
+
 export interface EncryptionConfig {
   /** Encryption mode: symmetric (default) or asymmetric */
   mode?: EncryptionMode
@@ -197,8 +210,28 @@ export interface EncryptionConfig {
   key_source?: KeySource[]
   /** Asymmetric encryption config - used when mode is 'asymmetric' */
   asymmetric?: AsymmetricEncryptionConfig
-  /** @deprecated Use mode instead */
-  algorithm?: 'aes-256-gcm'
+  /**
+   * Per-environment key configuration
+   *
+   * @example
+   * ```yaml
+   * encryption:
+   *   keys:
+   *     dev:
+   *       source:
+   *         - env: VAULTER_KEY_DEV
+   *     prd:
+   *       source:
+   *         - env: VAULTER_KEY_PRD
+   *         - s3: s3://secure-bucket/keys/prd.key
+   * ```
+   */
+  keys?: Record<string, EnvironmentKeyConfig>
+  /**
+   * Environment name used to encrypt shared variables
+   * (defaults to default_environment when omitted)
+   */
+  shared_key_environment?: string
   rotation?: {
     enabled: boolean
     interval_days: number
@@ -471,7 +504,7 @@ export interface VaulterConfig {
   integrations?: IntegrationsConfig
   hooks?: HooksConfig
   security?: SecurityConfig
-  /** Directory structure configuration (unified or split mode) - legacy, use local/deploy instead */
+  /** Directory structure configuration (unified or split mode) */
   directories?: DirectoriesConfig
   /** Audit logging configuration */
   audit?: AuditConfig
@@ -536,40 +569,28 @@ export interface CLIArgs {
   _: string[]
   // Global flags
   project?: string
-  p?: string
   service?: string
-  s?: string
   env?: string
-  e?: string
   backend?: string
-  b?: string
   key?: string
-  k?: string
   verbose?: boolean
-  v?: boolean
   'dry-run'?: boolean
   json?: boolean
   help?: boolean
-  h?: boolean
   version?: boolean
   // Command-specific flags
   file?: string
-  f?: string
   output?: string
-  o?: string
   force?: boolean
   all?: boolean
   namespace?: string
-  n?: string
   format?: string
   // Init command flags
-  split?: boolean
   monorepo?: boolean
+  environments?: string
   // Key command flags
   asymmetric?: boolean
-  asym?: boolean
   algorithm?: string
-  alg?: string
   name?: string
   global?: boolean
   scope?: string
@@ -597,7 +618,6 @@ export interface CLIArgs {
   shared?: boolean
   // Export options (inheritance control)
   'skip-shared'?: boolean
-  skipShared?: boolean
   // Nuke command
   confirm?: string
 }

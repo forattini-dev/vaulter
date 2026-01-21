@@ -167,21 +167,23 @@ export class VaulterClient {
       return value
     }
 
-    // Asymmetric mode - check if value is hybrid-encrypted
+    // Asymmetric mode requires hybrid-encrypted payloads
+    let parsed: unknown
     try {
-      const parsed = JSON.parse(value)
-      if (isHybridEncrypted(parsed)) {
-        if (!this.privateKey) {
-          throw new Error('Cannot decrypt: private key not configured')
-        }
-        return hybridDecrypt(parsed, this.privateKey)
-      }
+      parsed = JSON.parse(value)
     } catch {
-      // Not JSON or not hybrid-encrypted, return as-is
+      throw new Error('Cannot decrypt: value is not hybrid-encrypted JSON')
     }
 
-    // Return as-is if not hybrid-encrypted (for backwards compatibility)
-    return value
+    if (!isHybridEncrypted(parsed)) {
+      throw new Error('Cannot decrypt: value is not hybrid-encrypted')
+    }
+
+    if (!this.privateKey) {
+      throw new Error('Cannot decrypt: private key not configured')
+    }
+
+    return hybridDecrypt(parsed, this.privateKey)
   }
 
   /**
@@ -489,14 +491,6 @@ export class VaulterClient {
       ...item,
       value: this.decryptValue(item.value)
     }))
-  }
-
-  /**
-   * Bulk insert environment variables (legacy - uses sequential set)
-   * @deprecated Use setMany for better performance
-   */
-  async insertMany(inputs: EnvVarInput[]): Promise<EnvVar[]> {
-    return this.setMany(inputs)
   }
 
   /**

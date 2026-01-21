@@ -10,7 +10,6 @@ import {
   detectMonorepo,
   generateVaulterStructure,
   getDefaultProjectName,
-  DEFAULT_ENVIRONMENTS,
   type InitOptions
 } from '../../src/lib/init-generator.js'
 
@@ -437,9 +436,4 @@ describe('init-generator', () => {
     })
   })
 
-  describe('DEFAULT_ENVIRONMENTS', () => {
-    it('should have dev, sdx, prd', () => {
-      expect(DEFAULT_ENVIRONMENTS).toEqual(['dev', 'sdx', 'prd'])
-    })
-  })
 })

@@ -406,8 +406,9 @@ describe('monorepo-detect', () => {
       const result = await scanMonorepo(testRoot)
 
       expect(result.packages[0].envFiles).toHaveLength(2)
-      expect(result.packages[0].hasEnvFiles).toContain('.env')
-      expect(result.packages[0].hasEnvFiles).toContain('.env.dev')
+      const envFilePaths = result.packages[0].envFiles.map(f => f.path)
+      expect(envFilePaths).toContain('.env')
+      expect(envFilePaths).toContain('.env.dev')
       expect(result.packages[0].detectedEnvironments).toContain('dev')
     })
 

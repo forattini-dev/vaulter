@@ -68,8 +68,6 @@ export interface PackageInfo {
   path: string
   relativePath: string
   hasPackageJson: boolean
-  /** @deprecated Use envFiles instead */
-  hasEnvFiles: string[]
   /** Detailed env file information */
   envFiles: EnvFileInfo[]
   /** Detected environment names from files */
@@ -489,8 +487,6 @@ export async function scanMonorepo(rootDir: string = process.cwd()): Promise<Sca
       path: pkgPath,
       relativePath,
       hasPackageJson,
-      // Deprecated field for backward compatibility
-      hasEnvFiles: envFiles.map(f => f.path),
       // New detailed fields
       envFiles,
       detectedEnvironments,
@@ -509,7 +505,7 @@ export async function scanMonorepo(rootDir: string = process.cwd()): Promise<Sca
     packages,
     initialized: packages.filter(p => p.hasVaulterConfig),
     uninitialized: packages.filter(p => !p.hasVaulterConfig),
-    withEnvFiles: packages.filter(p => p.hasEnvFiles.length > 0)
+    withEnvFiles: packages.filter(p => p.envFiles.length > 0)
   }
 }
 
@@ -578,7 +574,7 @@ export function formatScanResult(result: ScanResult): string {
     for (const pkg of result.uninitialized) {
       const envInfo = formatEnvironmentInfo(pkg)
       const deployInfo = pkg.hasDeployDir ? ' [deploy/]' : ''
-      const fileCount = pkg.hasEnvFiles.length > 0 ? ` [${pkg.hasEnvFiles.length} files]` : ''
+      const fileCount = pkg.envFiles.length > 0 ? ` [${pkg.envFiles.length} files]` : ''
       lines.push(`  ○ ${pkg.relativePath}${fileCount}${envInfo}${deployInfo}`)
     }
     lines.push('')

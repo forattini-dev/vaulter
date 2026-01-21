@@ -34,6 +34,13 @@ import path from 'node:path'
 import os from 'node:os'
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Constants
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Default environments for new projects */
+export const DEFAULT_ENVIRONMENTS = ['dev', 'sdx', 'prd']
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Types
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -547,8 +554,3 @@ export function generateVaulterStructure(baseDir: string, options: InitOptions):
 export function getDefaultProjectName(baseDir: string = process.cwd()): string {
   return path.basename(baseDir)
 }
-
-/**
- * Default environments
- */
-export const DEFAULT_ENVIRONMENTS = ['dev', 'sdx', 'prd']
