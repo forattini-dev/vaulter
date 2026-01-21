@@ -129,7 +129,7 @@ export function Dashboard(props: DashboardProps) {
       app.exit()
     }
   }, { description: 'Quit' })
-  useHotkeys('r', () => loadSecrets(), { description: 'Refresh' })
+  useHotkeys('r', () => loadSecretsForEnv(environment()), { description: 'Refresh' })
   useHotkeys('v', () => setShowValues(v => !v), { description: 'Toggle values' })
   useHotkeys('e', () => cycleEnvironment(), { description: 'Cycle environment' })
 
@@ -177,11 +177,6 @@ export function Dashboard(props: DashboardProps) {
     } finally {
       setLoading(false)
     }
-  }
-
-  // Legacy function for manual refresh
-  function loadSecrets() {
-    loadSecretsForEnv(environment())
   }
 
   // Reload when environment changes - explicitly track environment signal

@@ -27,7 +27,7 @@ import {
 import type { VaulterConfig, Environment, AuditEntry, AuditOperation, AuditSource } from '../../types.js'
 import { loadConfig, getProjectName } from '../../lib/config-loader.js'
 import { AuditLogger } from '../../lib/audit.js'
-import { resolveBackendUrls, loadEncryptionKey } from '../../index.js'
+import { resolveBackendUrls, loadEncryptionKeyForEnv } from '../../index.js'
 
 // Types for viewer state
 interface AuditRow {
@@ -349,7 +349,11 @@ export function AuditViewer(props: AuditViewerProps) {
       app.exit()
     }
   }, { description: 'Quit' })
-  useHotkeys('r', () => { if (!isFilterActive) loadEntries() }, { description: 'Refresh' })
+  useHotkeys('r', () => {
+    if (!isFilterActive) {
+      loadEntriesWithFilters(opFilter(), srcFilter(), searchQuery())
+    }
+  }, { description: 'Refresh' })
   useHotkeys('o', () => { if (!isFilterActive) setActiveFilter('operation') }, { description: 'Filter operation' })
   useHotkeys('s', () => { if (!isFilterActive) setActiveFilter('source') }, { description: 'Filter source' })
   useHotkeys('/', () => { if (!isFilterActive) setActiveFilter('search') }, { description: 'Search' })
@@ -384,7 +388,9 @@ export function AuditViewer(props: AuditViewerProps) {
       throw new Error('No backend URL configured')
     }
 
-    const passphrase = await loadEncryptionKey(props.config) || undefined
+    // Use per-environment key resolution
+    const project = props.config.project || ''
+    const passphrase = await loadEncryptionKeyForEnv(props.config, project, props.environment) || undefined
     const newLogger = new AuditLogger(props.config.audit)
     await newLogger.connect(urls[0], passphrase, props.verbose)
     setLogger(newLogger)
@@ -433,11 +439,6 @@ export function AuditViewer(props: AuditViewerProps) {
     } finally {
       setLoading(false)
     }
-  }
-
-  // Legacy function for manual refresh
-  function loadEntries() {
-    loadEntriesWithFilters(opFilter(), srcFilter(), searchQuery())
   }
 
   // Reload when filters change - explicitly track filter signals

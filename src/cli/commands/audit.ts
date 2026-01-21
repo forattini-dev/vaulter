@@ -6,7 +6,7 @@
 
 import type { CLIArgs, VaulterConfig, Environment, AuditEntry } from '../../types.js'
 import { AuditLogger } from '../../lib/audit.js'
-import { resolveBackendUrls, loadEncryptionKey } from '../../index.js'
+import { resolveBackendUrls, loadEncryptionKeyForEnv } from '../../index.js'
 import * as ui from '../ui.js'
 
 interface AuditContext {
@@ -24,7 +24,7 @@ interface AuditContext {
  * Create audit logger from config
  */
 async function createAuditLogger(context: AuditContext): Promise<AuditLogger> {
-  const { config, verbose } = context
+  const { config, project, environment, verbose } = context
 
   if (!config) {
     throw new Error('No configuration found. Run "vaulter init" first.')
@@ -35,7 +35,8 @@ async function createAuditLogger(context: AuditContext): Promise<AuditLogger> {
     throw new Error('No backend URL configured')
   }
 
-  const passphrase = await loadEncryptionKey(config) || undefined
+  // Use per-environment key resolution
+  const passphrase = await loadEncryptionKeyForEnv(config, project, environment) || undefined
   const logger = new AuditLogger(config.audit)
 
   ui.verbose(`Connecting to audit backend: ${urls[0].replace(/:([^:@/]+)@/, ':***@')}`, verbose)

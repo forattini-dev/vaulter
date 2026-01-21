@@ -9,12 +9,11 @@ import path from 'node:path'
 import type { CLIArgs, VaulterConfig, AsymmetricAlgorithm } from '../../types.js'
 import { VaulterClient } from '../../client.js'
 import {
-  loadEncryptionKey,
-  loadPublicKey,
-  loadPrivateKey,
+  loadEncryptionKeyForEnv,
   getEncryptionMode,
   getAsymmetricAlgorithm
 } from '../../lib/config-loader.js'
+import { loadKeyForEnv } from '../../lib/keys.js'
 import { resolveBackendUrls } from '../../index.js'
 import { print } from './colors.js'
 import * as ui from '../ui.js'
@@ -24,6 +23,8 @@ export interface CreateClientOptions {
   config: VaulterConfig | null
   /** Effective project name (CLI --project takes precedence over config.project) */
   project?: string
+  /** Target environment (for per-env key resolution) */
+  environment?: string
   verbose?: boolean
 }
 
@@ -41,14 +42,17 @@ export interface CreateClientOptions {
  * - asymmetric: Uses RSA/EC hybrid encryption with public/private key pairs
  */
 export async function createClientFromConfig(options: CreateClientOptions): Promise<VaulterClient> {
-  const { args, config, project, verbose = false } = options
+  const { args, config, project, environment, verbose = false } = options
 
   // Effective project: CLI --project > options.project > config.project
-  const effectiveProject = args.project || args.p || project || config?.project
+  const effectiveProject = args.project || project || config?.project
+
+  // Effective environment: CLI --env > options.environment > config.default_environment > 'dev'
+  const effectiveEnvironment = args.env || environment || config?.default_environment || 'dev'
 
   // CLI backend override takes precedence (no fallback)
-  const cliBackend = args.backend || args.b
-  const cliKey = args.key || args.k
+  const cliBackend = args.backend
+  const cliKey = args.key
 
   let connectionStrings: string[]
   if (cliBackend) {
@@ -59,40 +63,50 @@ export async function createClientFromConfig(options: CreateClientOptions): Prom
     connectionStrings = []
   }
 
-  // Determine encryption mode
-  const encryptionMode = config ? getEncryptionMode(config) : 'symmetric'
+  // Determine encryption mode (allow per-environment override)
+  const envKeyConfig = config?.encryption?.keys?.[effectiveEnvironment]
+  const encryptionMode = envKeyConfig?.mode || (config ? getEncryptionMode(config) : 'symmetric')
 
   // For asymmetric mode, load public/private keys
   if (encryptionMode === 'asymmetric' && config) {
     // Use effective project (CLI --project takes precedence over config.project)
-    const projectForKeys = effectiveProject || config.project
-    const publicKey = await loadPublicKey(config, projectForKeys)
-    const privateKey = await loadPrivateKey(config, projectForKeys)
-    const algorithm = getAsymmetricAlgorithm(config) as AsymmetricAlgorithm
+    const projectForKeys = effectiveProject || config.project || 'default'
+    const keyResult = await loadKeyForEnv({
+      project: projectForKeys,
+      environment: effectiveEnvironment,
+      config,
+      loadPublicKey: true,
+      loadPrivateKey: true
+    })
+    const algorithm =
+      (keyResult.algorithm || (config ? getAsymmetricAlgorithm(config) : 'rsa-4096')) as AsymmetricAlgorithm
 
-    if (!publicKey && !privateKey) {
+    if (!keyResult.publicKey && !keyResult.key) {
       throw new Error(
         'Asymmetric encryption mode requires at least a public key (for writing) or private key (for reading). ' +
         'Set encryption.asymmetric.key_name in config or VAULTER_PUBLIC_KEY/VAULTER_PRIVATE_KEY environment variables.'
       )
     }
 
-    ui.verbose(`Using asymmetric encryption (${algorithm}) for project: ${projectForKeys}`, verbose)
-    if (verbose && publicKey) ui.verbose('  Public key: loaded', true)
-    if (verbose && privateKey) ui.verbose('  Private key: loaded', true)
+    ui.verbose(
+      `Using asymmetric encryption (${algorithm}) for project: ${projectForKeys} (env: ${effectiveEnvironment})`,
+      verbose
+    )
+    if (verbose && keyResult.publicKey) ui.verbose('  Public key: loaded', true)
+    if (verbose && keyResult.key) ui.verbose('  Private key: loaded', true)
 
     return new VaulterClient({
       connectionStrings: connectionStrings.length > 0 ? connectionStrings : undefined,
       encryptionMode: 'asymmetric',
-      publicKey: publicKey || undefined,
-      privateKey: privateKey || undefined,
+      publicKey: keyResult.publicKey || undefined,
+      privateKey: keyResult.key || undefined,
       asymmetricAlgorithm: algorithm,
       verbose
     })
   }
 
   // Symmetric mode (default)
-  // Load encryption key from CLI or config
+  // Load encryption key from CLI, config, or env vars
   let passphrase: string | undefined
   if (cliKey) {
     const keyPath = path.resolve(cliKey)
@@ -105,8 +119,16 @@ export async function createClientFromConfig(options: CreateClientOptions): Prom
     } else {
       passphrase = cliKey
     }
+  } else if (config && effectiveProject) {
+    // Use per-environment key resolution with config
+    passphrase = (await loadEncryptionKeyForEnv(config, effectiveProject, effectiveEnvironment)) || undefined
   } else {
-    passphrase = config ? (await loadEncryptionKey(config)) || undefined : undefined
+    // No config: try env vars directly (VAULTER_KEY_{ENV} > VAULTER_KEY)
+    const envUpper = effectiveEnvironment.toUpperCase()
+    passphrase = process.env[`VAULTER_KEY_${envUpper}`] || process.env.VAULTER_KEY || undefined
+    if (passphrase && verbose) {
+      ui.verbose(`Loaded key from env var (no config)`, true)
+    }
   }
 
   const hasRemoteBackend = connectionStrings.some(url => !isLocalBackend(url))

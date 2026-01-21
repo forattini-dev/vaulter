@@ -72,7 +72,7 @@ export async function runPush(context: PushContext): Promise<void> {
   // Priority: explicit file (-f/--file) > stdin > default path
   let localVars: Record<string, string>
 
-  const explicitFilePath = args.file || args.f
+  const explicitFilePath = args.file
 
   if (explicitFilePath) {
     // Explicit file specified - always use it
@@ -127,7 +127,7 @@ export async function runPush(context: PushContext): Promise<void> {
   ui.verbose(`Found ${c.value(String(varCount))} variables to push`, verbose)
 
   const client = await createClientFromConfig({ args, config, project, verbose })
-  const auditLogger = await createConnectedAuditLogger(config, verbose)
+  const auditLogger = await createConnectedAuditLogger(config, project, environment, verbose)
 
   try {
     await client.connect()

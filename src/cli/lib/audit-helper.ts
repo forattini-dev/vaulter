@@ -4,17 +4,24 @@
  * Shared utilities for audit logging in CLI commands
  */
 
-import type { VaulterConfig, AuditSource } from '../../types.js'
+import type { VaulterConfig, AuditSource, Environment } from '../../types.js'
 import { AuditLogger } from '../../lib/audit.js'
-import { resolveBackendUrls, loadEncryptionKey } from '../../index.js'
+import { resolveBackendUrls, loadEncryptionKeyForEnv } from '../../index.js'
 import * as ui from '../ui.js'
 
 /**
  * Create and connect an audit logger from config
  * Returns null if audit is disabled or config is missing
+ *
+ * @param config - Vaulter configuration
+ * @param project - Project name (for per-env key resolution)
+ * @param environment - Environment (for per-env key resolution)
+ * @param verbose - Enable verbose logging
  */
 export async function createConnectedAuditLogger(
   config: VaulterConfig | null,
+  project?: string,
+  environment?: Environment,
   verbose: boolean = false
 ): Promise<AuditLogger | null> {
   // No config = no audit
@@ -28,7 +35,13 @@ export async function createConnectedAuditLogger(
   if (urls.length === 0) return null
 
   try {
-    const passphrase = await loadEncryptionKey(config) || undefined
+    // Use per-environment key resolution
+    const effectiveProject = project || config.project
+    const effectiveEnv = environment || config.default_environment || 'dev'
+    const passphrase = effectiveProject
+      ? await loadEncryptionKeyForEnv(config, effectiveProject, effectiveEnv) || undefined
+      : undefined
+
     const logger = new AuditLogger(config.audit)
     await logger.connect(urls[0], passphrase, verbose)
 

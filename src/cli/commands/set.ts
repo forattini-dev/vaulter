@@ -4,7 +4,6 @@
  * Set environment variables (supports batch operations)
  *
  * Syntax options:
- *   vaulter set KEY "value" -e dev          # Legacy single-key syntax (secret)
  *   vaulter set KEY=value -e dev            # Secret (encrypted, file + backend)
  *   vaulter set KEY:=123 -e dev             # Secret typed (number/boolean)
  *   vaulter set KEY::value -e dev           # Config (split: file only | unified: file + backend)
@@ -56,13 +55,13 @@ function isSplitMode(config: VaulterConfig | null): boolean {
 }
 
 /**
- * Build variables map from args (handles legacy, secrets, and configs)
+ * Build variables map from args (secrets and configs)
  */
 function buildVariablesMaps(context: SetContext): {
   secrets: Map<string, string>
   configs: Map<string, string>
 } {
-  const { args, secrets: secretsBucket, configs: configsBucket } = context
+  const { secrets: secretsBucket, configs: configsBucket } = context
   const secrets = new Map<string, string>()
   const configs = new Map<string, string>()
 
@@ -74,13 +73,6 @@ function buildVariablesMaps(context: SetContext): {
   // 2. Configs from separator syntax (KEY::value)
   for (const [key, value] of Object.entries(configsBucket)) {
     configs.set(key, String(value))
-  }
-
-  // 3. Legacy syntax (positional args: KEY "value") → treated as secret
-  const legacyKey = args._[1]
-  const legacyValue = args._[2]
-  if (legacyKey && legacyValue !== undefined) {
-    secrets.set(legacyKey, String(legacyValue))
   }
 
   return { secrets, configs }
@@ -289,7 +281,7 @@ export async function runSet(context: SetContext): Promise<void> {
 
     // Sync secrets to backend
     const client = await createClientFromConfig({ args, config, project, verbose })
-    const auditLogger = await createConnectedAuditLogger(config, verbose)
+    const auditLogger = await createConnectedAuditLogger(config, project, environment, verbose)
 
     try {
       await client.connect()
@@ -382,7 +374,7 @@ export async function runSet(context: SetContext): Promise<void> {
 
       // Also sync to backend in unified mode
       const client = await createClientFromConfig({ args, config, project, verbose })
-      const auditLogger = await createConnectedAuditLogger(config, verbose)
+      const auditLogger = await createConnectedAuditLogger(config, project, environment, verbose)
 
       try {
         await client.connect()

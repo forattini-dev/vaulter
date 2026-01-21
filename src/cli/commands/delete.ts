@@ -97,7 +97,7 @@ export async function runDelete(context: DeleteContext): Promise<void> {
   }
 
   const client = await createClientFromConfig({ args, config, project, verbose })
-  const auditLogger = await createConnectedAuditLogger(config, verbose)
+  const auditLogger = await createConnectedAuditLogger(config, project, environment, verbose)
 
   try {
     await client.connect()

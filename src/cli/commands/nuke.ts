@@ -203,8 +203,9 @@ export async function runNuke(context: NukeContext): Promise<void> {
       process.exit(1)
     }
 
-    // Log to audit before deleting
-    const auditLogger = await createConnectedAuditLogger(config, verbose)
+    // Log to audit before deleting (use default env for key resolution)
+    const defaultEnv = config?.default_environment || 'dev'
+    const auditLogger = await createConnectedAuditLogger(config, project, defaultEnv, verbose)
     if (auditLogger) {
       try {
         await auditLogger.log({

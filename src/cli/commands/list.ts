@@ -222,7 +222,7 @@ export async function runList(context: ListContext): Promise<void> {
       }
 
       // Table format using tuiuiu.js
-      const showValues = args.verbose || args.v || false
+      const showValues = args.verbose || false
 
       if (showInheritance && resolvedVars) {
         // Show with inheritance source column

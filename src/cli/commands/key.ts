@@ -13,7 +13,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import crypto from 'node:crypto'
-import type { CLIArgs, VaulterConfig, AsymmetricAlgorithm, Environment } from '../../types.js'
+import type { CLIArgs, VaulterConfig, AsymmetricAlgorithm } from '../../types.js'
 import { generateKeyPair, generatePassphrase, detectAlgorithm } from '../../lib/crypto.js'
 import {
   getProjectKeysDir,
@@ -157,7 +157,7 @@ function summarizeBackupEntries(entries: KeyBackupEntry[]): KeyBackupSummary[] {
  * Get project name from config or args, with fallback
  */
 function getProjectName(context: KeyContext): string {
-  return context.args.project || context.args.p || context.config?.project || 'default'
+  return context.args.project || context.config?.project || 'default'
 }
 
 /**
@@ -221,7 +221,7 @@ function printKeyHelp(subcommand?: string): void {
   ui.log('Generate keys:')
   ui.log('  vaulter key generate --name master              # Symmetric key (default)')
   ui.log('  vaulter key generate --name master --asymmetric # RSA-4096 key pair')
-  ui.log('  vaulter key generate --name master --asym --alg ec-p256')
+  ui.log('  vaulter key generate --name master --asymmetric --algorithm ec-p256')
   ui.log('  vaulter key generate --name shared --global     # Global key')
   ui.log('')
   ui.log('Export/Import keys:')
@@ -240,30 +240,55 @@ function printKeyHelp(subcommand?: string): void {
   ui.log('Options:')
   ui.log('  --name <name>              Key name (required for generate)')
   ui.log('  --global                   Use global scope instead of project')
-  ui.log('  --asymmetric, --asym       Generate asymmetric key pair')
-  ui.log('  --algorithm, --alg <alg>   Algorithm: rsa-4096 (default), rsa-2048, ec-p256, ec-p384')
+  ui.log('  --asymmetric               Generate asymmetric key pair')
+  ui.log('  --algorithm <alg>          Algorithm: rsa-4096 (default), rsa-2048, ec-p256, ec-p384')
   ui.log('  -o, --output <path>        Output file for export')
   ui.log('  -f, --file <path>          Input file for import')
   ui.log('  --scope <scope>            Scope for backup/restore: all, project, global')
   ui.log('  --force                    Overwrite existing keys')
+  ui.log('')
+  ui.log('Per-environment keys:')
+  ui.log('  vaulter key generate --env prd             Create key for production')
+  ui.log('  vaulter key generate --env dev --asymmetric')
+  ui.log('  vaulter key list                           List all keys with environments')
 }
 
 /**
  * Generate a new encryption key
+ *
+ * Supports per-environment keys with --env flag:
+ * - vaulter key generate --env prd           # Creates key named "prd"
+ * - vaulter key generate --name master       # Creates default key
+ * - vaulter key generate --name custom --env prd  # Creates key "custom" for prd
  */
 async function runKeyGenerate(context: KeyContext): Promise<void> {
-  const { args } = context
+  const { args, config } = context
 
-  const keyName = args.name
+  const targetEnv = args.env
   const isGlobal = args.global
-  const isAsymmetric = args.asymmetric || args.asym
-  const algorithmArg = (args.algorithm || args.alg || 'rsa-4096') as AsymmetricAlgorithm
+  const isAsymmetric = args.asymmetric
+  const algorithmArg = (args.algorithm || 'rsa-4096') as AsymmetricAlgorithm
+
+  // Key name: explicit --name > --env > error
+  const keyName = args.name || targetEnv
 
   // Validate key name is provided
   if (!keyName) {
-    print.error('--name is required')
-    ui.log('Example: vaulter key generate --name master')
+    print.error('--name or --env is required')
+    ui.log('Examples:')
+    ui.log('  vaulter key generate --name master       # Default key for all envs')
+    ui.log('  vaulter key generate --env prd           # Key for production')
+    ui.log('  vaulter key generate --env dev --asymmetric')
     process.exit(1)
+  }
+
+  // Validate environment if specified
+  if (targetEnv && config) {
+    const validEnvs = getValidEnvironments(config)
+    if (!validEnvs.includes(targetEnv)) {
+      print.warning(`Environment '${targetEnv}' not in configured environments: ${validEnvs.join(', ')}`)
+      ui.log('Proceeding anyway...')
+    }
   }
 
   // Validate algorithm if asymmetric
@@ -437,18 +462,18 @@ async function runKeyExport(context: KeyContext): Promise<void> {
   const { args, verbose, dryRun, jsonOutput } = context
 
   const keyName = args.name
-  const outputPath = args.output || args.o
+  const outputPath = args.output
   const isGlobal = args.global
 
   if (!keyName) {
     print.error('--name is required')
-    ui.log('Example: vaulter key export --name master -o keys.enc')
+    ui.log('Example: vaulter key export --name master --output keys.enc')
     process.exit(1)
   }
 
   if (!outputPath) {
-    print.error('-o/--output is required')
-    ui.log('Example: vaulter key export --name master -o keys.enc')
+    print.error('--output is required')
+    ui.log('Example: vaulter key export --name master --output keys.enc')
     process.exit(1)
   }
 
@@ -564,12 +589,12 @@ async function runKeyExport(context: KeyContext): Promise<void> {
 async function runKeyImport(context: KeyContext): Promise<void> {
   const { args, verbose, dryRun, jsonOutput } = context
 
-  const inputPath = args.file || args.f
+  const inputPath = args.file
   const isGlobal = args.global
 
   if (!inputPath) {
-    print.error('-f/--file is required')
-    ui.log('Example: vaulter key import -f keys.enc')
+    print.error('--file is required')
+    ui.log('Example: vaulter key import --file keys.enc')
     process.exit(1)
   }
 
@@ -698,10 +723,10 @@ async function runKeyImport(context: KeyContext): Promise<void> {
 async function runKeyBackup(context: KeyContext): Promise<void> {
   const { args, verbose, dryRun, jsonOutput } = context
 
-  const outputPath = args.output || args.o
+  const outputPath = args.output
   if (!outputPath) {
-    print.error('-o/--output is required')
-    ui.log('Example: vaulter key backup -o keys-backup.enc')
+    print.error('--output is required')
+    ui.log('Example: vaulter key backup --output keys-backup.enc')
     process.exit(1)
   }
 
@@ -796,10 +821,10 @@ async function runKeyBackup(context: KeyContext): Promise<void> {
 async function runKeyRestore(context: KeyContext): Promise<void> {
   const { args, verbose, dryRun, jsonOutput } = context
 
-  const inputPath = args.file || args.f
+  const inputPath = args.file
   if (!inputPath) {
-    print.error('-f/--file is required')
-    ui.log('Example: vaulter key restore -f keys-backup.enc')
+    print.error('--file is required')
+    ui.log('Example: vaulter key restore --file keys-backup.enc')
     process.exit(1)
   }
 

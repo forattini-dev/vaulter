@@ -63,11 +63,10 @@ export async function runSyncGroup(context: SyncContext): Promise<void> {
         ...args,
         _: ['pull', ...args._.slice(2)]
       }
-      // Pass prune flag and outputs flags from args
-      const prune = args.prune as boolean | undefined
+      // Pass outputs flags from args
       const all = args.all as boolean | undefined
       const target = args.output as string | undefined
-      await runPull({ ...context, args: shiftedArgs, prune, all, target })
+      await runPull({ ...context, args: shiftedArgs, all, target })
       break
     }
 
@@ -77,15 +76,15 @@ export async function runSyncGroup(context: SyncContext): Promise<void> {
     }
 
     default:
-      // If no subcommand, default to 'merge' for backward compatibility
       if (!subcommand || subcommand.startsWith('-')) {
-        const { runSync } = await import('../sync.js')
-        await runSync(context)
-      } else {
-        print.error(`Unknown subcommand: ${c.command('sync')} ${c.subcommand(subcommand)}`)
+        print.error('Sync subcommand required: merge, push, pull, diff')
         ui.log(`Run "${c.command('vaulter sync --help')}" for usage`)
         process.exit(1)
       }
+
+      print.error(`Unknown subcommand: ${c.command('sync')} ${c.subcommand(subcommand)}`)
+      ui.log(`Run "${c.command('vaulter sync --help')}" for usage`)
+      process.exit(1)
   }
 }
 
@@ -110,7 +109,7 @@ async function runDiff(context: SyncContext): Promise<void> {
   const path = await import('node:path')
 
   // Find local file
-  const filePath = args.file || args.f
+  const filePath = args.file
   let resolvedPath: string
 
   if (filePath) {

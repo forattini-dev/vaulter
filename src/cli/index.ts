@@ -178,7 +178,7 @@ const cliSchema: CLISchema = {
     output: {
       short: 'o',
       type: 'string',
-      description: 'Output file path'
+      description: 'Output target (file path or target name depending on command)'
     },
     namespace: {
       short: 'n',
@@ -231,10 +231,9 @@ const cliSchema: CLISchema = {
           default: false,
           description: 'Force monorepo mode (auto-detected from nx.json, turbo.json, etc.)'
         },
-        split: {
-          type: 'boolean',
-          default: false,
-          description: 'DEPRECATED: Use default structure instead'
+        environments: {
+          type: 'string',
+          description: 'Comma-separated environments list (e.g., dev,stg,prd)'
         }
       }
     },
@@ -250,11 +249,7 @@ const cliSchema: CLISchema = {
           ]
         },
         set: {
-          description: 'Set variables (supports batch: KEY1=v1 KEY2=v2)',
-          positional: [
-            { name: 'key', required: false, description: 'Variable name (legacy)' },
-            { name: 'value', required: false, description: 'Variable value (legacy)' }
-          ]
+          description: 'Set variables (supports batch: KEY1=v1 KEY2=v2)'
         },
         delete: {
           description: 'Delete a variable',
@@ -325,7 +320,7 @@ const cliSchema: CLISchema = {
           description: 'Push local to remote (use --prune to delete remote-only)'
         },
         pull: {
-          description: 'Pull remote to local. Use --all for outputs mode, --output <name> for specific output'
+          description: 'Pull remote to outputs. Use --all or --output <name>'
         },
         diff: {
           description: 'Show differences between local and remote'
@@ -353,18 +348,9 @@ const cliSchema: CLISchema = {
               default: false,
               description: 'Generate asymmetric key pair (RSA/EC)'
             },
-            asym: {
-              type: 'boolean',
-              default: false,
-              description: 'Alias for --asymmetric'
-            },
             algorithm: {
               type: 'string',
               description: 'Algorithm: rsa-4096, rsa-2048, ec-p256, ec-p384'
-            },
-            alg: {
-              type: 'string',
-              description: 'Alias for --algorithm'
             }
           }
         },
@@ -565,6 +551,13 @@ const cliSchema: CLISchema = {
       }
     },
 
+    completion: {
+      description: 'Generate shell completion script',
+      positional: [
+        { name: 'shell', required: true, description: 'Shell type: bash, zsh, or fish' }
+      ]
+    },
+
     rotation: {
       description: 'Secret rotation management',
       commands: {
@@ -638,7 +631,7 @@ const cliSchema: CLISchema = {
 }
 
 /**
- * Convert cli-args-parser result to CLIArgs format for backward compatibility
+ * Convert cli-args-parser result to CLIArgs format
  */
 function toCliArgs(result: CommandParseResult): CLIArgs {
   const opts = result.options as Record<string, unknown>
@@ -658,38 +651,27 @@ function toCliArgs(result: CommandParseResult): CLIArgs {
     _: args,
     // Global options
     project: opts.project as string | undefined,
-    p: opts.project as string | undefined,
     service: opts.service as string | undefined,
-    s: opts.service as string | undefined,
     env: opts.env as string | undefined,
-    e: opts.env as string | undefined,
     backend: opts.backend as string | undefined,
-    b: opts.backend as string | undefined,
     key: opts.key as string | undefined,
-    k: opts.key as string | undefined,
     verbose: opts.verbose as boolean | undefined,
-    v: opts.verbose as boolean | undefined,
     'dry-run': opts['dry-run'] as boolean | undefined,
     json: opts.json as boolean | undefined,
     force: opts.force as boolean | undefined,
     all: opts.all as boolean | undefined,
     file: opts.file as string | undefined,
-    f: opts.file as string | undefined,
     output: opts.output as string | undefined,
-    o: opts.output as string | undefined,
     namespace: opts.namespace as string | undefined,
-    n: opts.namespace as string | undefined,
     format: opts.format as string | undefined,
     // Command-specific options
-    split: opts.split as boolean | undefined,
     monorepo: opts.monorepo as boolean | undefined,
+    environments: opts.environments as string | undefined,
     // Key command options
     name: opts.name as string | undefined,
     global: opts.global as boolean | undefined,
     asymmetric: opts.asymmetric as boolean | undefined,
-    asym: opts.asym as boolean | undefined,
     algorithm: opts.algorithm as string | undefined,
-    alg: opts.alg as string | undefined,
     // List command options
     'all-envs': opts['all-envs'] as boolean | undefined,
     // Rotation command options
@@ -713,7 +695,6 @@ function toCliArgs(result: CommandParseResult): CLIArgs {
     shared: opts.shared as boolean | undefined,
     // Export options
     'skip-shared': opts['skip-shared'] as boolean | undefined,
-    skipShared: opts['skip-shared'] as boolean | undefined,  // camelCase alias
     // Nuke command
     confirm: opts.confirm as string | undefined
   }
@@ -919,6 +900,32 @@ async function main(): Promise<void> {
       case 'rotation':
         await runRotation(context)
         break
+
+      case 'completion': {
+        const shell = context.args._[1] as 'bash' | 'zsh' | 'fish' | undefined
+        if (!shell || !['bash', 'zsh', 'fish'].includes(shell)) {
+          print.error('Shell type required: bash, zsh, or fish')
+          // Use console.error directly to ensure help shows even in non-TTY (pipes, scripts)
+          console.error('')
+          console.error(`${c.label('Usage:')}`)
+          console.error(`  ${c.command('vaulter completion bash')}   # Bash`)
+          console.error(`  ${c.command('vaulter completion zsh')}    # Zsh`)
+          console.error(`  ${c.command('vaulter completion fish')}   # Fish`)
+          console.error('')
+          console.error(`${c.label('Add to your shell config:')}`)
+          console.error(`  ${c.muted('# Bash (~/.bashrc)')}`)
+          console.error(`  ${c.command('eval "$(vaulter completion bash)"')}`)
+          console.error('')
+          console.error(`  ${c.muted('# Zsh (~/.zshrc)')}`)
+          console.error(`  ${c.command('eval "$(vaulter completion zsh)"')}`)
+          console.error('')
+          console.error(`  ${c.muted('# Fish (~/.config/fish/config.fish)')}`)
+          console.error(`  ${c.command('vaulter completion fish | source')}`)
+          process.exit(1)
+        }
+        ui.output(cli.completion(shell))
+        break
+      }
 
       default:
         print.error(`Unknown command: ${c.command(command)}`)

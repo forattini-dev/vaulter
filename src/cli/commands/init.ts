@@ -7,12 +7,12 @@
 
 import path from 'node:path'
 import type { CLIArgs, VaulterConfig } from '../../types.js'
+import { DEFAULT_ENVIRONMENTS } from '../../types.js'
 import { configExists, findConfigDir } from '../../lib/config-loader.js'
 import {
   generateVaulterStructure,
   detectMonorepo,
   getDefaultProjectName,
-  DEFAULT_ENVIRONMENTS,
   type InitOptions
 } from '../../lib/init-generator.js'
 import { c, print, cyan, yellow, dim } from '../lib/colors.js'
@@ -25,6 +25,23 @@ interface InitContext {
   verbose: boolean
   dryRun: boolean
   jsonOutput: boolean
+}
+
+function parseEnvironments(raw?: string): string[] | null {
+  if (!raw) return null
+  const list = raw
+    .split(',')
+    .map(env => env.trim())
+    .filter(env => env.length > 0)
+  const unique = Array.from(new Set(list))
+
+  if (unique.length === 0) {
+    print.error('Invalid environments list')
+    ui.log('Use --environments with a comma-separated list (e.g., dev,stg,prd)')
+    process.exit(1)
+  }
+
+  return unique
 }
 
 /**
@@ -46,7 +63,8 @@ export async function runInit(context: InitContext): Promise<void> {
   }
 
   // Determine project name
-  const projectName = args.project || args.p || getDefaultProjectName()
+  const projectName = args.project || getDefaultProjectName()
+  const environments = parseEnvironments(args.environments) || DEFAULT_ENVIRONMENTS
 
   // Detect or force monorepo mode
   const monorepoDetection = detectMonorepo()
@@ -63,8 +81,8 @@ export async function runInit(context: InitContext): Promise<void> {
   const options: InitOptions = {
     projectName,
     isMonorepo,
-    environments: DEFAULT_ENVIRONMENTS,
-    backend: args.backend || args.b,
+    environments,
+    backend: args.backend,
     servicesPattern,
     force: args.force || false,
     dryRun

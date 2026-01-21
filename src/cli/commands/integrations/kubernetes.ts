@@ -124,7 +124,7 @@ export async function runK8sSecret(context: K8sContext): Promise<void> {
   }
 
   // Determine secret name and namespace
-  const namespace = args.namespace || args.n ||
+  const namespace = args.namespace ||
     config?.integrations?.kubernetes?.namespace ||
     `${project}-${environment}`
 
@@ -134,7 +134,7 @@ export async function runK8sSecret(context: K8sContext): Promise<void> {
   ui.verbose(`Generating K8s Secret: ${namespace}/${secretName}`, verbose)
 
   // Check for local file mode (explicit -f or split mode)
-  const localPath = resolveSecretsPath(config, environment, args.file || args.f)
+  const localPath = resolveSecretsPath(config, environment, args.file)
   let vars: Record<string, string>
 
   if (localPath) {
@@ -217,7 +217,7 @@ export async function runK8sConfigMap(context: K8sContext): Promise<void> {
   }
 
   // Determine configmap name and namespace
-  const namespace = args.namespace || args.n ||
+  const namespace = args.namespace ||
     config?.integrations?.kubernetes?.namespace ||
     `${project}-${environment}`
 
@@ -227,7 +227,7 @@ export async function runK8sConfigMap(context: K8sContext): Promise<void> {
   ui.verbose(`Generating K8s ConfigMap: ${namespace}/${configMapName}`, verbose)
 
   // Check for local file mode (explicit -f or split mode)
-  const localPath = resolveConfigsPath(config, environment, args.file || args.f)
+  const localPath = resolveConfigsPath(config, environment, args.file)
   let configVars: Record<string, string>
 
   if (localPath) {

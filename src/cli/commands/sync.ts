@@ -62,7 +62,7 @@ async function syncSingleService(
   let localVars: Record<string, string>
   let envFilePath: string | null = null
 
-  const explicitFilePath = args.file || args.f
+  const explicitFilePath = args.file
 
   if (explicitFilePath && !serviceInfo) {
     // Explicit file specified - always use it
@@ -106,7 +106,7 @@ async function syncSingleService(
   }
 
   const client = await createClientFromConfig({ args, config: effectiveConfig, project: effectiveProject, verbose })
-  const auditLogger = await createConnectedAuditLogger(effectiveConfig, verbose)
+  const auditLogger = await createConnectedAuditLogger(effectiveConfig, effectiveProject, environment, verbose)
 
   try {
     await client.connect()
@@ -257,7 +257,7 @@ export async function runSync(context: SyncContext): Promise<void> {
 
   // Check for batch mode (--all or multiple services with -s)
   const allServices = args.all
-  const serviceFilter = args.service || args.s
+  const serviceFilter = args.service
 
   if (allServices || (serviceFilter && serviceFilter.includes(','))) {
     await runBatchSync(context)
@@ -374,7 +374,7 @@ async function runBatchSync(context: SyncContext): Promise<void> {
   }
 
   // Filter services if pattern specified
-  const serviceFilter = args.service || args.s
+  const serviceFilter = args.service
   if (serviceFilter && !args.all) {
     services = filterServices(services, serviceFilter)
     if (services.length === 0) {

@@ -75,7 +75,7 @@ export async function runScan(context: ScanContext): Promise<void> {
     if (result.uninitialized.length > 0 && result.withEnvFiles.length > 0) {
       ui.log('')
       ui.log('💡 Suggestions:')
-      const uninitializedWithEnv = result.uninitialized.filter(p => p.hasEnvFiles.length > 0)
+      const uninitializedWithEnv = result.uninitialized.filter(p => p.envFiles.length > 0)
       if (uninitializedWithEnv.length > 0) {
         ui.log(`   Run "vaulter init" in these directories to start managing their secrets:`)
         for (const pkg of uninitializedWithEnv.slice(0, 5)) {

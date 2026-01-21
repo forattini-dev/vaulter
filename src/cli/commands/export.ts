@@ -21,8 +21,6 @@ interface ExportContext {
   jsonOutput: boolean
   /** Target shared variables scope */
   shared?: boolean
-  /** Disable shared vars inheritance when exporting service */
-  skipShared?: boolean
 }
 
 /**
@@ -124,7 +122,7 @@ export async function runExport(context: ExportContext): Promise<void> {
   const effectiveService = isShared ? SHARED_SERVICE : service
 
   // Check for --skip-shared flag (disable inheritance)
-  const skipShared = args['skip-shared'] === true || args.skipShared === true || context.skipShared === true
+  const skipShared = args['skip-shared'] === true
   const includeShared = !skipShared
 
   if (!project) {

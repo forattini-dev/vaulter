@@ -45,11 +45,11 @@ export async function runKeyRotate(context: KeyRotateContext): Promise<void> {
   }
 
   const project = getProjectName()
-  const service = args.service || args.s || config?.service
+  const service = args.service || config?.service
   const environments = getValidEnvironments(config)
 
   // Validate key configuration
-  const keyName = args.name || args.n || config?.encryption?.asymmetric?.key_name || 'master'
+  const keyName = args.name || config?.encryption?.asymmetric?.key_name || 'master'
   const keysDir = getProjectKeysDir(project)
 
   ui.verbose(`Key rotation for project: ${project}`, verbose && !jsonOutput)
@@ -195,7 +195,9 @@ export async function runKeyRotate(context: KeyRotateContext): Promise<void> {
 
   // Create new client with new key for re-import
   const newClient = await createClientFromConfig({ args, config, project, verbose })
-  const auditLogger = await createConnectedAuditLogger(config, verbose)
+  // Use default env for audit key resolution (rotation affects all envs)
+  const defaultEnv = config?.default_environment || 'dev'
+  const auditLogger = await createConnectedAuditLogger(config, project, defaultEnv, verbose)
 
   try {
     await newClient.connect()
