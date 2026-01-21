@@ -318,16 +318,36 @@ Generate Terraform .tfvars file.
 ### Key Management (6)
 
 #### `vaulter_key_generate`
-Generate a new encryption key.
+Generate a new encryption key. Supports per-environment keys for complete isolation.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
-| `name` | string | **Yes** | - | Key name (e.g., `master`, `deploy`) |
+| `name` | string | No | `master` or `{env}` | Key name (e.g., `master`, `deploy`) |
+| `environment` | string | No | - | Target environment (creates key named after env) |
 | `project` | string | No | auto | Project name |
 | `global` | boolean | No | `false` | Store in global scope (`~/.vaulter/global/`) |
 | `asymmetric` | boolean | No | `false` | Generate asymmetric key pair |
 | `algorithm` | string | No | `rsa-4096` | Algorithm: `rsa-4096`, `rsa-2048`, `ec-p256`, `ec-p384` |
 | `force` | boolean | No | `false` | Overwrite existing key |
+
+**Per-environment keys example:**
+```json
+// Generate key for production
+{
+  "tool": "vaulter_key_generate",
+  "arguments": { "environment": "prd" }
+}
+
+// Result: Key stored at ~/.vaulter/projects/{project}/keys/prd
+```
+
+**Multi-app isolation:**
+```json
+// Each app has its own isolated keys
+{ "arguments": { "project": "app-landing", "environment": "prd" } }
+{ "arguments": { "project": "app-api", "environment": "prd" } }
+// app-landing/prd keys cannot decrypt app-api/prd secrets
+```
 
 #### `vaulter_key_list`
 List all encryption keys.

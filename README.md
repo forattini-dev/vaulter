@@ -150,6 +150,7 @@ That's it! For most local development, vaulter is just a structured dotenv.
 | Command | Description |
 |:--------|:------------|
 | `key generate --name <n>` | Generate symmetric key |
+| `key generate --env <env>` | Generate key for specific environment |
 | `key generate --name <n> --asymmetric` | Generate RSA/EC key pair |
 | `key list` | List all keys |
 | `key export --name <n>` | Export encrypted bundle |
@@ -215,6 +216,63 @@ encryption:
 ```
 
 **CI/CD**: Give CI only the public key (can write, can't read). Production gets the private key.
+
+### Per-Environment Keys
+
+Use different encryption keys for each environment (dev, stg, prd). This provides **complete isolation** - production secrets can't be decrypted with dev keys.
+
+```bash
+# Generate keys for each environment
+vaulter key generate --env dev
+vaulter key generate --env stg
+vaulter key generate --env prd
+```
+
+Keys are stored in `~/.vaulter/projects/{project}/keys/{env}`.
+
+**Key Resolution Order** (per environment):
+
+| Priority | Source | Example |
+|:---------|:-------|:--------|
+| 1 | Env var `VAULTER_KEY_{ENV}` | `VAULTER_KEY_PRD=my-secret` |
+| 2 | Config `encryption.keys.{env}` | See below |
+| 3 | File `keys/{env}` | `~/.vaulter/projects/myapp/keys/prd` |
+| 4 | Env var `VAULTER_KEY` | Global fallback |
+| 5 | Config `encryption.key_source` | Default config |
+| 6 | File `keys/master` | Default fallback |
+
+**Per-environment config:**
+
+```yaml
+# .vaulter/config.yaml
+encryption:
+  keys:
+    dev:
+      source:
+        - env: VAULTER_KEY_DEV
+        - file: ~/.vaulter/projects/myapp/keys/dev
+    prd:
+      source:
+        - env: VAULTER_KEY_PRD
+      mode: asymmetric  # Optional: different mode per env
+```
+
+**Multi-app isolation:**
+
+```
+~/.vaulter/projects/
+├── app-landing/keys/
+│   ├── dev    # app-landing dev key
+│   ├── stg    # app-landing stg key
+│   └── prd    # app-landing prd key
+├── app-api/keys/
+│   ├── dev    # app-api dev key (DIFFERENT from app-landing)
+│   └── prd
+└── svc-auth/keys/
+    └── prd
+```
+
+Each app has completely isolated secrets - `app-landing/prd` keys cannot decrypt `app-api/prd` secrets.
 
 ---
 
@@ -694,6 +752,129 @@ config({
 
 ```typescript
 import 'vaulter/load'  // Auto-loads .env into process.env
+```
+
+---
+
+## Runtime Loader (No .env Files)
+
+Load secrets directly from the backend at application startup - **no .env files, no Kubernetes ConfigMaps/Secrets needed**.
+
+### Quick Start
+
+```typescript
+// Option 1: Side-effect import (auto-loads with defaults)
+import 'vaulter/runtime/load'
+
+// Option 2: With options
+import { loadRuntime } from 'vaulter'
+
+await loadRuntime({
+  environment: 'prd',
+  service: 'api',        // Optional: for monorepos
+  required: true         // Default: true in prd, false otherwise
+})
+
+// Now process.env has all your secrets!
+console.log(process.env.DATABASE_URL)
+```
+
+### How It Works
+
+1. Reads `.vaulter/config.yaml` to find backend URL
+2. Loads encryption key (per-environment support)
+3. Fetches secrets from S3/MinIO backend
+4. Populates `process.env`
+
+### Configuration
+
+```yaml
+# .vaulter/config.yaml
+project: my-app
+backend:
+  url: s3://my-bucket/secrets
+
+# Runtime detects environment from NODE_ENV or config
+default_environment: dev
+```
+
+### Options
+
+| Option | Type | Default | Description |
+|:-------|:-----|:--------|:------------|
+| `environment` | string | `NODE_ENV` or `dev` | Target environment |
+| `project` | string | from config | Project name |
+| `service` | string | - | Service name (monorepo) |
+| `required` | boolean | `true` in prd | Throw on failure |
+| `override` | boolean | `false` | Override existing env vars |
+| `includeShared` | boolean | `true` | Include shared vars (monorepo) |
+| `filter.include` | string[] | `[]` | Glob patterns to include |
+| `filter.exclude` | string[] | `[]` | Glob patterns to exclude |
+| `verbose` | boolean | `false` | Enable logging |
+
+### Per-Environment Keys
+
+Runtime loader automatically uses per-environment keys:
+
+```bash
+# Set env-specific keys
+export VAULTER_KEY_DEV="dev-secret"
+export VAULTER_KEY_PRD="prd-secret"
+
+# Or generate key files
+vaulter key generate --env prd
+```
+
+### Use Cases
+
+**Kubernetes without ConfigMaps/Secrets:**
+
+```yaml
+# deployment.yaml - No configMapRef/secretRef needed!
+env:
+  - name: VAULTER_KEY_PRD
+    valueFrom:
+      secretKeyRef:
+        name: vaulter-key
+        key: prd
+  - name: VAULTER_BACKEND
+    value: "s3://my-bucket/secrets"
+```
+
+```typescript
+// app.ts - Secrets loaded at startup
+import 'vaulter/runtime/load'
+// process.env.DATABASE_URL is now available
+```
+
+**Lambda/Serverless:**
+
+```typescript
+import { loadRuntime } from 'vaulter'
+
+export const handler = async (event) => {
+  await loadRuntime({ environment: 'prd' })
+  // Use secrets from process.env
+}
+```
+
+### Library API
+
+```typescript
+import { loadRuntime, isRuntimeAvailable, getRuntimeInfo } from 'vaulter'
+
+// Check if runtime config exists
+if (isRuntimeAvailable()) {
+  const info = await getRuntimeInfo()
+  console.log(info.project, info.environment, info.backend)
+}
+
+// Load with callbacks
+const result = await loadRuntime({
+  environment: 'prd',
+  onLoaded: (r) => console.log(`Loaded ${r.varsLoaded} vars in ${r.durationMs}ms`),
+  onError: (e) => console.error('Failed:', e.message)
+})
 ```
 
 ---

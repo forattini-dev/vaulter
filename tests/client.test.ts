@@ -586,7 +586,7 @@ describe('VaulterClient', () => {
     })
   })
 
-  describe('insertMany', () => {
+  describe('setMany', () => {
     let client: VaulterClient
 
     beforeEach(async () => {
@@ -603,7 +603,7 @@ describe('VaulterClient', () => {
         { key: 'BULK_2', value: 'value2', project: 'bulk-project', environment: 'dev' as const }
       ]
 
-      const results = await client.insertMany(inputs)
+      const results = await client.setMany(inputs)
 
       expect(results.length).toBe(2)
       expect(mockResource.insert).toHaveBeenCalledTimes(2)

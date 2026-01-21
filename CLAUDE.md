@@ -165,6 +165,30 @@ await client.export('project', 'dev', '__shared__')
 
 **MCP Tool:** `vaulter_export` aceita `includeShared: boolean` (default: `true`)
 
+### Encriptação de Shared Vars
+
+Por padrão, cada environment tem sua própria chave de encriptação (`VAULTER_KEY_DEV`, `VAULTER_KEY_PRD`, etc.). Mas shared vars existem fora de qualquer environment específico - qual chave usar?
+
+**`shared_key_environment`** define qual environment fornece a chave para encriptar shared vars:
+
+```yaml
+# .vaulter/config.yaml
+encryption:
+  mode: symmetric
+  shared_key_environment: dev  # shared vars usam VAULTER_KEY_DEV
+```
+
+**Comportamento:**
+- Se não configurado → usa `default_environment` ou `'dev'`
+- A chave é resolvida como `VAULTER_KEY_{SHARED_KEY_ENVIRONMENT}`
+- Exemplo: `shared_key_environment: prd` → usa `VAULTER_KEY_PRD`
+
+**Quando configurar:**
+- Se shared vars devem usar a chave de produção: `shared_key_environment: prd`
+- Se preferir isolamento total de dev: deixe como `dev` (default)
+
+**No CLI/MCP:** a resolução é automática - basta ter as env vars corretas.
+
 ---
 
 ## Output Targets (Framework-Agnostic)
@@ -239,6 +263,160 @@ const result = await pullToOutputs({
 
 ---
 
+## Runtime Loader (Zero ConfigMap/Secret)
+
+Carrega secrets direto do backend no startup da aplicação, sem precisar de arquivos `.env` ou ConfigMaps/Secrets no Kubernetes.
+
+### Quick Start
+
+```typescript
+// Opção 1: Side-effect import (mais simples)
+import 'vaulter/runtime/load'
+// process.env já tem todas as secrets!
+
+// Opção 2: Programático
+import { loadRuntime } from 'vaulter/runtime'
+await loadRuntime()
+
+// Com opções
+await loadRuntime({
+  environment: 'prd',
+  service: 'api',
+  required: true,
+  filter: { include: ['DATABASE_*', 'REDIS_*'] }
+})
+```
+
+### Configuração
+
+```bash
+# Backend
+VAULTER_BACKEND=s3://bucket/envs?region=us-east-1
+
+# Encryption key POR ENVIRONMENT (recomendado)
+VAULTER_KEY_PRD=chave-producao-segura
+VAULTER_KEY_DEV=chave-dev-menos-segura
+VAULTER_KEY=chave-fallback-global
+
+# Contexto
+VAULTER_PROJECT=myproject
+VAULTER_SERVICE=api
+NODE_ENV=production
+
+# Debug
+VAULTER_VERBOSE=1
+```
+
+### Kubernetes Simplificado
+
+**Antes** (N secrets + configmaps):
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: api-secrets
+data:
+  DATABASE_URL: base64...
+  REDIS_URL: base64...
+  # ... muitas secrets
+---
+apiVersion: apps/v1
+kind: Deployment
+spec:
+  template:
+    spec:
+      containers:
+        - envFrom:
+            - secretRef:
+                name: api-secrets
+```
+
+**Depois** (1 secret apenas):
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: vaulter-key
+data:
+  prd: base64-da-chave-prd
+---
+apiVersion: apps/v1
+kind: Deployment
+spec:
+  template:
+    spec:
+      containers:
+        - env:
+            - name: NODE_ENV
+              value: "production"
+            - name: VAULTER_KEY_PRD
+              valueFrom:
+                secretKeyRef:
+                  name: vaulter-key
+                  key: prd
+```
+
+A app busca todas as outras secrets do S3 no startup.
+
+### API
+
+```typescript
+interface RuntimeLoaderOptions {
+  // Contexto
+  project?: string        // Override config.project
+  environment?: string    // Default: NODE_ENV ou 'dev'
+  service?: string        // Para monorepos
+
+  // Backend
+  backend?: string        // Override VAULTER_BACKEND
+  encryptionKey?: string  // Override VAULTER_KEY
+
+  // Comportamento
+  required?: boolean      // Falha se não carregar (default: true em prd)
+  override?: boolean      // Sobrescreve process.env existente (default: false)
+  includeShared?: boolean // Inclui shared vars (default: true)
+  filter?: {
+    include?: string[]    // Glob patterns para incluir
+    exclude?: string[]    // Glob patterns para excluir
+  }
+
+  // Debug
+  verbose?: boolean
+  silent?: boolean
+
+  // Callbacks
+  onLoaded?: (result) => void
+  onError?: (error) => void
+}
+
+interface RuntimeLoaderResult {
+  varsLoaded: number
+  environment: string
+  project: string
+  service?: string
+  backend: string
+  durationMs: number
+  keys: string[]
+}
+```
+
+### Helpers
+
+```typescript
+import { isRuntimeAvailable, getRuntimeInfo } from 'vaulter/runtime'
+
+// Verifica se config existe
+if (isRuntimeAvailable()) {
+  await loadRuntime()
+}
+
+// Info sem carregar
+const info = await getRuntimeInfo()
+// { available: true, project: 'myapp', environment: 'dev', backend: 's3://...' }
+```
+
+---
+
 ## Estrutura
 
 ```
@@ -247,6 +425,10 @@ src/
 ├── index.ts           # Exports
 ├── types.ts           # Types
 ├── loader.ts          # dotenv loader
+├── runtime/           # Runtime loader (sem .env)
+│   ├── loader.ts      # loadRuntime()
+│   ├── load.ts        # Side-effect import
+│   └── types.ts       # RuntimeLoaderOptions, RuntimeLoaderResult
 ├── cli/               # CLI
 ├── lib/
 │   ├── outputs.ts     # Output targets (pullToOutputs, filterVarsByPatterns)
