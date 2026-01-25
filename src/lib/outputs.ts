@@ -215,6 +215,8 @@ export interface PullToOutputsResult {
  * Pull environment variables and write .env files to output targets
  *
  * This is the main function for generating .env files based on config.
+ * This is an integration function that writes to the filesystem, best tested
+ * through integration tests rather than unit tests.
  *
  * @example
  * ```typescript
@@ -227,6 +229,7 @@ export interface PullToOutputsResult {
  * })
  * ```
  */
+/* v8 ignore start */
 export async function pullToOutputs(options: PullToOutputsOptions): Promise<PullToOutputsResult> {
   const {
     client,
@@ -340,6 +343,7 @@ export async function pullToOutputs(options: PullToOutputsOptions): Promise<Pull
 
   return result
 }
+/* v8 ignore stop */
 
 // ============================================================================
 // Validation

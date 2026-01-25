@@ -412,5 +412,33 @@ describe('outputs', () => {
       const errors = validateOutputsConfig(config)
       expect(errors).toContain('shared.include must be an array')
     })
+
+    it('should detect invalid output value (null)', () => {
+      const config: VaulterConfig = {
+        version: '1',
+        project: 'test',
+        outputs: {
+          // @ts-expect-error testing invalid config
+          web: null
+        }
+      }
+
+      const errors = validateOutputsConfig(config)
+      expect(errors).toContain('Output "web": must be a string or object')
+    })
+
+    it('should detect invalid output value (number)', () => {
+      const config: VaulterConfig = {
+        version: '1',
+        project: 'test',
+        outputs: {
+          // @ts-expect-error testing invalid config
+          api: 123
+        }
+      }
+
+      const errors = validateOutputsConfig(config)
+      expect(errors).toContain('Output "api": must be a string or object')
+    })
   })
 })

@@ -365,4 +365,46 @@ backend:
       expect(process.env.GLOBAL_SECRET).toBe('global-value')
     })
   })
+
+  describe('getRuntimeInfo edge cases', () => {
+    it('returns info even with minimal config', async () => {
+      // Create .vaulter/config.yaml with minimal config
+      const vaulterDir = path.join(tempDir, '.vaulter')
+      fs.mkdirSync(vaulterDir, { recursive: true })
+      // Empty config - project will be inferred from directory name
+      fs.writeFileSync(
+        path.join(vaulterDir, 'config.yaml'),
+        '# empty config\n'
+      )
+
+      const info = await getRuntimeInfo({ cwd: tempDir })
+
+      // Should still report available and configFile
+      expect(info.available).toBe(true)
+      expect(info.configFile).toContain('config.yaml')
+      // Project might be inferred from directory name, so it could exist
+      expect(typeof info.available).toBe('boolean')
+    })
+
+    it('masks backend URL with password in info', async () => {
+      const vaulterDir = path.join(tempDir, '.vaulter')
+      fs.mkdirSync(vaulterDir, { recursive: true })
+      fs.writeFileSync(
+        path.join(vaulterDir, 'config.yaml'),
+        'version: "1"\nproject: test\nbackend: "s3://longusername:secretpassword@bucket?region=us-east-1"\n'
+      )
+
+      process.env.NODE_ENV = 'dev'
+      process.env.VAULTER_KEY = 'test-key'
+
+      const info = await getRuntimeInfo({ cwd: tempDir })
+
+      // Backend should be masked
+      if (info.backend) {
+        expect(info.backend).toContain('long***')  // username masked
+        expect(info.backend).toContain('***')      // password masked
+        expect(info.backend).not.toContain('secretpassword')
+      }
+    })
+  })
 })

@@ -5,32 +5,70 @@
 
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
 
-// Create mock objects that will be shared
-const mockResource = {
-  insert: vi.fn(),
-  update: vi.fn(),
-  delete: vi.fn(),
-  list: vi.fn(),
-  get: vi.fn(),
-  getOrNull: vi.fn()
-}
+// Use vi.hoisted() to make mocks available before vi.mock runs
+const { mockResource, mockDb, TasksPool } = vi.hoisted(() => {
+  const mockResource = {
+    insert: vi.fn(),
+    update: vi.fn(),
+    replace: vi.fn(),
+    delete: vi.fn(),
+    list: vi.fn(),
+    get: vi.fn(),
+    getOrNull: vi.fn()
+  }
 
-const mockDb = {
-  connect: vi.fn(),
-  disconnect: vi.fn(),
-  createResource: vi.fn()
-}
+  const mockDb = {
+    connect: vi.fn(),
+    disconnect: vi.fn(),
+    createResource: vi.fn()
+  }
+
+  // TasksPool.map() - simplified version for testing
+  const TasksPool = {
+    map: async (
+      items: any[],
+      processor: (item: any, index: number) => Promise<any>,
+      options: {
+        concurrency?: number
+        onItemComplete?: (result: any, index: number) => void
+        onItemError?: (error: Error, item: any, index: number) => void
+      } = {}
+    ): Promise<{ results: any[]; errors: Array<{ error: Error; item: any; index: number }> }> => {
+      const results: any[] = []
+      const errors: Array<{ error: Error; item: any; index: number }> = []
+
+      for (let i = 0; i < items.length; i++) {
+        try {
+          const result = await processor(items[i], i)
+          results.push(result)
+          if (options.onItemComplete) {
+            options.onItemComplete(result, i)
+          }
+        } catch (err) {
+          errors.push({ error: err as Error, item: items[i], index: i })
+          if (options.onItemError) {
+            options.onItemError(err as Error, items[i], i)
+          }
+        }
+      }
+
+      return { results, errors }
+    }
+  }
+
+  return { mockResource, mockDb, TasksPool }
+})
 
 // Mock s3db.js/lite before importing client
 vi.mock('s3db.js/lite', () => {
   return {
     S3db: function(config: any) {
-      // Store config for assertions
       (this as any).config = config
       ;(this as any).connect = mockDb.connect
       ;(this as any).disconnect = mockDb.disconnect
       ;(this as any).createResource = mockDb.createResource
-    }
+    },
+    TasksPool
   }
 })
 
@@ -55,6 +93,12 @@ describe('VaulterClient', () => {
     mockResource.update.mockImplementation(async (id: string, data: any) => ({
       id,
       ...data
+    }))
+    mockResource.replace.mockImplementation(async (id: string, data: any) => ({
+      id,
+      ...data,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
     }))
     mockResource.delete.mockResolvedValue(undefined)
   })
@@ -606,7 +650,8 @@ describe('VaulterClient', () => {
       const results = await client.setMany(inputs)
 
       expect(results.length).toBe(2)
-      expect(mockResource.insert).toHaveBeenCalledTimes(2)
+      // setMany now uses replace() by default for better performance (1 PUT instead of 4 S3 ops)
+      expect(mockResource.replace).toHaveBeenCalledTimes(2)
     })
   })
 
@@ -677,5 +722,629 @@ describe('createClient', () => {
   it('should create client with default options', () => {
     const client = createClient()
     expect(client).toBeInstanceOf(VaulterClient)
+  })
+})
+
+describe('VaulterClient - Additional Coverage', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockDb.connect.mockResolvedValue(undefined)
+    mockDb.disconnect.mockResolvedValue(undefined)
+    mockDb.createResource.mockResolvedValue(mockResource)
+    mockResource.list.mockResolvedValue([])
+    mockResource.get.mockResolvedValue(null)
+    mockResource.getOrNull.mockResolvedValue(null)
+    mockResource.insert.mockImplementation(async (data: any) => ({
+      id: 'test-id-' + Date.now(),
+      ...data,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    }))
+    mockResource.update.mockImplementation(async (id: string, data: any) => ({
+      id,
+      ...data
+    }))
+    mockResource.replace.mockImplementation(async (id: string, data: any) => ({
+      id,
+      ...data,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    }))
+    mockResource.delete.mockResolvedValue(undefined)
+  })
+
+  describe('setMany with preserveMetadata', () => {
+    let client: VaulterClient
+
+    beforeEach(async () => {
+      client = new VaulterClient({ connectionString: 'memory://test-bucket' })
+      await client.connect()
+    })
+
+    it('should use update when preserveMetadata is true and var exists', async () => {
+      mockResource.getOrNull.mockResolvedValue({
+        id: 'existing-id',
+        key: 'EXISTING',
+        value: 'old-value',
+        metadata: { source: 'old-source', custom: 'data' }
+      })
+
+      const inputs = [
+        { key: 'EXISTING', value: 'new-value', project: 'proj', environment: 'dev' as const }
+      ]
+
+      await client.setMany(inputs, { preserveMetadata: true })
+
+      expect(mockResource.getOrNull).toHaveBeenCalled()
+      expect(mockResource.update).toHaveBeenCalled()
+      expect(mockResource.replace).not.toHaveBeenCalled()
+    })
+
+    it('should use insert when preserveMetadata is true and var does not exist', async () => {
+      mockResource.getOrNull.mockResolvedValue(null)
+
+      const inputs = [
+        { key: 'NEW_VAR', value: 'value', project: 'proj', environment: 'dev' as const }
+      ]
+
+      await client.setMany(inputs, { preserveMetadata: true })
+
+      expect(mockResource.getOrNull).toHaveBeenCalled()
+      expect(mockResource.insert).toHaveBeenCalled()
+      expect(mockResource.update).not.toHaveBeenCalled()
+    })
+
+    it('should handle empty inputs', async () => {
+      const results = await client.setMany([])
+      expect(results).toEqual([])
+    })
+  })
+
+  describe('setManyChunked', () => {
+    let client: VaulterClient
+
+    beforeEach(async () => {
+      client = new VaulterClient({ connectionString: 'memory://test-bucket' })
+      await client.connect()
+    })
+
+    it('should process multiple variables with progress callback', async () => {
+      const inputs = [
+        { key: 'VAR_1', value: 'v1', project: 'proj', environment: 'dev' as const },
+        { key: 'VAR_2', value: 'v2', project: 'proj', environment: 'dev' as const },
+        { key: 'VAR_3', value: 'v3', project: 'proj', environment: 'dev' as const }
+      ]
+
+      const progressCalls: any[] = []
+      const result = await client.setManyChunked(inputs, {
+        concurrency: 2,
+        onProgress: (progress) => progressCalls.push(progress)
+      })
+
+      expect(result.success.length).toBe(3)
+      expect(result.failed.length).toBe(0)
+      expect(result.total).toBe(3)
+      expect(result.durationMs).toBeGreaterThanOrEqual(0)
+      expect(progressCalls.length).toBeGreaterThan(0)
+    })
+
+    it('should handle empty inputs', async () => {
+      const result = await client.setManyChunked([])
+      expect(result.success).toEqual([])
+      expect(result.failed).toEqual([])
+      expect(result.total).toBe(0)
+    })
+
+    it('should handle errors gracefully', async () => {
+      mockResource.replace.mockRejectedValueOnce(new Error('S3 error'))
+
+      const inputs = [
+        { key: 'FAIL_VAR', value: 'v1', project: 'proj', environment: 'dev' as const },
+        { key: 'OK_VAR', value: 'v2', project: 'proj', environment: 'dev' as const }
+      ]
+
+      const result = await client.setManyChunked(inputs, { continueOnError: true })
+
+      expect(result.failed.length).toBe(1)
+      expect(result.failed[0].key).toBe('FAIL_VAR')
+      expect(result.success.length).toBe(1)
+    })
+
+    it('should use preserveMetadata option', async () => {
+      mockResource.getOrNull.mockResolvedValue({
+        id: 'id',
+        key: 'VAR',
+        value: 'old',
+        metadata: { old: 'data' }
+      })
+
+      const inputs = [
+        { key: 'VAR', value: 'new', project: 'proj', environment: 'dev' as const }
+      ]
+
+      await client.setManyChunked(inputs, { preserveMetadata: true })
+
+      expect(mockResource.getOrNull).toHaveBeenCalled()
+      expect(mockResource.update).toHaveBeenCalled()
+    })
+  })
+
+  describe('getMany', () => {
+    let client: VaulterClient
+
+    beforeEach(async () => {
+      client = new VaulterClient({ connectionString: 'memory://test-bucket' })
+      await client.connect()
+    })
+
+    it('should get multiple variables by keys', async () => {
+      mockResource.getOrNull
+        .mockResolvedValueOnce({ id: '1', key: 'VAR1', value: 'val1', project: 'p', environment: 'dev' })
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce({ id: '3', key: 'VAR3', value: 'val3', project: 'p', environment: 'dev' })
+
+      const results = await client.getMany(['VAR1', 'VAR2', 'VAR3'], 'p', 'dev')
+
+      // getMany returns a Map<string, EnvVar | null>
+      expect(results).toBeInstanceOf(Map)
+      expect(results.size).toBe(3)
+      expect(results.get('VAR1')).toBeDefined()
+      expect(results.get('VAR2')).toBeNull()
+      expect(results.get('VAR3')).toBeDefined()
+    })
+
+    it('should return empty map for empty keys', async () => {
+      const results = await client.getMany([], 'p', 'dev')
+      expect(results).toBeInstanceOf(Map)
+      expect(results.size).toBe(0)
+    })
+  })
+
+  describe('deleteManyByKeys', () => {
+    let client: VaulterClient
+
+    beforeEach(async () => {
+      client = new VaulterClient({ connectionString: 'memory://test-bucket' })
+      await client.connect()
+    })
+
+    it('should delete multiple variables by keys', async () => {
+      const result = await client.deleteManyByKeys(['VAR1', 'VAR2'], 'proj', 'dev')
+      // Returns { deleted: string[], notFound: string[] }
+      expect(result.deleted).toEqual(['VAR1', 'VAR2'])
+      expect(mockResource.delete).toHaveBeenCalledTimes(2)
+    })
+
+    it('should return empty arrays for empty keys', async () => {
+      const result = await client.deleteManyByKeys([], 'proj', 'dev')
+      expect(result.deleted).toEqual([])
+      expect(result.notFound).toEqual([])
+    })
+  })
+
+  describe('export', () => {
+    let client: VaulterClient
+
+    beforeEach(async () => {
+      client = new VaulterClient({ connectionString: 'memory://test-bucket' })
+      await client.connect()
+    })
+
+    it('should export variables as key-value object', async () => {
+      mockResource.list.mockResolvedValue([
+        { id: '1', key: 'DB_HOST', value: 'localhost', project: 'p', environment: 'dev' },
+        { id: '2', key: 'DB_PORT', value: '5432', project: 'p', environment: 'dev' }
+      ])
+
+      const result = await client.export('p', 'dev')
+
+      expect(result).toEqual({
+        DB_HOST: 'localhost',
+        DB_PORT: '5432'
+      })
+    })
+
+    it('should export with service filter', async () => {
+      mockResource.list.mockResolvedValue([
+        { id: '1', key: 'API_KEY', value: 'secret', project: 'p', environment: 'dev', service: 'api' }
+      ])
+
+      const result = await client.export('p', 'dev', 'api')
+
+      expect(result).toEqual({
+        API_KEY: 'secret'
+      })
+    })
+
+    it('should include shared vars when service specified and includeShared true', async () => {
+      mockResource.list
+        // First call for shared vars
+        .mockResolvedValueOnce([
+          { id: '1', key: 'SHARED_VAR', value: 'shared', project: 'p', environment: 'dev', service: '__shared__' }
+        ])
+        // Second call for service vars
+        .mockResolvedValueOnce([
+          { id: '2', key: 'SERVICE_VAR', value: 'service', project: 'p', environment: 'dev', service: 'api' }
+        ])
+
+      const result = await client.export('p', 'dev', 'api', { includeShared: true })
+
+      expect(result).toEqual({
+        SHARED_VAR: 'shared',
+        SERVICE_VAR: 'service'
+      })
+    })
+
+    it('should not include shared vars when includeShared is false', async () => {
+      mockResource.list.mockResolvedValue([
+        { id: '1', key: 'SERVICE_VAR', value: 'service', project: 'p', environment: 'dev', service: 'api' }
+      ])
+
+      const result = await client.export('p', 'dev', 'api', { includeShared: false })
+
+      expect(result).toEqual({
+        SERVICE_VAR: 'service'
+      })
+      // Should only call once (no shared vars call)
+      expect(mockResource.list).toHaveBeenCalledTimes(1)
+    })
+
+    it('should export __shared__ service without merging', async () => {
+      mockResource.list.mockResolvedValue([
+        { id: '1', key: 'SHARED_VAR', value: 'shared', project: 'p', environment: 'dev', service: '__shared__' }
+      ])
+
+      const result = await client.export('p', 'dev', '__shared__')
+
+      expect(result).toEqual({
+        SHARED_VAR: 'shared'
+      })
+      // Should only call once (no extra shared call when already fetching __shared__)
+      expect(mockResource.list).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  describe('sync', () => {
+    let client: VaulterClient
+
+    beforeEach(async () => {
+      client = new VaulterClient({ connectionString: 'memory://test-bucket' })
+      await client.connect()
+    })
+
+    it('should sync variables with deleteMissing', async () => {
+      mockResource.list.mockResolvedValue([
+        { id: '1', key: 'OLD_VAR', value: 'old', project: 'p', environment: 'dev' }
+      ])
+
+      const vars = {
+        NEW_VAR: 'new'
+      }
+
+      // sync(vars, project, environment, service?, options?)
+      const result = await client.sync(vars, 'p', 'dev', undefined, { deleteMissing: true })
+
+      // SyncResult has: added, updated, deleted, unchanged, conflicts
+      expect(result.added.length).toBe(1)
+      expect(result.deleted.length).toBe(1)
+      expect(mockResource.delete).toHaveBeenCalled()
+    })
+
+    it('should not delete when deleteMissing is false', async () => {
+      mockResource.list.mockResolvedValue([
+        { id: '1', key: 'OLD_VAR', value: 'old', project: 'p', environment: 'dev' }
+      ])
+
+      const vars = {
+        NEW_VAR: 'new'
+      }
+
+      const result = await client.sync(vars, 'p', 'dev', undefined, { deleteMissing: false })
+
+      expect(result.added.length).toBe(1)
+      expect(result.deleted.length).toBe(0)
+      expect(mockResource.delete).not.toHaveBeenCalled()
+    })
+
+    it('should update existing variables with different values', async () => {
+      mockResource.list.mockResolvedValue([
+        { id: '1', key: 'EXISTING_VAR', value: 'old-value', project: 'p', environment: 'dev' }
+      ])
+
+      const vars = {
+        EXISTING_VAR: 'new-value'
+      }
+
+      const result = await client.sync(vars, 'p', 'dev')
+
+      expect(result.updated.length).toBe(1)
+      expect(result.added.length).toBe(0)
+    })
+
+    it('should not update unchanged variables', async () => {
+      mockResource.list.mockResolvedValue([
+        { id: '1', key: 'SAME_VAR', value: 'same-value', project: 'p', environment: 'dev' }
+      ])
+
+      const vars = {
+        SAME_VAR: 'same-value'
+      }
+
+      const result = await client.sync(vars, 'p', 'dev')
+
+      expect(result.unchanged.length).toBe(1)
+      expect(result.updated.length).toBe(0)
+    })
+  })
+
+  describe('createWriteStream', () => {
+    let client: VaulterClient
+
+    beforeEach(async () => {
+      client = new VaulterClient({ connectionString: 'memory://test-bucket' })
+      await client.connect()
+    })
+
+    it('should create a writable stream', () => {
+      const stream = client.createWriteStream({ concurrency: 5 })
+      expect(stream).toBeDefined()
+      expect(stream.writable).toBe(true)
+      stream.destroy()
+    })
+
+    it('should be a Writable stream instance', () => {
+      const { Writable } = require('node:stream')
+      const stream = client.createWriteStream()
+      expect(stream).toBeInstanceOf(Writable)
+      stream.destroy()
+    })
+
+    it('should have getResult method that returns batch result', async () => {
+      const stream = client.createWriteStream({ concurrency: 5 })
+
+      // Get result immediately (before any writes)
+      const result = (stream as any).getResult()
+
+      expect(result).toBeDefined()
+      expect(typeof result.durationMs).toBe('number')
+      expect(result.total).toBe(0)
+      expect(result.success).toEqual([])
+      expect(result.failed).toEqual([])
+
+      stream.destroy()
+    })
+  })
+
+  describe('deleteManyByKeys with native deleteMany', () => {
+    let client: VaulterClient
+
+    beforeEach(async () => {
+      // Add deleteMany method to mock to test native path
+      ;(mockResource as any).deleteMany = vi.fn()
+      client = new VaulterClient({ connectionString: 'memory://test-bucket' })
+      await client.connect()
+    })
+
+    afterEach(() => {
+      delete (mockResource as any).deleteMany
+    })
+
+    it('should use deleteMany when available and count matches', async () => {
+      ;(mockResource as any).deleteMany.mockResolvedValue({ deleted: 2 })
+
+      const result = await client.deleteManyByKeys(['VAR1', 'VAR2'], 'proj', 'dev')
+
+      expect(result.deleted).toEqual(['VAR1', 'VAR2'])
+      expect(result.notFound).toEqual([])
+      expect((mockResource as any).deleteMany).toHaveBeenCalled()
+    })
+
+    it('should use deleteMany when available and count does not match', async () => {
+      ;(mockResource as any).deleteMany.mockResolvedValue({ deleted: 1 })
+
+      const result = await client.deleteManyByKeys(['VAR1', 'VAR2'], 'proj', 'dev')
+
+      // Optimistic result - all considered deleted
+      expect(result.deleted).toEqual(['VAR1', 'VAR2'])
+      expect(result.notFound).toEqual([])
+    })
+  })
+
+  describe('nukePreview', () => {
+    let client: VaulterClient
+
+    beforeEach(async () => {
+      client = new VaulterClient({ connectionString: 'memory://test-bucket' })
+      await client.connect()
+    })
+
+    it('should return preview of data to be deleted', async () => {
+      mockResource.list.mockResolvedValue([
+        { id: '1', key: 'VAR1', value: 'v1', project: 'myproject', environment: 'dev' },
+        { id: '2', key: 'VAR2', value: 'v2', project: 'myproject', environment: 'prd' }
+      ])
+
+      const result = await client.nukePreview()
+
+      expect(result.project).toBe('myproject')
+      expect(result.totalVars).toBe(2)
+      expect(result.environments).toContain('dev')
+      expect(result.environments).toContain('prd')
+    })
+
+    it('should return empty preview when no data', async () => {
+      mockResource.list.mockResolvedValue([])
+
+      const result = await client.nukePreview()
+
+      expect(result.project).toBeNull()
+      expect(result.totalVars).toBe(0)
+    })
+  })
+
+  describe('nukeAllData', () => {
+    let client: VaulterClient
+
+    beforeEach(async () => {
+      client = new VaulterClient({ connectionString: 'memory://test-bucket' })
+      await client.connect()
+    })
+
+    it('should reject with mismatched confirm token', async () => {
+      mockResource.list.mockResolvedValue([
+        { id: '1', key: 'VAR1', value: 'v1', project: 'myproject', environment: 'dev' }
+      ])
+
+      await expect(client.nukeAllData('wrong-project'))
+        .rejects.toThrow(/Safety check failed/)
+    })
+
+    it('should return 0 when no data exists', async () => {
+      mockResource.list.mockResolvedValue([])
+
+      const result = await client.nukeAllData('anytoken')
+
+      expect(result.deletedCount).toBe(0)
+    })
+  })
+
+  describe('asymmetric encryption', () => {
+    it('should initialize with asymmetric mode when specified with public key', () => {
+      const client = new VaulterClient({
+        connectionString: 'memory://test-bucket',
+        encryptionMode: 'asymmetric',
+        publicKey: '-----BEGIN PUBLIC KEY-----\ntest\n-----END PUBLIC KEY-----'
+      })
+
+      expect(client.getEncryptionMode()).toBe('asymmetric')
+    })
+
+    it('should initialize with asymmetric mode when specified with private key', () => {
+      const client = new VaulterClient({
+        connectionString: 'memory://test-bucket',
+        encryptionMode: 'asymmetric',
+        privateKey: '-----BEGIN PRIVATE KEY-----\ntest\n-----END PRIVATE KEY-----'
+      })
+
+      expect(client.getEncryptionMode()).toBe('asymmetric')
+    })
+
+    it('should use symmetric mode by default', () => {
+      const client = new VaulterClient({
+        connectionString: 'memory://test-bucket'
+      })
+
+      expect(client.getEncryptionMode()).toBe('symmetric')
+    })
+
+    it('should return asymmetric algorithm', () => {
+      const client = new VaulterClient({
+        connectionString: 'memory://test-bucket',
+        encryptionMode: 'asymmetric',
+        publicKey: '-----BEGIN PUBLIC KEY-----\ntest\n-----END PUBLIC KEY-----',
+        asymmetricAlgorithm: 'rsa-4096'
+      })
+
+      expect(client.getAsymmetricAlgorithm()).toBe('rsa-4096')
+    })
+
+    it('should throw when asymmetric mode without keys', () => {
+      expect(() => new VaulterClient({
+        connectionString: 'memory://test-bucket',
+        encryptionMode: 'asymmetric'
+      })).toThrow(/requires at least a public key/)
+    })
+  })
+
+  describe('getConnectionStrings', () => {
+    it('should return connection strings array', () => {
+      const client = new VaulterClient({
+        connectionStrings: ['memory://bucket1', 'memory://bucket2']
+      })
+
+      expect(client.getConnectionStrings()).toEqual(['memory://bucket1', 'memory://bucket2'])
+    })
+  })
+
+  describe('deleteManyByKeys fallback path', () => {
+    let client: VaulterClient
+
+    beforeEach(async () => {
+      // Ensure no deleteMany method to trigger fallback path
+      delete (mockResource as any).deleteMany
+      client = new VaulterClient({ connectionString: 'memory://test-bucket' })
+      await client.connect()
+    })
+
+    it('should handle NOT_FOUND errors in fallback path', async () => {
+      // First delete succeeds, second throws NOT_FOUND
+      mockResource.delete
+        .mockResolvedValueOnce(undefined)
+        .mockRejectedValueOnce({ code: 'NOT_FOUND' })
+
+      const result = await client.deleteManyByKeys(['VAR1', 'VAR2'], 'proj', 'dev')
+
+      expect(result.deleted).toEqual(['VAR1'])
+      expect(result.notFound).toEqual(['VAR2'])
+    })
+
+    it('should handle "not found" message errors in fallback path', async () => {
+      // Throws error with "not found" message
+      mockResource.delete.mockRejectedValue(new Error('Resource not found'))
+
+      const result = await client.deleteManyByKeys(['VAR1'], 'proj', 'dev')
+
+      expect(result.deleted).toEqual([])
+      expect(result.notFound).toEqual(['VAR1'])
+    })
+
+    it('should throw unexpected errors in fallback path', async () => {
+      mockResource.delete.mockRejectedValue(new Error('Network error'))
+
+      await expect(client.deleteManyByKeys(['VAR1'], 'proj', 'dev'))
+        .rejects.toThrow('Network error')
+    })
+
+    it('should return all deleted when fallback succeeds', async () => {
+      mockResource.delete.mockResolvedValue(undefined)
+
+      const result = await client.deleteManyByKeys(['VAR1', 'VAR2', 'VAR3'], 'proj', 'dev')
+
+      expect(result.deleted).toEqual(['VAR1', 'VAR2', 'VAR3'])
+      expect(result.notFound).toEqual([])
+      expect(mockResource.delete).toHaveBeenCalledTimes(3)
+    })
+  })
+
+  describe('nukeAllData with valid token', () => {
+    let client: VaulterClient
+
+    beforeEach(async () => {
+      client = new VaulterClient({ connectionString: 'memory://test-bucket' })
+      await client.connect()
+    })
+
+    it('should delete all data when confirmation matches project', async () => {
+      // Setup: list returns data for the project
+      mockResource.list.mockResolvedValue([
+        { id: '1', key: 'VAR1', value: 'v1', project: 'myproject', environment: 'dev' }
+      ])
+
+      // Mock createResource to return a resource with deleteAllData
+      const nukeResource = {
+        deleteAllData: vi.fn().mockResolvedValue({ deletedCount: 10 })
+      }
+      mockDb.createResource.mockResolvedValue(nukeResource)
+
+      const result = await client.nukeAllData('myproject')
+
+      expect(result.deletedCount).toBe(10)
+      expect(result.project).toBe('myproject')
+      expect(nukeResource.deleteAllData).toHaveBeenCalled()
+      expect(mockDb.createResource).toHaveBeenCalledWith(expect.objectContaining({
+        name: 'environment-variables',
+        paranoid: false
+      }))
+    })
   })
 })
