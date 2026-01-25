@@ -706,6 +706,8 @@ export interface BatchOptions {
   concurrency?: number
   /** Continue on error or abort (default: true - continue) */
   continueOnError?: boolean
+  /** If true, uses slower get+update to preserve existing metadata (default: false) */
+  preserveMetadata?: boolean
   /** Progress callback called after each chunk */
   onProgress?: (progress: {
     completed: number

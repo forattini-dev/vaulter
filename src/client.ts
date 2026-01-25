@@ -6,7 +6,7 @@
  * - asymmetric: Uses RSA/EC hybrid encryption (public key encrypts, private key decrypts)
  */
 
-import { S3db } from 's3db.js/lite'
+import { S3db, TasksPool } from 's3db.js/lite'
 import os from 'node:os'
 import { Writable } from 'node:stream'
 import type {
@@ -494,60 +494,127 @@ export class VaulterClient {
   }
 
   /**
-   * Set multiple environment variables efficiently
-   * Uses deterministic IDs for O(1) lookups - fully parallel without list queries
+   * Set multiple environment variables efficiently using s3db.js TasksPool
+   *
+   * Uses replace() for single PUT operation per variable (no get/exists checks)
+   * and TasksPool.map() for intelligent concurrency control with:
+   * - Auto-tuning concurrency based on latency
+   * - Retry with exponential backoff
+   * - Rate limiting and throttling protection
+   *
+   * Performance comparison (per variable):
+   * - Old approach: getOrNull (GET) + update (HEAD + GET + PUT) = 4 S3 ops
+   * - New approach: replace (PUT only) = 1 S3 op
+   *
+   * @param inputs - Array of environment variables to set
+   * @param options - Optional settings
+   * @param options.preserveMetadata - If true, uses slower get+update to preserve existing metadata (default: false)
+   * @param options.concurrency - Max concurrent operations (default: 10)
    */
-  async setMany(inputs: EnvVarInput[]): Promise<EnvVar[]> {
+  async setMany(
+    inputs: EnvVarInput[],
+    options: { preserveMetadata?: boolean; concurrency?: number } = {}
+  ): Promise<EnvVar[]> {
     this.ensureConnected()
 
     if (inputs.length === 0) return []
 
-    // Process all inputs in parallel using deterministic IDs (no list queries needed!)
-    const results = await Promise.all(inputs.map(async (input) => {
-      const id = generateVarId(input.project, input.environment, input.service, input.key)
-      const encryptedValue = this.encryptValue(input.value)
+    const { preserveMetadata = false, concurrency = 10 } = options
 
-      // Use getOrNull - returns null if not found (no exception)
-      const existing = await this.resource.getOrNull(id)
+    // Fast path: use replace() with TasksPool for intelligent concurrency
+    if (!preserveMetadata) {
+      const { results, errors } = await TasksPool.map(
+        inputs,
+        async (input) => {
+          const id = generateVarId(input.project, input.environment, input.service, input.key)
+          const encryptedValue = this.encryptValue(input.value)
 
-      if (existing) {
-        // Update existing
-        const filteredInputMeta = input.metadata
-          ? Object.fromEntries(Object.entries(input.metadata).filter(([, v]) => v !== undefined))
-          : {}
+          // replace() does only 1 PUT operation - no get/exists checks
+          const result = await this.resource.replace(id, {
+            key: input.key,
+            value: encryptedValue,
+            project: input.project,
+            environment: input.environment,
+            service: input.service,
+            tags: input.tags,
+            metadata: {
+              ...input.metadata,
+              source: input.metadata?.source || 'manual'
+            }
+          })
+          return { ...result, value: input.value } as EnvVar
+        },
+        { concurrency }
+      )
 
-        const result = await this.resource.update(id, {
-          value: encryptedValue,
-          tags: input.tags,
-          metadata: {
-            ...existing.metadata,
-            ...filteredInputMeta,
-            source: input.metadata?.source || existing.metadata?.source || 'manual'
-          }
-        })
-        return { ...result, value: input.value } as EnvVar
-      } else {
-        // Insert new
-        const result = await this.resource.insert({
-          ...input,
-          value: encryptedValue,
-          metadata: {
-            ...input.metadata,
-            source: input.metadata?.source || 'manual'
-          }
-        })
-        return { ...result, value: input.value } as EnvVar
+      if (errors.length > 0) {
+        const errorMsg = errors.map(e => `${e.item.key}: ${e.error.message}`).join(', ')
+        throw new Error(`Failed to set some variables: ${errorMsg}`)
       }
-    }))
+
+      return results
+    }
+
+    // Slow path: preserve existing metadata (uses get + update)
+    const { results, errors } = await TasksPool.map(
+      inputs,
+      async (input) => {
+        const id = generateVarId(input.project, input.environment, input.service, input.key)
+        const encryptedValue = this.encryptValue(input.value)
+
+        // Use getOrNull - returns null if not found (no exception)
+        const existing = await this.resource.getOrNull(id)
+
+        if (existing) {
+          // Update existing - merges metadata
+          const filteredInputMeta = input.metadata
+            ? Object.fromEntries(Object.entries(input.metadata).filter(([, v]) => v !== undefined))
+            : {}
+
+          const result = await this.resource.update(id, {
+            value: encryptedValue,
+            tags: input.tags,
+            metadata: {
+              ...existing.metadata,
+              ...filteredInputMeta,
+              source: input.metadata?.source || existing.metadata?.source || 'manual'
+            }
+          })
+          return { ...result, value: input.value } as EnvVar
+        } else {
+          // Insert new
+          const result = await this.resource.insert({
+            ...input,
+            value: encryptedValue,
+            metadata: {
+              ...input.metadata,
+              source: input.metadata?.source || 'manual'
+            }
+          })
+          return { ...result, value: input.value } as EnvVar
+        }
+      },
+      { concurrency }
+    )
+
+    if (errors.length > 0) {
+      const errorMsg = errors.map(e => `${e.item.key}: ${e.error.message}`).join(', ')
+      throw new Error(`Failed to set some variables: ${errorMsg}`)
+    }
 
     return results
   }
 
   /**
-   * Set multiple environment variables with controlled concurrency
+   * Set multiple environment variables with controlled concurrency using TasksPool
    *
-   * Unlike setMany which runs all operations in parallel (can cause OOM),
-   * this method processes in chunks with configurable concurrency.
+   * Uses s3db.js TasksPool for intelligent concurrency control with:
+   * - Auto-tuning based on latency
+   * - Retry with exponential backoff
+   * - Progress callbacks
+   *
+   * Performance: Uses replace() by default (1 PUT per var) instead of
+   * get+update (4 S3 ops per var). Set preserveMetadata=true for merge behavior.
    *
    * @param inputs - Array of environment variables to set
    * @param options - Batch options (concurrency, error handling, progress)
@@ -570,7 +637,7 @@ export class VaulterClient {
     this.ensureConnected()
 
     const startTime = Date.now()
-    const { concurrency = 5, continueOnError = true, onProgress } = options
+    const { concurrency = 10, continueOnError = true, preserveMetadata = false, onProgress } = options
 
     const result: BatchResult = {
       success: [],
@@ -584,87 +651,94 @@ export class VaulterClient {
       return result
     }
 
-    // Split into chunks
-    const chunks: EnvVarInput[][] = []
-    for (let i = 0; i < inputs.length; i += concurrency) {
-      chunks.push(inputs.slice(i, i + concurrency))
-    }
-
     let completed = 0
 
-    // Process chunks sequentially, items within chunk in parallel
-    for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
-      const chunk = chunks[chunkIndex]
+    const { errors } = await TasksPool.map(
+      inputs,
+      async (input) => {
+        const id = generateVarId(input.project, input.environment, input.service, input.key)
+        const encryptedValue = this.encryptValue(input.value)
 
-      const chunkResults = await Promise.allSettled(
-        chunk.map(async (input) => {
-          const id = generateVarId(input.project, input.environment, input.service, input.key)
-          const encryptedValue = this.encryptValue(input.value)
-
-          const existing = await this.resource.getOrNull(id)
-
-          if (existing) {
-            const filteredInputMeta = input.metadata
-              ? Object.fromEntries(Object.entries(input.metadata).filter(([, v]) => v !== undefined))
-              : {}
-
-            await this.resource.update(id, {
-              value: encryptedValue,
-              tags: input.tags,
-              metadata: {
-                ...existing.metadata,
-                ...filteredInputMeta,
-                source: input.metadata?.source || existing.metadata?.source || 'manual'
-              }
-            })
-          } else {
-            await this.resource.insert({
-              ...input,
-              value: encryptedValue,
-              metadata: {
-                ...input.metadata,
-                source: input.metadata?.source || 'manual'
-              }
-            })
-          }
-
-          return input.key
-        })
-      )
-
-      // Process results
-      for (let i = 0; i < chunkResults.length; i++) {
-        const chunkResult = chunkResults[i]
-        const input = chunk[i]
-
-        if (chunkResult.status === 'fulfilled') {
-          result.success.push(input.key)
-        } else {
-          result.failed.push({
+        // Fast path: use replace() for single PUT (default)
+        if (!preserveMetadata) {
+          await this.resource.replace(id, {
             key: input.key,
-            error: chunkResult.reason?.message || String(chunkResult.reason)
+            value: encryptedValue,
+            project: input.project,
+            environment: input.environment,
+            service: input.service,
+            tags: input.tags,
+            metadata: {
+              ...input.metadata,
+              source: input.metadata?.source || 'manual'
+            }
           })
-
-          if (!continueOnError) {
-            result.durationMs = Date.now() - startTime
-            return result
-          }
+          return input.key
         }
 
-        completed++
-      }
+        // Slow path: preserve existing metadata
+        const existing = await this.resource.getOrNull(id)
 
-      // Progress callback
-      if (onProgress) {
-        onProgress({
-          completed,
-          total: inputs.length,
-          percentage: Math.round((completed / inputs.length) * 100),
-          currentChunk: chunkIndex + 1,
-          totalChunks: chunks.length
-        })
+        if (existing) {
+          const filteredInputMeta = input.metadata
+            ? Object.fromEntries(Object.entries(input.metadata).filter(([, v]) => v !== undefined))
+            : {}
+
+          await this.resource.update(id, {
+            value: encryptedValue,
+            tags: input.tags,
+            metadata: {
+              ...existing.metadata,
+              ...filteredInputMeta,
+              source: input.metadata?.source || existing.metadata?.source || 'manual'
+            }
+          })
+        } else {
+          await this.resource.insert({
+            ...input,
+            value: encryptedValue,
+            metadata: {
+              ...input.metadata,
+              source: input.metadata?.source || 'manual'
+            }
+          })
+        }
+
+        return input.key
+      },
+      {
+        concurrency,
+        onItemComplete: (key, index) => {
+          result.success.push(key as string)
+          completed++
+          if (onProgress) {
+            onProgress({
+              completed,
+              total: inputs.length,
+              percentage: Math.round((completed / inputs.length) * 100),
+              currentChunk: Math.ceil(completed / concurrency),
+              totalChunks: Math.ceil(inputs.length / concurrency)
+            })
+          }
+        },
+        onItemError: (error, item, index) => {
+          result.failed.push({
+            key: item.key,
+            error: error.message
+          })
+          completed++
+          if (onProgress) {
+            onProgress({
+              completed,
+              total: inputs.length,
+              percentage: Math.round((completed / inputs.length) * 100),
+              currentChunk: Math.ceil(completed / concurrency),
+              totalChunks: Math.ceil(inputs.length / concurrency)
+            })
+          }
+        }
       }
-    }
+    )
 
     result.durationMs = Date.now() - startTime
     return result
