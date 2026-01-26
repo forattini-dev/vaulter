@@ -9,8 +9,6 @@ import { createClientFromConfig } from '../lib/create-client.js'
 import * as ui from '../ui.js'
 import { c, symbols, colorEnv, print } from '../lib/colors.js'
 import { SHARED_SERVICE, resolveVariables, formatSource, type ResolvedVar } from '../../lib/shared.js'
-import { getSecretPatterns } from '../../lib/secret-patterns.js'
-import { compileGlobPatterns } from '../../lib/pattern-matcher.js'
 
 interface ListContext {
   args: CLIArgs
@@ -49,10 +47,7 @@ const ENV_PRIORITY: Record<string, number> = {
 /**
  * Sort variables by: env > service > type (config before secret) > name
  */
-function sortVars(
-  vars: EnvVar[],
-  isSecretFn: (key: string) => boolean
-): EnvVar[] {
+function sortVars(vars: EnvVar[]): EnvVar[] {
   return [...vars].sort((a, b) => {
     // 1. Environment priority
     const envPriorityA = ENV_PRIORITY[a.environment] ?? 99
@@ -69,9 +64,9 @@ function sortVars(
       return serviceA.localeCompare(serviceB)
     }
 
-    // 3. Type: config (not secret) before secret
-    const isSecretA = isSecretFn(a.key) ? 1 : 0
-    const isSecretB = isSecretFn(b.key) ? 1 : 0
+    // 3. Type: config (not sensitive) before secret (sensitive)
+    const isSecretA = a.sensitive ? 1 : 0
+    const isSecretB = b.sensitive ? 1 : 0
     if (isSecretA !== isSecretB) return isSecretA - isSecretB
 
     // 4. Name (alphabetical)
@@ -169,12 +164,8 @@ export async function runList(context: ListContext): Promise<void> {
       environment: allEnvs ? undefined : environment
     })
 
-    // Create secret detection function for sorting
-    const secretPatterns = getSecretPatterns(config)
-    const isSecret = compileGlobPatterns(secretPatterns)
-
     // Sort vars by: env > service > type (config before secret) > name
-    const vars = sortVars(rawVars, isSecret)
+    const vars = sortVars(rawVars)
 
     if (jsonOutput) {
       // JSON output goes to stdout (for pipes)
@@ -204,6 +195,7 @@ export async function runList(context: ListContext): Promise<void> {
             key: v.key,
             value: v.value,
             environment: v.environment,
+            sensitive: v.sensitive ?? false,
             tags: v.tags,
             metadata: v.metadata,
             createdAt: v.createdAt,
@@ -225,12 +217,18 @@ export async function runList(context: ListContext): Promise<void> {
       const showValues = args.verbose || false
 
       if (showInheritance && resolvedVars) {
+        // Build sensitive map from original vars
+        const sensitiveMap = new Map<string, boolean>()
+        for (const v of rawVars) {
+          sensitiveMap.set(v.key, v.sensitive ?? false)
+        }
+
         // Show with inheritance source column
         // Sort resolved vars by type then name
         const sortedResolved = Array.from(resolvedVars.values()).sort((a, b) => {
           // Type: config before secret
-          const isSecretA = isSecret(a.key) ? 1 : 0
-          const isSecretB = isSecret(b.key) ? 1 : 0
+          const isSecretA = (sensitiveMap.get(a.key) ?? false) ? 1 : 0
+          const isSecretB = (sensitiveMap.get(b.key) ?? false) ? 1 : 0
           if (isSecretA !== isSecretB) return isSecretA - isSecretB
           // Name
           return a.key.localeCompare(b.key)
@@ -239,7 +237,7 @@ export async function runList(context: ListContext): Promise<void> {
         const tableData = sortedResolved.map(v => ({
           env: colorEnv(environment),
           source: colorSource(v.source),
-          type: colorType(isSecret(v.key)),
+          type: colorType(sensitiveMap.get(v.key) ?? false),
           key: c.key(v.key),
           value: maskValue(v.value, showValues)
         }))
@@ -274,7 +272,7 @@ export async function runList(context: ListContext): Promise<void> {
           const tableData = vars.map(v => ({
             env: colorEnv(v.environment),
             service: v.service ? c.service(v.service) : c.muted('shared'),
-            type: colorType(isSecret(v.key)),
+            type: colorType(v.sensitive ?? false),
             key: c.key(v.key),
             value: maskValue(v.value, showValues)
           }))
@@ -295,7 +293,7 @@ export async function runList(context: ListContext): Promise<void> {
           // Single service or shared vars
           const tableData = vars.map(v => ({
             env: colorEnv(v.environment),
-            type: colorType(isSecret(v.key)),
+            type: colorType(v.sensitive ?? false),
             key: c.key(v.key),
             value: maskValue(v.value, showValues)
           }))

@@ -259,7 +259,8 @@ export class VaulterClient {
               renamedFrom: 'string|optional',
               promotedFrom: 'string|optional',
               demotedTo: 'string|optional'
-            }
+            },
+            sensitive: 'boolean|optional' // true = secret, false/undefined = config
           },
 
           // Partitions for O(1) queries
@@ -384,9 +385,13 @@ export class VaulterClient {
         ? Object.fromEntries(Object.entries(input.metadata).filter(([, v]) => v !== undefined))
         : {}
 
+      // Preserve existing sensitive flag if not explicitly provided
+      const sensitive = input.sensitive !== undefined ? input.sensitive : existing.sensitive
+
       const result = await this.resource.update(id, {
         value: encryptedValue,
         tags: input.tags,
+        sensitive,
         metadata: {
           ...existing.metadata,
           ...filteredInputMeta,
@@ -402,6 +407,7 @@ export class VaulterClient {
         id,
         ...input,
         value: encryptedValue,
+        sensitive: input.sensitive ?? false, // Default to config (not sensitive)
         metadata: {
           ...input.metadata,
           source: input.metadata?.source || 'manual'
@@ -541,6 +547,7 @@ export class VaulterClient {
             environment: input.environment,
             service: input.service,
             tags: input.tags,
+            sensitive: input.sensitive ?? false, // Default to config (not sensitive)
             metadata: {
               ...input.metadata,
               source: input.metadata?.source || 'manual'
@@ -575,9 +582,13 @@ export class VaulterClient {
             ? Object.fromEntries(Object.entries(input.metadata).filter(([, v]) => v !== undefined))
             : {}
 
+          // Preserve existing sensitive flag if not explicitly provided
+          const sensitive = input.sensitive !== undefined ? input.sensitive : existing.sensitive
+
           const result = await this.resource.update(id, {
             value: encryptedValue,
             tags: input.tags,
+            sensitive,
             metadata: {
               ...existing.metadata,
               ...filteredInputMeta,
@@ -590,6 +601,7 @@ export class VaulterClient {
           const result = await this.resource.insert({
             ...input,
             value: encryptedValue,
+            sensitive: input.sensitive ?? false, // Default to config (not sensitive)
             metadata: {
               ...input.metadata,
               source: input.metadata?.source || 'manual'

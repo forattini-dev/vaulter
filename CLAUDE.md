@@ -28,11 +28,11 @@ vaulter init
 # Gerar chave de encriptação
 vaulter key generate
 
-# Set variáveis
-vaulter set DATABASE_URL=postgres://... -e dev
-vaulter set API_KEY=secret -e dev
+# Set variáveis (secrets vs configs)
+vaulter set DATABASE_URL=postgres://... -e dev    # secret (sensitive=true)
+vaulter set LOG_LEVEL::debug -e dev               # config (sensitive=false)
 
-# List variáveis
+# List variáveis (mostra TYPE: secret/config)
 vaulter list -e dev
 
 # Push para backend (S3)
@@ -40,6 +40,10 @@ vaulter sync push -e dev
 
 # Pull do backend
 vaulter sync pull -e dev
+
+# Export para K8s (separação automática)
+vaulter k8s:secret -e dev      # só secrets (sensitive=true)
+vaulter k8s:configmap -e dev   # só configs (sensitive=false)
 ```
 
 ## Performance
@@ -53,6 +57,80 @@ Todas as operações são O(1) - lookups diretos sem scanning.
 
 ---
 
+## Secrets vs Configs (sensitive field)
+
+Cada variável tem um campo `sensitive` que indica se é um **secret** (sensível) ou **config** (não sensível). Isso permite separação automática na exportação para Kubernetes.
+
+### CLI - Sintaxe de separadores
+
+```bash
+# Secret (sensitive=true) - usa "="
+vaulter set DATABASE_URL=postgres://... -e dev
+vaulter set API_KEY=sk-xxx -e dev
+
+# Config (sensitive=false) - usa "::"
+vaulter set LOG_LEVEL::debug -e dev
+vaulter set NODE_ENV::production -e dev
+
+# Batch: mistura secrets e configs
+vaulter set DB_URL=xxx LOG_LEVEL::info PORT::3000 -e dev
+```
+
+### List mostra o tipo
+
+```bash
+vaulter list -e dev
+# ENV   TYPE     KEY           VALUE
+# dev   secret   DATABASE_URL  post****ost
+# dev   secret   API_KEY       sk-****xxx
+# dev   config   LOG_LEVEL     debug
+# dev   config   NODE_ENV      production
+```
+
+### Kubernetes Export
+
+A separação é automática baseada no campo `sensitive`:
+
+```bash
+# Gera Secret YAML (só vars com sensitive=true)
+vaulter k8s:secret -e dev
+
+# Gera ConfigMap YAML (só vars com sensitive=false)
+vaulter k8s:configmap -e dev
+```
+
+### MCP Tools
+
+```json
+// vaulter_set com sensitive
+{ "key": "DATABASE_URL", "value": "postgres://...", "environment": "dev", "sensitive": true }
+{ "key": "LOG_LEVEL", "value": "debug", "environment": "dev", "sensitive": false }
+
+// vaulter_multi_set com sensitive por variável
+{
+  "variables": [
+    { "key": "DB_URL", "value": "xxx", "sensitive": true },
+    { "key": "LOG_LEVEL", "value": "info", "sensitive": false }
+  ],
+  "environment": "dev"
+}
+
+// vaulter_list retorna sensitive
+[
+  { "key": "DATABASE_URL", "value": "***", "sensitive": true },
+  { "key": "LOG_LEVEL", "value": "debug", "sensitive": false }
+]
+```
+
+### Default Behavior
+
+- **Default:** `sensitive: false` (config)
+- **CLI `=`:** `sensitive: true` (secret)
+- **CLI `::`:** `sensitive: false` (config)
+- **Vars existentes sem campo:** tratadas como config
+
+---
+
 ## Client API
 
 ```typescript
@@ -63,14 +141,23 @@ await client.connect()
 
 // Single operations - O(1)
 await client.get('KEY', 'project', 'dev')
-await client.set({ key: 'KEY', value: 'val', project: 'project', environment: 'dev' })
+await client.set({
+  key: 'KEY',
+  value: 'val',
+  project: 'project',
+  environment: 'dev',
+  sensitive: true  // secret (default: false = config)
+})
 await client.delete('KEY', 'project', 'dev')
 
 // Com service (monorepo)
 await client.get('KEY', 'project', 'dev', 'api')
 
 // Batch operations - parallel
-await client.setMany([...])
+await client.setMany([
+  { key: 'DB_URL', value: 'xxx', project: 'p', environment: 'dev', sensitive: true },
+  { key: 'LOG_LEVEL', value: 'debug', project: 'p', environment: 'dev', sensitive: false }
+])
 await client.getMany(['VAR1', 'VAR2'], 'project', 'dev')
 await client.deleteManyByKeys(['OLD1', 'OLD2'], 'project', 'dev')
 ```

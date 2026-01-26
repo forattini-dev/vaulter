@@ -37,6 +37,7 @@ export async function handleSetCall(
   const value = args.value as string
   const tags = args.tags as string[] | undefined
   const shared = args.shared === true
+  const sensitive = args.sensitive === true
 
   // If shared flag is set, use __shared__ as service
   const effectiveService = shared ? SHARED_SERVICE : service
@@ -48,6 +49,7 @@ export async function handleSetCall(
     environment,
     service: effectiveService,
     tags,
+    sensitive,
     metadata: { source: 'manual' }
   })
 
@@ -55,10 +57,12 @@ export async function handleSetCall(
     ? `${project}/${environment} (shared)`
     : `${project}/${environment}${service ? `/${service}` : ''}`
 
+  const typeLabel = sensitive ? 'secret' : 'config'
+
   return {
     content: [{
       type: 'text',
-      text: `✓ Set ${key} in ${location}`
+      text: `✓ Set ${key} (${typeLabel}) in ${location}`
     }]
   }
 }
@@ -102,13 +106,25 @@ export async function handleListCall(
     filtered = vars.filter(v => regex.test(v.key))
   }
 
-  const lines = filtered.map(v => showValues ? `${v.key}=${v.value}` : v.key)
+  // Format: KEY [type] = value (if showValues)
+  const lines = filtered.map(v => {
+    const typeLabel = v.sensitive ? '[secret]' : '[config]'
+    if (showValues) {
+      return `${v.key} ${typeLabel} = ${v.value}`
+    }
+    return `${v.key} ${typeLabel}`
+  })
+
   const header = `Variables in ${project}/${environment}${filter ? ` (filter: ${filter})` : ''}:`
+
+  // Count secrets vs configs
+  const secretCount = filtered.filter(v => v.sensitive).length
+  const configCount = filtered.length - secretCount
 
   return {
     content: [{
       type: 'text',
-      text: `${header}\n${lines.join('\n')}\n\nTotal: ${filtered.length} variable(s)`
+      text: `${header}\n${lines.join('\n')}\n\nTotal: ${filtered.length} variable(s) (${configCount} config, ${secretCount} secret)`
     }]
   }
 }

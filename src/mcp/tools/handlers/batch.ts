@@ -12,6 +12,7 @@ import type { ToolResponse } from '../config.js'
 interface VariableInput {
   key: string
   value: string
+  sensitive?: boolean
   tags?: string[]
 }
 
@@ -77,6 +78,7 @@ export async function handleMultiSetCall(
 ): Promise<ToolResponse> {
   const variables = args.variables
   const shared = args.shared === true
+  const defaultSensitive = args.sensitive === true // default sensitive flag for all vars
 
   // If shared flag is set, use __shared__ as service
   const effectiveService = shared ? SHARED_SERVICE : service
@@ -90,14 +92,14 @@ export async function handleMultiSetCall(
     }
   }
 
-  // Normalize to array of {key, value, tags?} objects
+  // Normalize to array of {key, value, sensitive?, tags?} objects
   let varsArray: VariableInput[]
 
   if (Array.isArray(variables)) {
-    // Already array format: [{ key: "VAR", value: "val", tags?: [...] }]
+    // Already array format: [{ key: "VAR", value: "val", sensitive?: bool, tags?: [...] }]
     varsArray = variables as VariableInput[]
   } else if (typeof variables === 'object') {
-    // Object format: { VAR1: "val1", VAR2: "val2" }
+    // Object format: { VAR1: "val1", VAR2: "val2" } - uses defaultSensitive
     varsArray = Object.entries(variables as Record<string, string>).map(([key, value]) => ({
       key,
       value: String(value)
@@ -125,12 +127,14 @@ export async function handleMultiSetCall(
   const skipped = varsArray.length - validEntries.length
 
   // Use optimized setMany - single list query + parallel insert/update
-  const inputs = validEntries.map(({ key, value, tags }) => ({
+  // Per-variable sensitive overrides the default
+  const inputs = validEntries.map(({ key, value, sensitive, tags }) => ({
     key,
     value: String(value),
     project,
     environment,
     service: effectiveService,
+    sensitive: sensitive ?? defaultSensitive,
     tags,
     metadata: { source: 'manual' as const }
   }))

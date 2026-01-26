@@ -22,10 +22,6 @@ import path from 'node:path';
 import { getInputs } from './inputs.js';
 import { generateEnvFile, generateJsonFile, generateK8sSecret, generateK8sConfigMap, generateHelmValues, generateTfVars, generateShellExport } from './formats.js';
 import { VaulterClient } from '../client.js';
-// GitHub Actions core functions (inline to avoid dependency)
-function getInput(name) {
-    return process.env[`INPUT_${name.replace(/-/g, '_').toUpperCase()}`] || '';
-}
 function setOutput(name, value) {
     const outputFile = process.env.GITHUB_OUTPUT;
     if (outputFile) {

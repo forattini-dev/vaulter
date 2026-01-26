@@ -407,6 +407,7 @@ environment: "dev"
 key: "API_KEY"
 value: "sk-..."
 environment: "dev"
+sensitive: true   # true=secret, false=config (default: false)
 tags: ["production", "api"]  # optional
 shared: true  # optional, for monorepo shared vars
 \`\`\`
@@ -424,6 +425,7 @@ environment: "dev"
 environment: "dev"
 showValues: true  # optional, shows actual values
 \`\`\`
+Returns variables with \`[secret]\` or \`[config]\` type based on \`sensitive\` field.
 
 ### \`vaulter_export\`
 **Use for:** Exporting variables to different formats
@@ -468,14 +470,15 @@ environment: "dev"
 ### \`vaulter_multi_set\`
 **Use for:** Setting multiple variables in one call
 \`\`\`
-# Object format:
+# Object format (all use default sensitive):
 variables: { "VAR1": "val1", "VAR2": "val2" }
 environment: "dev"
+sensitive: true  # default for all vars
 
-# Or array format with tags:
+# Or array format with per-variable sensitive:
 variables: [
-  { key: "VAR1", value: "val1", tags: ["api"] },
-  { key: "VAR2", value: "val2" }
+  { key: "DB_URL", value: "xxx", sensitive: true },
+  { key: "LOG_LEVEL", value: "debug", sensitive: false }
 ]
 shared: true  # optional, for monorepo shared vars
 \`\`\`
@@ -543,6 +546,8 @@ since: "2024-01-01"  # optional
 \`\`\`
 environment: "dev"
 \`\`\`
+> **Note:** Variables are now explicitly marked as secret/config via the \`sensitive\` field.
+> Use \`vaulter_list\` to see \`[secret]\` or \`[config]\` for each variable.
 
 ---
 
@@ -569,6 +574,7 @@ environment: "dev"
 
 ### \`vaulter_k8s_secret\`
 **Use for:** Generating K8s Secret YAML
+- **Only includes variables with \`sensitive: true\`**
 \`\`\`
 environment: "prd"
 namespace: "my-app"
@@ -576,6 +582,7 @@ namespace: "my-app"
 
 ### \`vaulter_k8s_configmap\`
 **Use for:** Generating K8s ConfigMap YAML
+- **Only includes variables with \`sensitive: false\`**
 
 ---
 

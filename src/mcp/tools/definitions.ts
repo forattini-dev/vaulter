@@ -28,7 +28,7 @@ export function registerTools(): Tool[] {
     },
     {
       name: 'vaulter_set',
-      description: 'Set an environment variable in the backend (encrypted). Use shared=true for monorepo variables that apply to all services.',
+      description: 'Set an environment variable in the backend (encrypted). Use shared=true for monorepo variables that apply to all services. Use sensitive=true for secrets, sensitive=false for configs.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -38,6 +38,7 @@ export function registerTools(): Tool[] {
           project: { type: 'string', description: 'Project name' },
           service: { type: 'string', description: 'Service name for monorepos' },
           shared: { type: 'boolean', description: 'Set as shared variable (applies to all services in monorepo)', default: false },
+          sensitive: { type: 'boolean', description: 'Mark as sensitive (secret) or not (config). Affects K8s export (Secret vs ConfigMap)', default: false },
           tags: { type: 'array', items: { type: 'string' }, description: 'Tags for categorization (e.g., ["database", "sensitive"])' }
         },
         required: ['key', 'value']
@@ -120,24 +121,26 @@ export function registerTools(): Tool[] {
                   properties: {
                     key: { type: 'string', description: 'Variable name' },
                     value: { type: 'string', description: 'Variable value' },
+                    sensitive: { type: 'boolean', description: 'Mark as sensitive (secret) or not (config)', default: false },
                     tags: { type: 'array', items: { type: 'string' }, description: 'Optional tags' }
                   },
                   required: ['key', 'value']
                 },
-                description: 'Array of variables: [{ key: "VAR1", value: "val1" }, { key: "VAR2", value: "val2" }]'
+                description: 'Array of variables: [{ key: "VAR1", value: "val1", sensitive: true }, { key: "VAR2", value: "val2" }]'
               },
               {
                 type: 'object',
                 additionalProperties: { type: 'string' },
-                description: 'Object with key-value pairs: { "VAR1": "val1", "VAR2": "val2" }'
+                description: 'Object with key-value pairs: { "VAR1": "val1", "VAR2": "val2" } (all marked as config/not sensitive)'
               }
             ],
-            description: 'Variables to set. Can be array of {key, value, tags?} objects or a simple {key: value} object'
+            description: 'Variables to set. Can be array of {key, value, sensitive?, tags?} objects or a simple {key: value} object'
           },
           environment: { type: 'string', description: 'Environment name', default: 'dev' },
           project: { type: 'string', description: 'Project name' },
           service: { type: 'string', description: 'Service name for monorepos' },
-          shared: { type: 'boolean', description: 'Set as shared variables (applies to all services in monorepo)', default: false }
+          shared: { type: 'boolean', description: 'Set as shared variables (applies to all services in monorepo)', default: false },
+          sensitive: { type: 'boolean', description: 'Default sensitive flag for all variables (overridden by per-variable sensitive)', default: false }
         },
         required: ['variables']
       }

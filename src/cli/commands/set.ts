@@ -303,6 +303,7 @@ export async function runSet(context: SetContext): Promise<void> {
             service: effectiveService,
             environment,
             tags: tags.length > 0 ? tags : undefined,
+            sensitive: true, // Secrets are sensitive
             metadata: {
               source: 'manual',
               ...(owner && { owner }),
@@ -396,6 +397,7 @@ export async function runSet(context: SetContext): Promise<void> {
               service: effectiveService,
               environment,
               tags: tags.length > 0 ? tags : undefined,
+              sensitive: false, // Configs are not sensitive
               metadata: {
                 source: 'manual',
                 ...(owner && { owner }),

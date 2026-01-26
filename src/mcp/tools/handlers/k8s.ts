@@ -13,8 +13,7 @@ import {
   getConfigsFilePath
 } from '../../../lib/config-loader.js'
 import { parseEnvFile } from '../../../lib/env-parser.js'
-import { getSecretPatterns, splitVarsBySecret } from '../../../lib/secret-patterns.js'
-import type { VaulterConfig, Environment } from '../../../types.js'
+import type { VaulterConfig, Environment, EnvVar } from '../../../types.js'
 import type { ToolResponse } from '../config.js'
 import { sanitizeK8sName, base64Encode } from '../config.js'
 
@@ -29,7 +28,7 @@ export async function handleK8sSecretCall(
   const namespace = (args.namespace as string) || `${project}-${environment}`
   const name = (args.name as string) || (service ? `${service}-secrets` : `${project}-secrets`)
 
-  let vars: Record<string, string>
+  let secretVars: Record<string, string> = {}
 
   // Check for split mode - read from local file
   if (config && isSplitMode(config)) {
@@ -37,7 +36,7 @@ export async function handleK8sSecretCall(
     if (configDir) {
       const secretsPath = getSecretsFilePath(config, configDir, environment)
       if (fs.existsSync(secretsPath)) {
-        vars = parseEnvFile(secretsPath)
+        secretVars = parseEnvFile(secretsPath)
       } else {
         return { content: [{ type: 'text', text: `Error: Secrets file not found: ${secretsPath}` }] }
       }
@@ -45,12 +44,17 @@ export async function handleK8sSecretCall(
       return { content: [{ type: 'text', text: 'Error: No .vaulter directory found' }] }
     }
   } else {
-    // Fetch from backend
-    vars = await client.export(project, environment, service)
+    // Fetch from backend and filter by sensitive=true
+    const allVars = await client.list({ project, environment, service })
+    const secrets = allVars.filter(v => v.sensitive === true)
+
+    for (const v of secrets) {
+      secretVars[v.key] = v.value
+    }
   }
 
-  if (Object.keys(vars).length === 0) {
-    return { content: [{ type: 'text', text: 'Warning: No variables found' }] }
+  if (Object.keys(secretVars).length === 0) {
+    return { content: [{ type: 'text', text: 'Warning: No secret variables found (none marked as sensitive)' }] }
   }
 
   // Generate YAML
@@ -69,7 +73,7 @@ export async function handleK8sSecretCall(
     'data:'
   ]
 
-  for (const [key, value] of Object.entries(vars)) {
+  for (const [key, value] of Object.entries(secretVars)) {
     lines.push(`  ${key}: ${base64Encode(value)}`)
   }
 
@@ -87,7 +91,7 @@ export async function handleK8sConfigMapCall(
   const namespace = (args.namespace as string) || `${project}-${environment}`
   const name = (args.name as string) || (service ? `${service}-config` : `${project}-config`)
 
-  let vars: Record<string, string>
+  let configVars: Record<string, string> = {}
 
   // Check for split mode - read from local file
   if (config && isSplitMode(config)) {
@@ -95,7 +99,7 @@ export async function handleK8sConfigMapCall(
     if (configDir) {
       const configsPath = getConfigsFilePath(config, configDir, environment)
       if (fs.existsSync(configsPath)) {
-        vars = parseEnvFile(configsPath)
+        configVars = parseEnvFile(configsPath)
       } else {
         return { content: [{ type: 'text', text: `Error: Configs file not found: ${configsPath}` }] }
       }
@@ -103,15 +107,17 @@ export async function handleK8sConfigMapCall(
       return { content: [{ type: 'text', text: 'Error: No .vaulter directory found' }] }
     }
   } else {
-    // Fetch from backend and filter out secrets
-    const allVars = await client.export(project, environment, service)
-    const patterns = getSecretPatterns(config)
-    const { plain } = splitVarsBySecret(allVars, patterns)
-    vars = plain
+    // Fetch from backend and filter by sensitive=false (configs only)
+    const allVars = await client.list({ project, environment, service })
+    const configs = allVars.filter(v => v.sensitive !== true)
+
+    for (const v of configs) {
+      configVars[v.key] = v.value
+    }
   }
 
-  if (Object.keys(vars).length === 0) {
-    return { content: [{ type: 'text', text: 'Warning: No config variables found (all matched secret patterns)' }] }
+  if (Object.keys(configVars).length === 0) {
+    return { content: [{ type: 'text', text: 'Warning: No config variables found (all are marked as sensitive)' }] }
   }
 
   // Generate YAML
@@ -129,7 +135,7 @@ export async function handleK8sConfigMapCall(
     'data:'
   ]
 
-  for (const [key, value] of Object.entries(vars)) {
+  for (const [key, value] of Object.entries(configVars)) {
     const needsQuote = value.includes(':') || value.includes('#') || value.includes('\n')
     if (needsQuote) {
       lines.push(`  ${key}: "${value.replace(/"/g, '\\"').replace(/\n/g, '\\n')}"`)

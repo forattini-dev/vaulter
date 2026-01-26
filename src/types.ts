@@ -69,6 +69,8 @@ export interface EnvVar {
   environment: Environment
   tags?: string[]
   metadata?: EnvVarMetadata
+  /** Whether this variable is sensitive (secret) or not (config). Default: false (config) */
+  sensitive?: boolean
   createdAt: Date
   updatedAt: Date
 }
@@ -81,6 +83,8 @@ export interface EnvVarInput {
   environment: Environment
   tags?: string[]
   metadata?: EnvVarMetadata
+  /** Whether this variable is sensitive (secret) or not (config). Default: false (config) */
+  sensitive?: boolean
 }
 
 // ============================================================================

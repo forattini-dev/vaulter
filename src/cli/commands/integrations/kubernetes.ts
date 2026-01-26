@@ -16,7 +16,6 @@ import fs from 'node:fs'
 import path from 'node:path'
 import type { CLIArgs, VaulterConfig, Environment } from '../../../types.js'
 import { createClientFromConfig } from '../../lib/create-client.js'
-import { getSecretPatterns, splitVarsBySecret } from '../../../lib/secret-patterns.js'
 import { parseEnvFile } from '../../../lib/env-parser.js'
 import {
   findConfigDir,
@@ -135,45 +134,32 @@ export async function runK8sSecret(context: K8sContext): Promise<void> {
 
   // Check for local file mode (explicit -f or split mode)
   const localPath = resolveSecretsPath(config, environment, args.file)
-  let vars: Record<string, string>
+  let secretVars: Record<string, string> = {}
 
   if (localPath) {
     // Read from local file (split mode or explicit -f)
     ui.verbose(`Reading secrets from local file: ${localPath}`, verbose)
-    vars = getLocalVariables(localPath)
+    secretVars = getLocalVariables(localPath)
   } else {
-    // Fetch from backend
+    // Fetch from backend and filter by sensitive=true
     const client = await createClientFromConfig({ args, config, project, verbose })
 
     try {
       await client.connect()
-      vars = await client.export(project, environment, service)
+      const allVars = await client.list({ project, environment, service })
+      const secrets = allVars.filter(v => v.sensitive === true)
+
+      for (const v of secrets) {
+        secretVars[v.key] = v.value
+      }
     } finally {
       await client.disconnect()
     }
   }
 
-  if (Object.keys(vars).length === 0) {
-    print.warning('No variables found')
+  if (Object.keys(secretVars).length === 0) {
+    print.warning('No secret variables found (none marked as sensitive)')
     return
-  }
-
-  // In split mode, all vars are secrets (no filtering needed)
-  // In unified mode, filter by secret patterns
-  let secretVars: Record<string, string>
-
-  if (localPath && config && isSplitMode(config)) {
-    // Split mode: all vars in secrets file are secrets
-    secretVars = vars
-  } else {
-    // Unified mode: filter by patterns
-    const patterns = getSecretPatterns(config)
-    const { secrets } = splitVarsBySecret(vars, patterns)
-    secretVars = Object.keys(secrets).length > 0 ? secrets : vars
-
-    if (Object.keys(secrets).length === 0 && patterns.length > 0) {
-      print.warning('No variables matched secret patterns, exporting all variables')
-    }
   }
 
   // Generate YAML
@@ -228,51 +214,32 @@ export async function runK8sConfigMap(context: K8sContext): Promise<void> {
 
   // Check for local file mode (explicit -f or split mode)
   const localPath = resolveConfigsPath(config, environment, args.file)
-  let configVars: Record<string, string>
+  let configVars: Record<string, string> = {}
 
   if (localPath) {
     // Read from local file (split mode or explicit -f)
+    // In split mode, configs file contains only non-sensitive vars
     ui.verbose(`Reading configs from local file: ${localPath}`, verbose)
-    const allVars = getLocalVariables(localPath)
-
-    // SECURITY: Filter out secrets even when reading from local file
-    // This prevents accidental secret exposure if user points to a unified .env
-    const patterns = getSecretPatterns(config)
-    const { plain } = splitVarsBySecret(allVars, patterns)
-
-    if (Object.keys(plain).length === 0 && Object.keys(allVars).length > 0) {
-      print.warning('All variables matched secret patterns, none available for ConfigMap')
-      ui.log('Hint: Use k8s:secret for sensitive variables')
-      return
-    }
-    configVars = plain
+    configVars = getLocalVariables(localPath)
   } else {
-    // Fetch from backend and filter out secrets
+    // Fetch from backend and filter by sensitive=false (configs only)
     const client = await createClientFromConfig({ args, config, project, verbose })
 
     try {
       await client.connect()
-      const vars = await client.export(project, environment, service)
+      const allVars = await client.list({ project, environment, service })
+      const configs = allVars.filter(v => v.sensitive !== true)
 
-      if (Object.keys(vars).length === 0) {
-        print.warning('No variables found')
-        return
+      for (const v of configs) {
+        configVars[v.key] = v.value
       }
-
-      const patterns = getSecretPatterns(config)
-      const { plain } = splitVarsBySecret(vars, patterns)
-      if (Object.keys(plain).length === 0) {
-        print.warning('No non-secret variables found for ConfigMap')
-        return
-      }
-      configVars = plain
     } finally {
       await client.disconnect()
     }
   }
 
   if (Object.keys(configVars).length === 0) {
-    print.warning('No variables found for ConfigMap')
+    print.warning('No config variables found (all are marked as sensitive)')
     return
   }
 
