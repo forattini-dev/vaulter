@@ -340,6 +340,10 @@ export interface ServiceConfig {
  *   service: .vaulter/local/{service}.env       # Per-service override
  */
 export interface LocalConfig {
+  /** Single-repo local env file (alias for shared) */
+  file?: string
+  /** Single-repo local env example (alias for shared_example) */
+  example?: string
   /** Path to shared env file for all local services */
   shared?: string
   /** Path to example/template file (committed to git) */
@@ -384,6 +388,10 @@ export interface DeployServicesConfig {
  *     secrets: .vaulter/deploy/services/{service}/secrets/{env}.env
  */
 export interface DeployConfig {
+  /** Single-repo configs path (alias for shared.configs) */
+  configs?: string
+  /** Single-repo secrets path (alias for shared.secrets) */
+  secrets?: string
   /** Shared configs/secrets for all services */
   shared?: DeploySharedConfig
   /** Per-service configs/secrets */
@@ -625,6 +633,8 @@ export interface CLIArgs {
   // Sync options
   prune?: boolean
   shared?: boolean
+  strategy?: 'local' | 'remote' | 'error'
+  values?: boolean
   // Export options (inheritance control)
   'skip-shared'?: boolean
   // Nuke command

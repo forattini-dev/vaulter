@@ -24,6 +24,10 @@ export interface SyncContext {
   // New: prune and shared support
   prune?: boolean
   shared?: boolean
+  // Strategy for merge conflicts
+  strategy?: 'local' | 'remote' | 'error'
+  // Show values in diff
+  showValues?: boolean
 }
 
 /**
@@ -33,6 +37,10 @@ export async function runSyncGroup(context: SyncContext): Promise<void> {
   const { args } = context
   const subcommand = args._[1]
 
+  // Extract common flags
+  const strategy = args.strategy as 'local' | 'remote' | 'error' | undefined
+  const showValues = args.values as boolean | undefined
+
   switch (subcommand) {
     case 'merge': {
       // merge = current sync behavior (two-way)
@@ -41,7 +49,8 @@ export async function runSyncGroup(context: SyncContext): Promise<void> {
         ...args,
         _: ['sync', ...args._.slice(2)]
       }
-      await runSync({ ...context, args: shiftedArgs })
+      // Pass strategy to override config
+      await runSync({ ...context, args: shiftedArgs, strategy })
       break
     }
 
@@ -71,7 +80,7 @@ export async function runSyncGroup(context: SyncContext): Promise<void> {
     }
 
     case 'diff': {
-      await runDiff(context)
+      await runDiff({ ...context, showValues })
       break
     }
 
@@ -89,11 +98,21 @@ export async function runSyncGroup(context: SyncContext): Promise<void> {
 }
 
 /**
+ * Mask a value for display (show first/last few chars)
+ */
+function maskValue(value: string, maxLen = 30): string {
+  if (value.length <= 8) return '***'
+  if (value.length <= 16) return value.slice(0, 3) + '***' + value.slice(-3)
+  const preview = value.slice(0, 6) + '***' + value.slice(-4)
+  return preview.length > maxLen ? preview.slice(0, maxLen) + '...' : preview
+}
+
+/**
  * Show diff between local and remote
  * New command for visualizing differences before sync
  */
 async function runDiff(context: SyncContext): Promise<void> {
-  const { args, config, project, service, environment, verbose, jsonOutput } = context
+  const { args, config, project, service, environment, verbose, jsonOutput, showValues } = context
 
   if (!project) {
     print.error('Project not specified and no config found')
@@ -169,6 +188,15 @@ async function runDiff(context: SyncContext): Promise<void> {
       }
     }
 
+    // Build diff details for values display
+    const diffDetails: Record<string, { local?: string; remote?: string }> = {}
+    for (const key of different) {
+      diffDetails[key] = {
+        local: localVars[key],
+        remote: remoteVars[key]
+      }
+    }
+
     // Output
     if (jsonOutput) {
       ui.output(JSON.stringify({
@@ -183,43 +211,59 @@ async function runDiff(context: SyncContext): Promise<void> {
           identical: identical.length,
           total: allKeys.size
         },
-        localOnly,
-        remoteOnly,
-        different,
+        localOnly: showValues ? localOnly.map(k => ({ key: k, value: maskValue(localVars[k]) })) : localOnly,
+        remoteOnly: showValues ? remoteOnly.map(k => ({ key: k, value: maskValue(remoteVars[k]) })) : remoteOnly,
+        different: showValues ? different.map(k => ({
+          key: k,
+          local: maskValue(localVars[k]),
+          remote: maskValue(remoteVars[k])
+        })) : different,
         identical
       }, null, 2))
     } else {
       // Visual output with colors
-      const width = 47
+      const width = showValues ? 70 : 47
       const line = box.horizontal.repeat(width)
 
       ui.log('')
       ui.log(c.muted(`${box.topLeft}${line}${box.topRight}`))
-      ui.log(c.muted(box.vertical) + '  ' + c.header(`Comparing:`) + ' local ' + symbols.arrowBoth + ' remote (' + colorEnv(environment) + ')'.padEnd(15) + c.muted(box.vertical))
+      ui.log(c.muted(box.vertical) + '  ' + c.header(`Comparing:`) + ' local ' + symbols.arrowBoth + ' remote (' + colorEnv(environment) + ')'.padEnd(showValues ? 38 : 15) + c.muted(box.vertical))
       ui.log(c.muted(`${box.teeRight}${line}${box.teeLeft}`))
 
       if (localOnly.length === 0 && remoteOnly.length === 0 && different.length === 0) {
-        ui.log(c.muted(box.vertical) + '  ' + symbols.success + ' ' + c.success('All variables are in sync') + ' '.repeat(16) + c.muted(box.vertical))
+        ui.log(c.muted(box.vertical) + '  ' + symbols.success + ' ' + c.success('All variables are in sync') + ' '.repeat(showValues ? 39 : 16) + c.muted(box.vertical))
       } else {
         for (const key of localOnly) {
-          const content = `  ${symbols.plus} ${c.key(key)}`
+          let content = `  ${symbols.plus} ${c.key(key)}`
+          if (showValues) {
+            content += c.muted(` = ${maskValue(localVars[key])}`)
+          }
           const label = c.added('(local only)')
-          ui.log(c.muted(box.vertical) + content.padEnd(45) + label + c.muted(box.vertical))
+          ui.log(c.muted(box.vertical) + content.padEnd(showValues ? 68 : 45) + label + c.muted(box.vertical))
         }
         for (const key of remoteOnly) {
-          const content = `  ${symbols.minus} ${c.key(key)}`
+          let content = `  ${symbols.minus} ${c.key(key)}`
+          if (showValues) {
+            content += c.muted(` = ${maskValue(remoteVars[key])}`)
+          }
           const label = c.removed('(remote only)')
-          ui.log(c.muted(box.vertical) + content.padEnd(45) + label + c.muted(box.vertical))
+          ui.log(c.muted(box.vertical) + content.padEnd(showValues ? 68 : 45) + label + c.muted(box.vertical))
         }
         for (const key of different) {
-          const content = `  ${symbols.tilde} ${c.key(key)}`
+          let content = `  ${symbols.tilde} ${c.key(key)}`
           const label = c.modified('(different)')
-          ui.log(c.muted(box.vertical) + content.padEnd(45) + label + c.muted(box.vertical))
+          ui.log(c.muted(box.vertical) + content.padEnd(showValues ? 68 : 45) + label + c.muted(box.vertical))
+          if (showValues) {
+            const localVal = maskValue(localVars[key])
+            const remoteVal = maskValue(remoteVars[key])
+            ui.log(c.muted(box.vertical) + `      ${c.removed('- ' + remoteVal)}`.padEnd(showValues ? 75 : 52) + c.muted(box.vertical))
+            ui.log(c.muted(box.vertical) + `      ${c.added('+ ' + localVal)}`.padEnd(showValues ? 75 : 52) + c.muted(box.vertical))
+          }
         }
       }
 
       if (identical.length > 0) {
-        ui.log(c.muted(box.vertical) + `  ${symbols.equal} ${c.unchanged(`${identical.length} variables identical`)}`.padEnd(52) + c.muted(box.vertical))
+        ui.log(c.muted(box.vertical) + `  ${symbols.equal} ${c.unchanged(`${identical.length} variables identical`)}`.padEnd(showValues ? 75 : 52) + c.muted(box.vertical))
       }
 
       ui.log(c.muted(`${box.bottomLeft}${line}${box.bottomRight}`))
@@ -238,11 +282,10 @@ async function runDiff(context: SyncContext): Promise<void> {
         ui.log(`  ${c.command('vaulter sync push')} ${c.highlight('--prune')}      ${c.muted('# Push local, DELETE remote-only')}`)
       }
       if (remoteOnly.length > 0 || different.length > 0) {
-        ui.log(`  ${c.command('vaulter sync pull')}              ${c.muted('# Pull remote, keep local-only')}`)
-        ui.log(`  ${c.command('vaulter sync pull')} ${c.highlight('--prune')}      ${c.muted('# Pull remote, DELETE local-only')}`)
+        ui.log(`  ${c.command('vaulter sync pull')}              ${c.muted('# Pull remote to outputs')}`)
       }
       if (localOnly.length > 0 || remoteOnly.length > 0) {
-        ui.log(`  ${c.command('vaulter sync merge')}             ${c.muted('# Two-way merge')}`)
+        ui.log(`  ${c.command('vaulter sync merge')}             ${c.muted('# Two-way merge (--strategy local|remote)')}`)
       }
     }
   } finally {
@@ -257,23 +300,25 @@ export function printSyncHelp(): void {
   ui.log(`${c.label('Usage:')} ${c.command('vaulter sync')} ${c.subcommand('<command>')} [options]`)
   ui.log('')
   ui.log(c.header('Commands:'))
-  ui.log(`  ${c.subcommand('merge')}            Two-way merge (local ${symbols.arrowBoth} remote)`)
+  ui.log(`  ${c.subcommand('diff')}             Show differences (add ${c.highlight('--values')} to see masked values)`)
   ui.log(`  ${c.subcommand('push')} [${c.highlight('--prune')}]   Push local to remote`)
-  ui.log(`  ${c.subcommand('pull')} [${c.highlight('--prune')}]   Pull remote to local`)
-  ui.log(`  ${c.subcommand('diff')}             Show differences without changes`)
+  ui.log(`  ${c.subcommand('pull')}             Pull remote to outputs`)
+  ui.log(`  ${c.subcommand('merge')}            Two-way merge (local ${symbols.arrowBoth} remote)`)
   ui.log('')
   ui.log(c.header('Options:'))
   ui.log(`  ${c.highlight('-e')}, ${c.highlight('--env')}        Environment (${colorEnv('dev')}, ${colorEnv('stg')}, ${colorEnv('prd')})`)
   ui.log(`  ${c.highlight('-s')}, ${c.highlight('--service')}    Service name (for monorepos)`)
-  ui.log(`  ${c.highlight('--prune')}          Delete variables that don't exist in source`)
+  ui.log(`  ${c.highlight('--strategy')}       Conflict strategy: ${c.highlight('local')} (default), ${c.highlight('remote')}, ${c.highlight('error')}`)
+  ui.log(`  ${c.highlight('--values')}         Show masked values in diff output`)
+  ui.log(`  ${c.highlight('--prune')}          Delete variables not in source (push/pull)`)
   ui.log(`  ${c.highlight('--shared')}         Target shared variables (monorepo)`)
   ui.log(`  ${c.highlight('--dry-run')}        Preview without making changes`)
   ui.log(`  ${c.highlight('--json')}           Output in JSON format`)
   ui.log('')
-  ui.log(c.header('Behavior:'))
-  ui.log(`  ${c.subcommand('push')}             Uploads local vars, ${c.muted('keeps remote-only vars')}`)
-  ui.log(`  ${c.subcommand('push')} ${c.highlight('--prune')}     Uploads local vars, ${c.removed('DELETES remote-only vars')}`)
-  ui.log(`  ${c.subcommand('pull')}             Downloads remote vars, ${c.muted('keeps local-only vars')}`)
-  ui.log(`  ${c.subcommand('pull')} ${c.highlight('--prune')}     Downloads remote vars, ${c.removed('DELETES local-only vars')}`)
-  ui.log(`  ${c.subcommand('merge')}            Syncs both directions, ${c.muted('local wins by default')}`)
+  ui.log(c.header('Examples:'))
+  ui.log(`  ${c.command('vaulter sync diff -e prd')}                 ${c.muted('# See what\'s different')}`)
+  ui.log(`  ${c.command('vaulter sync diff -e prd --values')}        ${c.muted('# See values (masked)')}`)
+  ui.log(`  ${c.command('vaulter sync push -e prd')}                 ${c.muted('# Push local, keep remote-only')}`)
+  ui.log(`  ${c.command('vaulter sync push -e prd --prune')}         ${c.muted('# Push local, DELETE remote-only')}`)
+  ui.log(`  ${c.command('vaulter sync merge -e dev --strategy remote')} ${c.muted('# Remote wins on conflict')}`)
 }

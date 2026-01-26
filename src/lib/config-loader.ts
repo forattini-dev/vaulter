@@ -566,24 +566,35 @@ export function resolveBackendUrls(config: VaulterConfig): string[] {
  * @param environment - Target environment
  * @returns The encryption key or null if not found
  */
-export async function loadEncryptionKeyForEnv(
+export type SymmetricKeyResolution = {
+  key: string | null
+  source: 'env' | 'env-specific' | 'config' | 'file-env' | 'fallback' | 'none'
+  keyName: string
+}
+
+/**
+ * Resolve symmetric encryption key details for an environment
+ */
+export async function resolveSymmetricKeyForEnv(
   config: VaulterConfig | null,
   project: string,
   environment: string
-): Promise<string | null> {
+): Promise<SymmetricKeyResolution> {
   const envUpper = environment.toUpperCase()
   const envKeyConfig = config?.encryption?.keys?.[environment]
 
   // 1. Try VAULTER_KEY_{ENV}
   const envSpecificKey = process.env[`VAULTER_KEY_${envUpper}`]
   if (envSpecificKey) {
-    return envSpecificKey
+    return { key: envSpecificKey, source: 'env-specific', keyName: `VAULTER_KEY_${envUpper}` }
   }
 
   // 2. Try config encryption.keys.{env}.source (using canonical helper)
   if (envKeyConfig?.source) {
     const key = await loadKeyFromSources(envKeyConfig.source)
-    if (key) return key
+    if (key) {
+      return { key, source: 'config', keyName: envKeyConfig.key_name || environment }
+    }
   }
 
   // 3. Try key file ~/.vaulter/projects/{project}/keys/{keyName}
@@ -592,28 +603,43 @@ export async function loadEncryptionKeyForEnv(
   const envKeyPath = resolveKeyPath(keyFileName, project, false)
   if (fs.existsSync(envKeyPath)) {
     const key = fs.readFileSync(envKeyPath, 'utf-8').trim()
-    if (key) return key
+    if (key) {
+      return { key, source: 'file-env', keyName: keyFileName }
+    }
   }
 
   // 4. Try VAULTER_KEY (global)
   if (process.env.VAULTER_KEY) {
-    return process.env.VAULTER_KEY
+    return { key: process.env.VAULTER_KEY, source: 'env', keyName: 'VAULTER_KEY' }
   }
 
   // 5. Try config encryption.key_source (using canonical helper)
   if (config?.encryption?.key_source) {
     const key = await loadKeyFromSources(config.encryption.key_source)
-    if (key) return key
+    if (key) {
+      return { key, source: 'config', keyName: 'default' }
+    }
   }
 
   // 6. Try key file ~/.vaulter/projects/{project}/keys/master
   const masterKeyPath = path.join(getProjectKeysDir(project), 'master')
   if (fs.existsSync(masterKeyPath)) {
     const key = fs.readFileSync(masterKeyPath, 'utf-8').trim()
-    if (key) return key
+    if (key) {
+      return { key, source: 'fallback', keyName: 'master' }
+    }
   }
 
-  return null
+  return { key: null, source: 'none', keyName: 'none' }
+}
+
+export async function loadEncryptionKeyForEnv(
+  config: VaulterConfig | null,
+  project: string,
+  environment: string
+): Promise<string | null> {
+  const result = await resolveSymmetricKeyForEnv(config, project, environment)
+  return result.key
 }
 
 /**

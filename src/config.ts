@@ -200,9 +200,16 @@ function resolvePaths(
   const deployConfig = vaulterConfig.deploy || {}
 
   // Local paths
+  const defaultLocalFile = path.join(configDir, 'local', '.env')
+  const defaultLocalShared = path.join(configDir, 'local', 'shared.env')
+
   const localShared = localConfig.shared
     ? path.join(baseDir, localConfig.shared)
-    : path.join(configDir, 'local', 'shared.env')
+    : localConfig.file
+      ? path.join(baseDir, localConfig.file)
+      : fs.existsSync(defaultLocalFile)
+        ? defaultLocalFile
+        : defaultLocalShared
 
   const localService = service && localConfig.service
     ? path.join(baseDir, localConfig.service.replace('{service}', service))
@@ -211,11 +218,15 @@ function resolvePaths(
   // Deploy paths
   const sharedConfigs = deployConfig.shared?.configs
     ? path.join(baseDir, deployConfig.shared.configs.replace('{env}', environment))
-    : path.join(configDir, 'deploy', 'shared', 'configs', `${environment}.env`)
+    : deployConfig.configs
+      ? path.join(baseDir, deployConfig.configs.replace('{env}', environment))
+      : path.join(configDir, 'deploy', 'shared', 'configs', `${environment}.env`)
 
   const sharedSecrets = deployConfig.shared?.secrets
     ? path.join(baseDir, deployConfig.shared.secrets.replace('{env}', environment))
-    : path.join(configDir, 'deploy', 'shared', 'secrets', `${environment}.env`)
+    : deployConfig.secrets
+      ? path.join(baseDir, deployConfig.secrets.replace('{env}', environment))
+      : path.join(configDir, 'deploy', 'shared', 'secrets', `${environment}.env`)
 
   // Service-specific paths (monorepo)
   let serviceConfigs: string | undefined

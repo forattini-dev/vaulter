@@ -29,6 +29,8 @@ interface SyncContext {
   verbose: boolean
   dryRun: boolean
   jsonOutput: boolean
+  /** Strategy override from CLI */
+  strategy?: 'local' | 'remote' | 'error'
 }
 
 /**
@@ -45,14 +47,15 @@ async function syncSingleService(
   context: SyncContext,
   serviceInfo?: ServiceInfo
 ): Promise<SyncResult> {
-  const { args, config, project, service, environment, verbose, dryRun } = context
+  const { args, config, project, service, environment, verbose, dryRun, strategy } = context
 
   // Use service info if provided (batch mode)
   const effectiveConfig = serviceInfo?.config || config
   const effectiveProject = serviceInfo?.config.project || project
   const effectiveService = serviceInfo?.name || service
   const syncConfig = effectiveConfig?.sync
-  const conflictMode = syncConfig?.conflict || 'local'
+  // CLI --strategy overrides config
+  const conflictMode = strategy || syncConfig?.conflict || 'local'
   const ignorePatterns = syncConfig?.ignore || []
   const requiredKeys = syncConfig?.required?.[environment] || []
   const isIgnored = compileGlobPatterns(ignorePatterns)
