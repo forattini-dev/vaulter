@@ -51,6 +51,7 @@ function getPackageVersion(): string | undefined {
 
 // CLI commands
 import { runInit } from './commands/init.js'
+import { runDoctor } from './commands/doctor.js'
 import { runKey } from './commands/key.js'
 import { runAudit } from './commands/audit.js'
 import { runRotation } from './commands/rotation.js'
@@ -223,6 +224,10 @@ const cliSchema: CLISchema = {
       }
     },
 
+    doctor: {
+      description: 'Check local and remote configuration health'
+    },
+
     init: {
       description: 'Initialize a new .vaulter configuration',
       options: {
@@ -312,6 +317,17 @@ const cliSchema: CLISchema = {
     // NEW: Hierarchical sync command group
     sync: {
       description: 'Synchronization commands',
+      options: {
+        strategy: {
+          type: 'string',
+          description: 'Conflict strategy: local (default), remote, error'
+        },
+        values: {
+          type: 'boolean',
+          default: false,
+          description: 'Show masked values in diff output'
+        }
+      },
       commands: {
         merge: {
           description: 'Two-way merge (local ↔ remote)'
@@ -798,6 +814,10 @@ async function main(): Promise<void> {
 
       case 'init':
         await runInit(context)
+        break
+
+      case 'doctor':
+        await runDoctor(context)
         break
 
       case 'var':

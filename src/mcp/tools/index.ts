@@ -92,6 +92,11 @@ import {
   handlePromoteSharedCall,
   handleDemoteSharedCall
 } from './handlers/utility.js'
+import {
+  handleDoctorCall,
+  handleCloneEnvCall,
+  handleDiffCall
+} from './handlers/doctor.js'
 
 /**
  * Main tool call dispatcher
@@ -158,6 +163,56 @@ export async function handleToolCall(
       return newClient
     }
     return handleKeyRotateCall(args, config, createClientForRotation)
+  }
+
+  // Doctor tool - handles its own connection testing
+  if (name === 'vaulter_doctor') {
+    return handleDoctorCall(
+      config,
+      project,
+      environment,
+      service,
+      args,
+      async () => {
+        try {
+          const testClient = await getClientForEnvironment(environment, { config, connectionStrings, project })
+          await testClient.connect()
+          try {
+            const vars = await testClient.list({ project, environment, service })
+            return { connected: true, varsCount: vars.length }
+          } finally {
+            await testClient.disconnect()
+          }
+        } catch (error) {
+          return { connected: false, error: (error as Error).message }
+        }
+      }
+    )
+  }
+
+  // Clone env tool - handles multiple clients
+  if (name === 'vaulter_clone_env') {
+    if (!project) {
+      return {
+        content: [{
+          type: 'text',
+          text: 'Error: Project not specified. Either set project in args or run from a directory with .vaulter/config.yaml'
+        }]
+      }
+    }
+    return handleCloneEnvCall(
+      async (env: Environment) => {
+        const envClient = await getClientForEnvironment(env, { config, connectionStrings, project })
+        await envClient.connect()
+        return {
+          client: envClient,
+          disconnect: () => envClient.disconnect()
+        }
+      },
+      project,
+      service,
+      args
+    )
   }
 
   if (!project && !['vaulter_services', 'vaulter_init'].includes(name)) {
@@ -274,6 +329,9 @@ export async function handleToolCall(
 
       case 'vaulter_demote_shared':
         return await handleDemoteSharedCall(client, project, environment, service, args)
+
+      case 'vaulter_diff':
+        return await handleDiffCall(client, config, project, environment, service, args)
 
       default:
         return { content: [{ type: 'text', text: `Unknown tool: ${name}` }] }

@@ -575,6 +575,50 @@ export function registerTools(): Tool[] {
         },
         required: ['key', 'toService']
       }
+    },
+
+    // === DIAGNOSTIC TOOLS (for AI agents) ===
+    {
+      name: 'vaulter_doctor',
+      description: 'IMPORTANT: Call this FIRST to diagnose vaulter configuration health. Returns comprehensive status including config, backend, encryption, local files, and connection. Provides actionable suggestions for issues found. Essential for AI agents to understand current state before performing operations.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          environment: { type: 'string', description: 'Environment to check (default: dev)', default: 'dev' },
+          project: { type: 'string', description: 'Project name (auto-detected from config if omitted)' },
+          service: { type: 'string', description: 'Service name (for monorepos)' }
+        }
+      }
+    },
+    {
+      name: 'vaulter_clone_env',
+      description: 'Clone ALL variables from one environment to another. Simpler than vaulter_copy when you want to duplicate an entire environment. Use dryRun=true to preview first. Perfect for populating empty environments (e.g., clone dev to stg before first deploy).',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          source: { type: 'string', description: 'Source environment to clone from (e.g., dev)' },
+          target: { type: 'string', description: 'Target environment to clone to (e.g., stg, prd)' },
+          project: { type: 'string', description: 'Project name' },
+          service: { type: 'string', description: 'Service name (for monorepos)' },
+          includeShared: { type: 'boolean', description: 'Include shared variables (default: true)', default: true },
+          overwrite: { type: 'boolean', description: 'Overwrite existing vars in target (default: false)', default: false },
+          dryRun: { type: 'boolean', description: 'Preview what would be cloned without making changes (RECOMMENDED: use this first)', default: false }
+        },
+        required: ['source', 'target']
+      }
+    },
+    {
+      name: 'vaulter_diff',
+      description: 'Show differences between local file and remote backend. Essential for understanding what will change before push/pull operations. Use showValues=true to see masked values.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          environment: { type: 'string', description: 'Environment to compare (default: dev)', default: 'dev' },
+          project: { type: 'string', description: 'Project name' },
+          service: { type: 'string', description: 'Service name (for monorepos)' },
+          showValues: { type: 'boolean', description: 'Show masked values in diff (e.g., pg://us***)', default: false }
+        }
+      }
     }
   ]
 }
