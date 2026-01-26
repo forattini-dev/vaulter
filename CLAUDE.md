@@ -19,6 +19,74 @@ Keep this managed block so 'openspec update' can refresh the instructions.
 
 # Vaulter - Environment Variables & Secrets Manager
 
+## 🤖 Para AI Agents - Leia Primeiro!
+
+**SEMPRE chame `vaulter_doctor` primeiro** para entender o estado atual:
+
+```bash
+# CLI
+vaulter doctor -e dev
+
+# MCP Tool
+vaulter_doctor environment="dev"
+```
+
+### Tarefas Comuns (MCP Tools)
+
+| Tarefa | Tool | Exemplo |
+|--------|------|---------|
+| Diagnosticar setup | `vaulter_doctor` | Sempre primeiro! |
+| Ver diferenças local/remoto | `vaulter_diff` | `environment="prd" showValues=true` |
+| Clonar dev → stg/prd | `vaulter_clone_env` | `source="dev" target="stg" dryRun=true` |
+| Copiar vars específicas | `vaulter_copy` | `source="dev" target="prd" pattern="DATABASE_*"` |
+| Comparar environments | `vaulter_compare` | `source="dev" target="prd"` |
+| Setar múltiplas vars | `vaulter_multi_set` | `variables=[{key,value,sensitive}]` |
+| Listar vars | `vaulter_list` | `environment="dev" showValues=true` |
+
+### Ambiente Vazio? Use clone:
+
+```bash
+# Preview
+vaulter_clone_env source="dev" target="prd" dryRun=true
+
+# Executar
+vaulter_clone_env source="dev" target="prd"
+```
+
+### Workflow: Editar Local → Push Remoto
+
+```bash
+# 1. Ver diferenças (com valores mascarados)
+vaulter sync diff -e prd --values
+
+# 2. Editar arquivo local (.vaulter/local/prd.env)
+# ... editar no seu editor ...
+
+# 3. Ver diferenças novamente
+vaulter sync diff -e prd --values
+
+# 4. Push para remoto
+vaulter sync push -e prd
+
+# Ou push + deletar vars remotas que não existem local
+vaulter sync push -e prd --prune
+```
+
+### Merge com Estratégia de Conflito
+
+```bash
+# Local ganha (default)
+vaulter sync merge -e dev --strategy local
+
+# Remoto ganha
+vaulter sync merge -e dev --strategy remote
+
+# Erro em conflitos (não faz nada)
+vaulter sync merge -e dev --strategy error
+```
+
+---
+
 ## Quick Start
 
 ```bash
@@ -226,22 +294,26 @@ await client.deleteManyByKeys(['OLD1', 'OLD2'], 'project', 'dev')
 
 ## MCP Server
 
-**30 Tools | 5 Resources | 8 Prompts**
+**39 Tools | 5 Resources | 10 Prompts**
 
-### Tools (30)
+### Tools (39)
 
 | Category | Tools |
 |----------|-------|
+| **🩺 Diagnostic (3)** | `vaulter_doctor` ⭐, `vaulter_diff`, `vaulter_clone_env` |
 | **Core (5)** | `vaulter_get`, `vaulter_set`, `vaulter_delete`, `vaulter_list`, `vaulter_export` |
 | **Batch (3)** | `vaulter_multi_get`, `vaulter_multi_set`, `vaulter_multi_delete` |
 | **Sync (3)** | `vaulter_sync`, `vaulter_pull`, `vaulter_push` |
 | **Analysis (2)** | `vaulter_compare`, `vaulter_search` |
+| **Utility (4)** | `vaulter_copy`, `vaulter_rename`, `vaulter_promote_shared`, `vaulter_demote_shared` |
 | **Status (2)** | `vaulter_status`, `vaulter_audit_list` |
 | **K8s (2)** | `vaulter_k8s_secret`, `vaulter_k8s_configmap` |
 | **IaC (2)** | `vaulter_helm_values`, `vaulter_tf_vars` |
-| **Keys (5)** | `vaulter_key_generate`, `vaulter_key_list`, `vaulter_key_show`, `vaulter_key_export`, `vaulter_key_import` |
+| **Keys (6)** | `vaulter_key_generate`, `vaulter_key_list`, `vaulter_key_show`, `vaulter_key_export`, `vaulter_key_import`, `vaulter_key_rotate` |
 | **Monorepo (5)** | `vaulter_init`, `vaulter_scan`, `vaulter_services`, `vaulter_shared_list`, `vaulter_inheritance_info` |
-| **Other (1)** | `vaulter_categorize_vars` |
+| **Other (2)** | `vaulter_categorize_vars`, `vaulter_nuke_preview` |
+
+> ⭐ **AI Agents:** Sempre chame `vaulter_doctor` primeiro para entender o estado do setup!
 
 ### Resources (5)
 
@@ -253,9 +325,9 @@ await client.deleteManyByKeys(['OLD1', 'OLD2'], 'project', 'dev')
 | `vaulter://config` | Project YAML config |
 | `vaulter://services` | Monorepo services |
 
-### Prompts (8)
+### Prompts (10)
 
-`setup_project`, `migrate_dotenv`, `deploy_secrets`, `compare_environments`, `security_audit`, `rotation_workflow`, `shared_vars_workflow`, `batch_operations`
+`setup_project`, `migrate_dotenv`, `deploy_secrets`, `compare_environments`, `security_audit`, `rotation_workflow`, `shared_vars_workflow`, `batch_operations`, `copy_environment`, `sync_workflow`
 
 **Full reference:** See [docs/MCP.md](docs/MCP.md)
 

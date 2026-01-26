@@ -2,7 +2,7 @@
 
 Complete reference for the Vaulter Model Context Protocol (MCP) server.
 
-**Stats:** 32 tools | 5 resources | 8 prompts
+**Stats:** 39 tools | 5 resources | 10 prompts
 
 ---
 
@@ -39,7 +39,7 @@ Complete reference for the Vaulter Model Context Protocol (MCP) server.
 
 ---
 
-## Tools Reference (32)
+## Tools Reference (39)
 
 ### Core Operations (5)
 
@@ -511,6 +511,117 @@ Returns:
 
 ---
 
+### Utility Tools (4)
+
+#### `vaulter_copy`
+Copy variables from one environment to another. Useful for promoting configs from dev to stg/prd.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `source` | string | **Yes** | - | Source environment (e.g., `dev`) |
+| `target` | string | **Yes** | - | Target environment (e.g., `stg`, `prd`) |
+| `project` | string | No | auto | Project name |
+| `service` | string | No | - | Service name (monorepo) |
+| `keys` | string[] | No | - | Specific keys to copy. If omitted, copies all. |
+| `pattern` | string | No | - | Pattern to filter keys (e.g., `DATABASE_*`). Ignored if `keys` is provided. |
+| `overwrite` | boolean | No | `false` | Overwrite existing vars in target |
+| `dryRun` | boolean | No | `false` | Preview what would be copied |
+
+#### `vaulter_rename`
+Rename a variable (atomic operation). Copies value to new key and deletes old key.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `oldKey` | string | **Yes** | - | Current variable name |
+| `newKey` | string | **Yes** | - | New variable name |
+| `environment` | string | No | `dev` | Environment name |
+| `project` | string | No | auto | Project name |
+| `service` | string | No | - | Service name (monorepo) |
+
+#### `vaulter_promote_shared`
+Promote a service-specific variable to shared (applies to all services).
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `key` | string | **Yes** | - | Variable name to promote |
+| `fromService` | string | **Yes** | - | Service where the var currently exists |
+| `environment` | string | No | `dev` | Environment name |
+| `project` | string | No | auto | Project name |
+| `deleteOriginal` | boolean | No | `true` | Delete the original service var after promoting |
+
+#### `vaulter_demote_shared`
+Demote a shared variable to a specific service.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `key` | string | **Yes** | - | Variable name to demote |
+| `toService` | string | **Yes** | - | Target service for the var |
+| `environment` | string | No | `dev` | Environment name |
+| `project` | string | No | auto | Project name |
+| `deleteShared` | boolean | No | `true` | Delete the shared var after demoting |
+
+---
+
+### Diagnostic Tools (3)
+
+#### `vaulter_doctor`
+**⭐ IMPORTANT: Call this FIRST** to diagnose vaulter configuration health. Returns comprehensive status including config, backend, encryption, local files, and connection.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `environment` | string | No | `dev` | Environment to check |
+| `project` | string | No | auto | Project name |
+| `service` | string | No | - | Service name (monorepo) |
+
+**Returns:**
+- Config status (exists, valid)
+- Backend connectivity
+- Encryption key availability
+- Local file status
+- Actionable suggestions for issues
+
+#### `vaulter_clone_env`
+Clone ALL variables from one environment to another. Use `dryRun=true` to preview first.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `source` | string | **Yes** | - | Source environment to clone from (e.g., `dev`) |
+| `target` | string | **Yes** | - | Target environment to clone to (e.g., `stg`, `prd`) |
+| `project` | string | No | auto | Project name |
+| `service` | string | No | - | Service name (monorepo) |
+| `includeShared` | boolean | No | `true` | Include shared variables |
+| `overwrite` | boolean | No | `false` | Overwrite existing vars in target |
+| `dryRun` | boolean | No | `false` | Preview what would be cloned (recommended) |
+
+**Example:**
+```json
+// Preview cloning dev to production
+{
+  "tool": "vaulter_clone_env",
+  "arguments": { "source": "dev", "target": "prd", "dryRun": true }
+}
+```
+
+#### `vaulter_diff`
+Show differences between local file and remote backend. Essential for understanding what will change before push/pull operations.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `environment` | string | No | `dev` | Environment to compare |
+| `project` | string | No | auto | Project name |
+| `service` | string | No | - | Service name (monorepo) |
+| `showValues` | boolean | No | `false` | Show masked values in diff (e.g., `pg://us***`) |
+
+**Output symbols:**
+| Symbol | Meaning |
+|--------|---------|
+| `+` | Local only (will be pushed) |
+| `-` | Remote only (will be pulled or deleted with `--prune`) |
+| `~` | Different values (conflict) |
+| `=` | Identical (synced) |
+
+---
+
 ## Resources Reference (5)
 
 Resources provide static/cached data that doesn't require input parameters. They are read-only and ideal for getting context before using tools.
@@ -674,7 +785,7 @@ Lists all services discovered in a monorepo. Services are detected by looking fo
 
 ---
 
-## Prompts Reference (8)
+## Prompts Reference (10)
 
 Prompts are pre-configured workflow templates that guide Claude through common tasks. They combine multiple tools and provide structured guidance.
 
@@ -688,6 +799,8 @@ Prompts are pre-configured workflow templates that guide Claude through common t
 | `rotation_workflow` | Manage secret rotation | `environment`, `action` |
 | `shared_vars_workflow` | Manage monorepo shared vars | `action`, `environment` |
 | `batch_operations` | Bulk variable operations | `operation`, `variables` |
+| `copy_environment` | Copy variables between envs | `source`, `target`, `filter` |
+| `sync_workflow` | Sync local files with remote | `action`, `environment`, `strategy` |
 
 ---
 
@@ -895,6 +1008,52 @@ Claude: I'll search for and delete deprecated variables...
 → Uses vaulter_search with pattern="OLD_*"
 → Confirms list with user
 → Uses vaulter_multi_delete to remove them
+```
+
+---
+
+### `copy_environment`
+
+Copy variables from one environment to another. Useful for promoting configs from dev to staging/production.
+
+| Argument | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `source` | **Yes** | - | Source environment: `dev`, `stg`, `prd`, `sbx`, `dr` |
+| `target` | **Yes** | - | Target environment |
+| `filter` | No | `all` | Filter pattern (e.g., `DATABASE_*`, `*_URL`) or `all` |
+| `overwrite` | No | `false` | Overwrite existing variables in target |
+
+**Example conversation:**
+```
+User: Copy all database settings from dev to production
+
+Claude: I'll copy the database settings...
+→ Uses vaulter_copy with source="dev", target="prd", pattern="DATABASE_*", dryRun=true
+→ Shows preview of what will be copied
+→ After confirmation, executes the copy
+```
+
+---
+
+### `sync_workflow`
+
+Synchronize local .env files with remote backend. Covers diff, push, pull, and merge operations with conflict resolution.
+
+| Argument | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `action` | **Yes** | - | `diff` (preview), `push` (local→remote), `pull` (remote→local), `merge` (bidirectional) |
+| `environment` | **Yes** | - | Environment: `dev`, `stg`, `prd`, `sbx`, `dr` |
+| `strategy` | No | `local` | Conflict resolution: `local` (local wins), `remote` (remote wins), `error` (fail on conflict) |
+| `prune` | No | `false` | For push: delete remote vars not in local |
+
+**Example conversation:**
+```
+User: I want to see what's different between my local .env and the remote backend
+
+Claude: I'll show you the differences...
+→ Uses vaulter_diff with showValues=true
+→ Shows: + local only, - remote only, ~ different values, = identical
+→ Suggests next steps based on differences
 ```
 
 ---

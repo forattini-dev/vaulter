@@ -912,7 +912,7 @@ const result = await loadRuntime({
 
 ## MCP Server
 
-Claude AI integration via Model Context Protocol. **32 tools, 5 resources, 8 prompts.**
+Claude AI integration via Model Context Protocol. **39 tools, 5 resources, 10 prompts.**
 
 ```bash
 vaulter mcp
@@ -931,7 +931,7 @@ vaulter mcp
 }
 ```
 
-### Tools (30)
+### Tools (39)
 
 | Category | Tools |
 |:---------|:------|
@@ -942,8 +942,10 @@ vaulter mcp
 | **Status (2)** | `vaulter_status`, `vaulter_audit_list` |
 | **K8s (2)** | `vaulter_k8s_secret`, `vaulter_k8s_configmap` |
 | **IaC (2)** | `vaulter_helm_values`, `vaulter_tf_vars` |
-| **Keys (5)** | `vaulter_key_generate`, `vaulter_key_list`, `vaulter_key_show`, `vaulter_key_export`, `vaulter_key_import` |
-| **Monorepo (5)** | `vaulter_init`, `vaulter_scan`, `vaulter_services`, `vaulter_shared_list`, `vaulter_inheritance_info` |
+| **Keys (6)** | `vaulter_key_generate`, `vaulter_key_list`, `vaulter_key_show`, `vaulter_key_export`, `vaulter_key_import`, `vaulter_key_rotate` |
+| **Monorepo (6)** | `vaulter_init`, `vaulter_scan`, `vaulter_services`, `vaulter_shared_list`, `vaulter_inheritance_info`, `vaulter_nuke_preview` |
+| **Utility (4)** | `vaulter_copy`, `vaulter_rename`, `vaulter_promote_shared`, `vaulter_demote_shared` |
+| **Diagnostic (3)** | `vaulter_doctor`, `vaulter_clone_env`, `vaulter_diff` |
 | **Other (1)** | `vaulter_categorize_vars` |
 
 ### Resources (5)
@@ -958,7 +960,7 @@ Static data views (no input required). For actions with parameters, use tools.
 | `vaulter://config` | Project configuration (YAML) |
 | `vaulter://services` | Monorepo services list |
 
-### Prompts (8)
+### Prompts (10)
 
 Pre-configured workflows for common tasks.
 
@@ -972,6 +974,8 @@ Pre-configured workflows for common tasks.
 | `rotation_workflow` | Check/rotate/report on rotation |
 | `shared_vars_workflow` | Manage monorepo shared vars |
 | `batch_operations` | Multi-set/get/delete operations |
+| `copy_environment` | Copy variables between environments |
+| `sync_workflow` | Sync local files with remote backend |
 
 > **Full MCP documentation:** See [docs/MCP.md](docs/MCP.md) for complete tool reference with parameters.
 
