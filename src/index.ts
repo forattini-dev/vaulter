@@ -145,3 +145,15 @@ export type {
   RuntimeLoaderOptions,
   RuntimeLoaderResult
 } from './runtime/index.js'
+
+// Encoding detection (detect pre-encoded/pre-encrypted values)
+export {
+  detectEncoding,
+  formatEncodingWarning,
+  checkValuesForEncoding
+} from './lib/encoding-detection.js'
+
+export type {
+  EncodingType,
+  EncodingDetectionResult
+} from './lib/encoding-detection.js'

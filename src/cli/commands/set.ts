@@ -20,6 +20,7 @@ import { parseEnvFile, serializeEnv } from '../../lib/env-parser.js'
 import { createConnectedAuditLogger, logSetOperation, disconnectAuditLogger } from '../lib/audit-helper.js'
 import { c, symbols, colorEnv, print } from '../lib/colors.js'
 import { SHARED_SERVICE } from '../../lib/shared.js'
+import { checkValuesForEncoding, formatEncodingWarning } from '../../lib/encoding-detection.js'
 import * as ui from '../ui.js'
 
 type SeparatorValue = string | number | boolean | null
@@ -163,6 +164,23 @@ export async function runSet(context: SetContext): Promise<void> {
   const { tags, owner, description } = extractMetadata(meta)
 
   const totalVars = secrets.size + configs.size
+
+  // Check for pre-encoded/pre-encrypted values and warn user
+  if (!jsonOutput && totalVars > 0) {
+    const allVars = [
+      ...[...secrets.entries()].map(([key, value]) => ({ key, value })),
+      ...[...configs.entries()].map(([key, value]) => ({ key, value }))
+    ]
+    const encodingWarnings = checkValuesForEncoding(allVars)
+
+    for (const { key, result } of encodingWarnings) {
+      const warning = formatEncodingWarning(result, key)
+      if (warning) {
+        print.warning(warning)
+        ui.log(c.muted('  Vaulter automatically encrypts all values. Pre-encoding is usually unnecessary.'))
+      }
+    }
+  }
 
   if (totalVars === 0) {
     print.error('No variables specified')

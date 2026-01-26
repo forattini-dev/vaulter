@@ -6,6 +6,7 @@
 
 import { VaulterClient } from '../../../client.js'
 import { SHARED_SERVICE } from '../../../lib/shared.js'
+import { detectEncoding } from '../../../lib/encoding-detection.js'
 import type { Environment } from '../../../types.js'
 import type { ToolResponse } from '../config.js'
 
@@ -42,6 +43,9 @@ export async function handleSetCall(
   // If shared flag is set, use __shared__ as service
   const effectiveService = shared ? SHARED_SERVICE : service
 
+  // Check for pre-encoded/pre-encrypted values
+  const encodingResult = detectEncoding(value)
+
   await client.set({
     key,
     value,
@@ -59,10 +63,19 @@ export async function handleSetCall(
 
   const typeLabel = sensitive ? 'secret' : 'config'
 
+  // Build response with optional warning
+  const lines = [`✓ Set ${key} (${typeLabel}) in ${location}`]
+
+  if (encodingResult.detected && encodingResult.confidence !== 'low') {
+    lines.push('')
+    lines.push(`⚠️ Warning: ${encodingResult.message}`)
+    lines.push('Vaulter automatically encrypts all values. Pre-encoding is usually unnecessary.')
+  }
+
   return {
     content: [{
       type: 'text',
-      text: `✓ Set ${key} (${typeLabel}) in ${location}`
+      text: lines.join('\n')
     }]
   }
 }

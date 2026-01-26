@@ -131,6 +131,66 @@ vaulter k8s:configmap -e dev
 
 ---
 
+## Encoding Detection (Dupla Encriptação)
+
+Vaulter detecta automaticamente valores que parecem já estar codificados ou encriptados e exibe **warnings** para evitar dupla-encriptação.
+
+### Padrões Detectados
+
+| Tipo | Confiança | Exemplo |
+|------|-----------|---------|
+| bcrypt | Alta | `$2b$10$...` |
+| argon2 | Alta | `$argon2id$v=19$...` |
+| JWT | Alta | `eyJhbG...` |
+| PGP | Alta | `-----BEGIN PGP MESSAGE-----` |
+| SSH key | Alta | `ssh-rsa AAAA...` |
+| AWS KMS | Média | `AQICAHh...` |
+| base64 | Média | Strings longas com padding `=` |
+| hex | Baixa | Strings longas só com `0-9a-f` |
+
+### Comportamento
+
+Ao salvar uma variável com valor que parece pré-codificado:
+
+```bash
+$ vaulter set PASSWORD=$2b$10$... -e dev
+⚠️ Warning: PASSWORD - Value appears to be a bcrypt hash. Vaulter will encrypt it again.
+  Vaulter automatically encrypts all values. Pre-encoding is usually unnecessary.
+✓ Set secret PASSWORD in myproject/dev
+```
+
+**Importante:** O warning é apenas informativo. O valor é salvo normalmente. Se você realmente quer armazenar um hash bcrypt (ex: para validação), ignore o warning.
+
+### MCP Tools
+
+Os tools `vaulter_set` e `vaulter_multi_set` incluem warnings na resposta:
+
+```
+✓ Set API_KEY (secret) in myproject/dev
+
+⚠️ Warning: Value appears to be a JWT token. Vaulter will encrypt it, which is fine for storage.
+Vaulter automatically encrypts all values. Pre-encoding is usually unnecessary.
+```
+
+### Programático
+
+```typescript
+import { detectEncoding, checkValuesForEncoding } from 'vaulter'
+
+// Checar um valor
+const result = detectEncoding('$2b$10$...')
+// { detected: true, type: 'bcrypt', confidence: 'high', message: '...' }
+
+// Checar múltiplos valores
+const warnings = checkValuesForEncoding([
+  { key: 'PASSWORD', value: '$2b$10$...' },
+  { key: 'API_KEY', value: 'sk-xxx' }
+])
+// [{ key: 'PASSWORD', result: { detected: true, type: 'bcrypt', ... } }]
+```
+
+---
+
 ## Client API
 
 ```typescript
@@ -537,6 +597,7 @@ src/
 ├── lib/
 │   ├── outputs.ts     # Output targets (pullToOutputs, filterVarsByPatterns)
 │   ├── pattern-matcher.ts  # Glob pattern compilation
+│   ├── encoding-detection.ts  # Detecção de valores pré-codificados
 │   └── ...            # Outros utils
 └── mcp/               # MCP server (tools, resources, prompts)
 ```

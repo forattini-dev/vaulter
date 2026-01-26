@@ -6,6 +6,7 @@
 
 import { VaulterClient } from '../../../client.js'
 import { SHARED_SERVICE } from '../../../lib/shared.js'
+import { checkValuesForEncoding } from '../../../lib/encoding-detection.js'
 import type { Environment } from '../../../types.js'
 import type { ToolResponse } from '../config.js'
 
@@ -150,6 +151,19 @@ export async function handleMultiSetCall(
     const lines = [`Set ${succeeded.length}/${varsArray.length} variable(s) in ${location}:`]
     if (succeeded.length > 0) lines.push(`✓ ${succeeded.join(', ')}`)
     if (skipped > 0) lines.push(`⚠ Skipped ${skipped} invalid entries`)
+
+    // Check for pre-encoded/pre-encrypted values and add warnings
+    const encodingWarnings = checkValuesForEncoding(
+      validEntries.map(({ key, value }) => ({ key, value: String(value) }))
+    )
+    if (encodingWarnings.length > 0) {
+      lines.push('')
+      lines.push('⚠️ Encoding warnings:')
+      for (const { key, result } of encodingWarnings) {
+        lines.push(`  • ${key}: ${result.message}`)
+      }
+      lines.push('Vaulter automatically encrypts all values. Pre-encoding is usually unnecessary.')
+    }
 
     return {
       content: [{
