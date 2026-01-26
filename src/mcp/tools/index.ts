@@ -12,12 +12,6 @@ import {
   getClientForEnvironment,
   getClientForSharedVars,
   clearClientCache,
-  setMcpOptions,
-  getMcpOptions,
-  resolveMcpConfigWithSources,
-  formatResolvedConfig,
-  type McpServerOptions,
-  type McpDefaults,
   type ToolResponse
 } from './config.js'
 
@@ -92,6 +86,12 @@ import {
   handleAuditListCall,
   handleStatusCall
 } from './handlers/monorepo.js'
+import {
+  handleCopyCall,
+  handleRenameCall,
+  handlePromoteSharedCall,
+  handleDemoteSharedCall
+} from './handlers/utility.js'
 
 /**
  * Main tool call dispatcher
@@ -241,11 +241,11 @@ export async function handleToolCall(
 
       // === AUDIT TOOLS ===
       case 'vaulter_audit_list':
-        return await handleAuditListCall(client, config, project, environment, service, args)
+        return await handleAuditListCall(config, project, environment, service, args)
 
       // === CATEGORIZATION TOOLS ===
       case 'vaulter_categorize_vars':
-        return await handleCategorizeVarsCall(client, config, project, environment, service, args)
+        return await handleCategorizeVarsCall(client, config, project, environment, service)
 
       // === SHARED VARIABLES TOOLS ===
       case 'vaulter_shared_list':
@@ -260,7 +260,20 @@ export async function handleToolCall(
 
       // === DANGEROUS OPERATIONS (preview only) ===
       case 'vaulter_nuke_preview':
-        return await handleNukePreviewCall(client, project)
+        return await handleNukePreviewCall(client)
+
+      // === UTILITY TOOLS (for full autonomy) ===
+      case 'vaulter_copy':
+        return await handleCopyCall(client, project, environment, service, args)
+
+      case 'vaulter_rename':
+        return await handleRenameCall(client, project, environment, service, args)
+
+      case 'vaulter_promote_shared':
+        return await handlePromoteSharedCall(client, project, environment, service, args)
+
+      case 'vaulter_demote_shared':
+        return await handleDemoteSharedCall(client, project, environment, service, args)
 
       default:
         return { content: [{ type: 'text', text: `Unknown tool: ${name}` }] }

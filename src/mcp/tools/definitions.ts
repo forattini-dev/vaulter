@@ -503,6 +503,75 @@ export function registerTools(): Tool[] {
           overdue_only: { type: 'boolean', description: 'For rotation: only show overdue secrets', default: false }
         }
       }
+    },
+
+    // === UTILITY TOOLS (for full autonomy) ===
+    {
+      name: 'vaulter_copy',
+      description: 'Copy variables from one environment to another. Useful for promoting configs from dev to stg/prd. Can copy all vars or filter by pattern.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          source: { type: 'string', description: 'Source environment (e.g., dev)' },
+          target: { type: 'string', description: 'Target environment (e.g., stg, prd)' },
+          project: { type: 'string', description: 'Project name' },
+          service: { type: 'string', description: 'Service name (for monorepos)' },
+          keys: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'Specific keys to copy. If omitted, copies all vars.'
+          },
+          pattern: { type: 'string', description: 'Pattern to filter keys (e.g., "DATABASE_*", "*_URL"). Ignored if keys is provided.' },
+          overwrite: { type: 'boolean', description: 'Overwrite existing vars in target (default: false)', default: false },
+          dryRun: { type: 'boolean', description: 'Preview what would be copied without making changes', default: false }
+        },
+        required: ['source', 'target']
+      }
+    },
+    {
+      name: 'vaulter_rename',
+      description: 'Rename a variable (atomic operation). Copies value to new key and deletes old key.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          oldKey: { type: 'string', description: 'Current variable name' },
+          newKey: { type: 'string', description: 'New variable name' },
+          environment: { type: 'string', description: 'Environment name', default: 'dev' },
+          project: { type: 'string', description: 'Project name' },
+          service: { type: 'string', description: 'Service name (for monorepos)' }
+        },
+        required: ['oldKey', 'newKey']
+      }
+    },
+    {
+      name: 'vaulter_promote_shared',
+      description: 'Promote a service-specific variable to shared (applies to all services). Moves the var from service scope to shared scope.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          key: { type: 'string', description: 'Variable name to promote' },
+          fromService: { type: 'string', description: 'Service where the var currently exists' },
+          environment: { type: 'string', description: 'Environment name', default: 'dev' },
+          project: { type: 'string', description: 'Project name' },
+          deleteOriginal: { type: 'boolean', description: 'Delete the original service var after promoting (default: true)', default: true }
+        },
+        required: ['key', 'fromService']
+      }
+    },
+    {
+      name: 'vaulter_demote_shared',
+      description: 'Demote a shared variable to a specific service. Moves the var from shared scope to service scope.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          key: { type: 'string', description: 'Variable name to demote' },
+          toService: { type: 'string', description: 'Target service for the var' },
+          environment: { type: 'string', description: 'Environment name', default: 'dev' },
+          project: { type: 'string', description: 'Project name' },
+          deleteShared: { type: 'boolean', description: 'Delete the shared var after demoting (default: true)', default: true }
+        },
+        required: ['key', 'toService']
+      }
     }
   ]
 }

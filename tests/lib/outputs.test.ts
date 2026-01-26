@@ -8,10 +8,12 @@ import {
   normalizeOutputTargets,
   filterVarsByPatterns,
   getSharedVars,
+  getSharedServiceVars,
   formatEnvFile,
   validateOutputsConfig
 } from '../../src/lib/outputs.js'
 import type { VaulterConfig } from '../../src/types.js'
+import { VaulterClient } from '../../src/client.js'
 
 describe('outputs', () => {
   describe('normalizeOutputTarget', () => {
@@ -439,6 +441,39 @@ describe('outputs', () => {
 
       const errors = validateOutputsConfig(config)
       expect(errors).toContain('Output "api": must be a string or object')
+    })
+  })
+
+  describe('getSharedServiceVars', () => {
+    it('should fetch vars from __shared__ service', async () => {
+      const client = new VaulterClient({ connectionString: 'memory://test-shared' })
+      await client.connect()
+
+      // Set vars in __shared__ service
+      await client.set({ key: 'LOG_LEVEL', value: 'debug', project: 'p', environment: 'dev', service: '__shared__' })
+      await client.set({ key: 'NODE_ENV', value: 'development', project: 'p', environment: 'dev', service: '__shared__' })
+
+      // Set vars in other service (should NOT be returned)
+      await client.set({ key: 'API_KEY', value: 'secret', project: 'p', environment: 'dev', service: 'api' })
+
+      const result = await getSharedServiceVars(client, 'p', 'dev')
+
+      expect(result).toEqual({
+        LOG_LEVEL: 'debug',
+        NODE_ENV: 'development'
+      })
+    })
+
+    it('should return empty object when no __shared__ vars exist', async () => {
+      const client = new VaulterClient({ connectionString: 'memory://test-no-shared' })
+      await client.connect()
+
+      // Only vars in regular service
+      await client.set({ key: 'API_KEY', value: 'secret', project: 'p', environment: 'dev', service: 'api' })
+
+      const result = await getSharedServiceVars(client, 'p', 'dev')
+
+      expect(result).toEqual({})
     })
   })
 })

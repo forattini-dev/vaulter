@@ -1004,6 +1004,15 @@ shared:
 4. If inherit=true → merge with shared vars (output overrides shared)
 ```
 
+### Shared Vars Sources
+
+When `inherit: true`, shared vars come from **two sources**:
+
+1. **Vars with `--shared`**: Variables created with the `--shared` flag
+2. **Patterns `shared.include`**: Variables matching the patterns in config
+
+Both are merged automatically.
+
 ### CLI Commands
 
 ```bash
@@ -1159,18 +1168,9 @@ aws s3 cp .env s3://bucket/path/file.json
 npx vaulter sync push -e dev
 ```
 
-### Deterministic IDs
+### Fast Lookups
 
-Variables are stored with deterministic IDs for O(1) lookups:
-
-```
-{project}|{environment}|{service}|{key}
-```
-
-Examples:
-- Single repo: `myproject|dev||DATABASE_URL`
-- Monorepo: `myproject|dev|api|DATABASE_URL`
-- Shared: `myproject|dev|__shared__|SHARED_KEY`
+Variables are stored with deterministic IDs for O(1) lookups. No scanning required.
 
 ### Per-Environment Keys
 

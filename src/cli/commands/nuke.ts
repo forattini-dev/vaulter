@@ -10,7 +10,7 @@
  * 3. Non-interactive mode (CI): requires additional --force flag
  */
 
-import type { CLIArgs, VaulterConfig, Environment } from '../../types.js'
+import type { CLIArgs, VaulterConfig } from '../../types.js'
 import { createClientFromConfig } from '../lib/create-client.js'
 import { createConnectedAuditLogger, disconnectAuditLogger } from '../lib/audit-helper.js'
 import { c, symbols, print } from '../lib/colors.js'

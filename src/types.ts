@@ -52,7 +52,12 @@ export interface EnvVarMetadata {
   owner?: string
   rotateAfter?: Date
   rotatedAt?: string
-  source?: 'manual' | 'sync' | 'import' | 'rotation'
+  source?: 'manual' | 'sync' | 'import' | 'rotation' | 'copy' | 'rename' | 'promote' | 'demote'
+  // Tracking properties for utility operations
+  copiedFrom?: string    // Source environment for copy operations
+  renamedFrom?: string   // Original key name for rename operations
+  promotedFrom?: string  // Source service for promote_shared operations
+  demotedTo?: string     // Target service for demote_shared operations
 }
 
 export interface EnvVar {

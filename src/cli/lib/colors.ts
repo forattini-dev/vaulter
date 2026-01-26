@@ -11,7 +11,6 @@
 import {
   bold, dim, italic, underline,
   red, green, yellow, white, gray,
-  bgRed, bgGreen, bgYellow, bgBlue,
   ansi256, compose, c as chain, tpl,
   stripAnsi
 } from 'tuiuiu.js/colors'
@@ -61,11 +60,6 @@ const iceBlue = ansi256(117)      // Very light (#87D7FF)
 const lightGray = ansi256(252)
 const mediumGray = ansi256(245)
 const darkGray = ansi256(240)
-
-// Backgrounds
-const bgNeonBlue = (s: string) => chain.bgAnsi256(39).white(s)
-const bgElectricBlue = (s: string) => chain.bgAnsi256(45).black(s)
-const bgDeepBlue = (s: string) => chain.bgAnsi256(27).white(s)
 
 // Composed styles using compose()
 const boldNeonBlue = compose(bold, neonBlue)

@@ -24,11 +24,9 @@ import {
   parseKeyName,
   getValidEnvironments
 } from '../../lib/config-loader.js'
-import { createClientFromConfig } from '../lib/create-client.js'
-import { createConnectedAuditLogger, disconnectAuditLogger } from '../lib/audit-helper.js'
 import { runKeyRotate as runKeyRotateImpl } from './key/rotate.js'
 import * as ui from '../ui.js'
-import { c, symbols, print } from '../lib/colors.js'
+import { print } from '../lib/colors.js'
 
 interface KeyContext {
   args: CLIArgs

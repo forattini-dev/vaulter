@@ -5,7 +5,6 @@
  * Uses the shared init-generator module.
  */
 
-import path from 'node:path'
 import type { CLIArgs, VaulterConfig } from '../../types.js'
 import { DEFAULT_ENVIRONMENTS } from '../../types.js'
 import { configExists, findConfigDir } from '../../lib/config-loader.js'

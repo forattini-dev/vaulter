@@ -254,7 +254,11 @@ export class VaulterClient {
               description: 'string|optional',
               owner: 'string|optional',
               rotateAfter: 'date|optional',
-              source: { type: 'string', enum: ['manual', 'sync', 'import', 'rotation'], optional: true }
+              source: { type: 'string', enum: ['manual', 'sync', 'import', 'rotation', 'copy', 'rename', 'promote', 'demote'], optional: true },
+              copiedFrom: 'string|optional',
+              renamedFrom: 'string|optional',
+              promotedFrom: 'string|optional',
+              demotedTo: 'string|optional'
             }
           },
 
@@ -708,7 +712,7 @@ export class VaulterClient {
       },
       {
         concurrency,
-        onItemComplete: (key, index) => {
+        onItemComplete: (key) => {
           result.success.push(key as string)
           completed++
           if (onProgress) {
@@ -721,7 +725,7 @@ export class VaulterClient {
             })
           }
         },
-        onItemError: (error, item, index) => {
+        onItemError: (error, item) => {
           result.failed.push({
             key: item.key,
             error: error.message
@@ -739,6 +743,11 @@ export class VaulterClient {
         }
       }
     )
+
+    if (!continueOnError && errors.length > 0) {
+      const errorMsg = errors.map(e => `${e.item.key}: ${e.error.message}`).join(', ')
+      throw new Error(`Failed to set some variables: ${errorMsg}`)
+    }
 
     result.durationMs = Date.now() - startTime
     return result

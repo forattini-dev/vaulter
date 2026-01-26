@@ -11,8 +11,6 @@
  * 2. Service-specific variables (override)
  */
 
-import type { EnvVar, Environment } from '../types.js'
-
 /** Special service identifier for shared variables */
 export const SHARED_SERVICE = '__shared__'
 

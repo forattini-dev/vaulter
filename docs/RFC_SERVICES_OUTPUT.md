@@ -146,12 +146,14 @@ await pullToOutputs({
 ```
 pullToOutputs(config, environment, output?):
   1. Carregar todas as vars do environment
-  2. Separar em shared vs service-specific
+  2. Buscar shared vars de DUAS fontes:
+     - Vars com service='__shared__' (via --shared no CLI)
+     - Vars que matcham patterns de shared.include
   3. Para cada output target:
      a. Se output específico, filtrar só esse
      b. Aplicar include patterns
      c. Aplicar exclude patterns
-     d. Se inherit=true, merge shared vars
+     d. Se inherit=true, merge shared vars (output sobrescreve)
      e. Escrever arquivo em {path}/{filename}
 ```
 

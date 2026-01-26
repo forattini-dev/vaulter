@@ -200,18 +200,9 @@ async function handleInstructionsRead(uri: string): Promise<{ contents: Array<{ 
 Vaulter uses **s3db.js** internally, which stores data in **S3 OBJECT METADATA**,
 NOT in the object body. This is crucial to understand before using any tools.
 
-## 🔑 Deterministic IDs
+## 🔑 Fast Lookups
 
-Vaulter uses **deterministic IDs** for O(1) lookups:
-
-\`\`\`
-{project}|{environment}|{service}|{key}
-\`\`\`
-
-**Examples:**
-- Single repo: \`myproject|dev||DATABASE_URL\` (empty service)
-- Monorepo: \`myproject|dev|api|DATABASE_URL\`
-- Shared var: \`myproject|dev||SHARED_KEY\`
+Vaulter uses deterministic IDs for O(1) operations (no scanning needed).
 
 **Performance:**
 - get/set/delete: O(1) direct lookup
@@ -253,14 +244,17 @@ npx vaulter var list -e dev
 
 # For monorepo with service
 npx vaulter var set KEY=value -e dev -s api
+
+# Shared variables (apply to all services)
+npx vaulter var set LOG_LEVEL=debug -e dev --shared
+npx vaulter var list -e dev --shared
 \`\`\`
 
-## How s3db.js Stores Data
+## How Data is Stored
 
-- Each variable is stored as an S3 object with **deterministic ID**
-- ID format: \`{project}|{environment}|{service}|{key}\`
-- The **value is encrypted** and stored in \`x-amz-meta-*\` headers
-- The object **body is empty** (or contains overflow data for very large values)
+- Each variable is stored as an S3 object
+- Values are **encrypted** in S3 metadata headers
+- Object body is empty (data is in headers, not body)
 
 ## Correct Workflow
 
@@ -676,6 +670,56 @@ Use the official GitHub Action for automated deployments:
 1. \`vaulter_multi_set\` - Set multiple vars: \`{ "VAR1": "a", "VAR2": "b" }\`
 2. \`vaulter_multi_get\` - Get specific vars: \`["VAR1", "VAR2"]\`
 3. \`vaulter_multi_delete\` - Remove deprecated keys: \`["OLD1", "OLD2"]\`
+
+### 8. Copy between environments
+1. \`vaulter_copy source="dev" target="stg"\` - Copy all vars
+2. \`vaulter_copy source="dev" target="prd" pattern="DATABASE_*"\` - Copy by pattern
+3. \`vaulter_copy source="dev" target="prd" keys=["KEY1","KEY2"]\` - Copy specific keys
+
+### 9. Rename variables
+1. \`vaulter_rename oldKey="OLD_NAME" newKey="NEW_NAME"\` - Atomic rename
+
+### 10. Promote/demote shared vars
+1. \`vaulter_promote_shared key="LOG_LEVEL" fromService="api"\` - Make var shared
+2. \`vaulter_demote_shared key="LOG_LEVEL" toService="api"\` - Make var service-specific
+
+---
+
+## Utility Tools (4 tools)
+
+### \`vaulter_copy\`
+**Use for:** Copy variables between environments
+\`\`\`
+source: "dev"
+target: "prd"
+pattern: "DATABASE_*"  # optional
+overwrite: false       # default
+dryRun: true           # preview first
+\`\`\`
+
+### \`vaulter_rename\`
+**Use for:** Rename a variable (atomic)
+\`\`\`
+oldKey: "OLD_NAME"
+newKey: "NEW_NAME"
+environment: "dev"
+\`\`\`
+
+### \`vaulter_promote_shared\`
+**Use for:** Promote service var to shared scope
+\`\`\`
+key: "LOG_LEVEL"
+fromService: "api"
+deleteOriginal: true  # default
+\`\`\`
+
+### \`vaulter_demote_shared\`
+**Use for:** Demote shared var to service scope
+\`\`\`
+key: "DEBUG_MODE"
+toService: "api"
+deleteShared: true  # default
+\`\`\`
 `
 
   return {

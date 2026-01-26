@@ -9,7 +9,6 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import type {
   VaulterConfig,
-  OutputTarget,
   OutputTargetInput,
   NormalizedOutputTarget,
   Environment
@@ -120,7 +119,10 @@ export function filterVarsByPatterns(
 }
 
 /**
- * Get shared vars from all vars based on config
+ * Get shared vars from all vars based on config patterns
+ *
+ * NOTE: This only filters by pattern names (config.shared.include).
+ * For vars stored in __shared__ service, use getSharedServiceVars().
  */
 export function getSharedVars(
   vars: Record<string, string>,
@@ -133,6 +135,19 @@ export function getSharedVars(
   }
 
   return filterVarsByPatterns(vars, sharedPatterns, [])
+}
+
+/**
+ * Get shared vars from __shared__ service
+ *
+ * This fetches vars that are explicitly stored with service='__shared__'
+ */
+export async function getSharedServiceVars(
+  client: VaulterClient,
+  project: string,
+  environment: Environment
+): Promise<Record<string, string>> {
+  return client.export(project, environment, '__shared__', { includeShared: false })
 }
 
 // ============================================================================
@@ -274,11 +289,20 @@ export async function pullToOutputs(options: PullToOutputsOptions): Promise<Pull
   // We fetch all vars and then filter per-output for efficiency
   const allVars = await client.export(config.project, environment)
 
-  // Get shared vars (based on config.shared.include patterns)
-  const sharedVars = getSharedVars(allVars, config)
+  // Get shared vars from TWO sources:
+  // 1. Vars stored in __shared__ service (explicit shared vars)
+  // 2. Vars matching config.shared.include patterns (pattern-based shared vars)
+  const sharedServiceVars = await getSharedServiceVars(client, config.project, environment)
+  const sharedPatternVars = getSharedVars(allVars, config)
+
+  // Merge: pattern-based vars can override __shared__ service vars
+  const sharedVars = { ...sharedServiceVars, ...sharedPatternVars }
 
   if (verbose) {
-    console.log(`Fetched ${Object.keys(allVars).length} vars, ${Object.keys(sharedVars).length} shared`)
+    const serviceCount = Object.keys(sharedServiceVars).length
+    const patternCount = Object.keys(sharedPatternVars).length
+    const totalCount = Object.keys(sharedVars).length
+    console.log(`Fetched ${Object.keys(allVars).length} vars, ${totalCount} shared (${serviceCount} from __shared__ service, ${patternCount} from patterns)`)
   }
 
   // Track which vars are used (for warnings)

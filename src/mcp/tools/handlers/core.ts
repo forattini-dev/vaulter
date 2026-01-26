@@ -160,8 +160,7 @@ export async function handleExportCall(
 }
 
 export async function handleNukePreviewCall(
-  client: VaulterClient,
-  project: string
+  client: VaulterClient
 ): Promise<ToolResponse> {
   const preview = await client.nukePreview()
 

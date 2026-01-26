@@ -21,7 +21,7 @@ process.env.S3DB_LOG_FORMAT = 'json'
 
 import fs from 'node:fs'
 import path from 'node:path'
-import { getInputs, type ActionInputs } from './inputs.js'
+import { getInputs } from './inputs.js'
 import {
   generateEnvFile,
   generateJsonFile,
@@ -32,11 +32,6 @@ import {
   generateShellExport
 } from './formats.js'
 import { VaulterClient } from '../client.js'
-
-// GitHub Actions core functions (inline to avoid dependency)
-function getInput(name: string): string {
-  return process.env[`INPUT_${name.replace(/-/g, '_').toUpperCase()}`] || ''
-}
 
 function setOutput(name: string, value: string): void {
   const outputFile = process.env.GITHUB_OUTPUT

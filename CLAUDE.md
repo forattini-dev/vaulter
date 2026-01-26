@@ -19,62 +19,41 @@ Keep this managed block so 'openspec update' can refresh the instructions.
 
 # Vaulter - Environment Variables & Secrets Manager
 
-## IDs Determinísticos
+## Quick Start
 
-O vaulter usa **IDs determinísticos** em formato **base64url** para armazenamento de variáveis, permitindo lookups O(1).
+```bash
+# Inicializar projeto
+vaulter init
 
-### Formato do ID
+# Gerar chave de encriptação
+vaulter key generate
 
-**Input:** `{project}|{environment}|{service}|{key}`
-**Output:** base64url (URL-safe, S3 path safe, reversível)
+# Set variáveis
+vaulter set DATABASE_URL=postgres://... -e dev
+vaulter set API_KEY=secret -e dev
 
-**Exemplos:**
+# List variáveis
+vaulter list -e dev
 
-| Cenário | Input | ID Gerado (base64url) |
-|---------|-------|----------------------|
-| Single repo | `myproject\|dev\|\|DATABASE_URL` | `bXlwcm9qZWN0fGRldnx8REFUQUJBU0VfVVJM` |
-| Monorepo com service | `myproject\|dev\|api\|DATABASE_URL` | `bXlwcm9qZWN0fGRldnxhcGl8REFUQUJBU0VfVVJM` |
-| Shared (sem service) | `myproject\|dev\|\|SHARED_KEY` | `bXlwcm9qZWN0fGRldnx8U0hBUkVEX0tFWQ` |
+# Push para backend (S3)
+vaulter sync push -e dev
 
-### Performance
+# Pull do backend
+vaulter sync pull -e dev
+```
+
+## Performance
+
+Todas as operações são O(1) - lookups diretos sem scanning.
 
 | Operação | Complexidade |
 |----------|--------------|
-| get | O(1) direct lookup |
-| set | O(1) direct upsert |
-| delete | O(1) direct delete |
-| batch (N) | N parallel O(1) ops |
+| get/set/delete | O(1) direct lookup |
+| batch (N vars) | N parallel O(1) ops |
 
 ---
 
-## Arquitetura
-
-### Storage Backend (s3db.js)
-
-- Dados em **metadados S3**, não no body
-- Cada variável = um objeto S3
-- Valor encriptado nos headers `x-amz-meta-*`
-- idGenerator customizado para IDs determinísticos
-
-### Funções Auxiliares
-
-```typescript
-import { generateVarId, parseVarId } from 'vaulter'
-
-// Gerar ID (retorna base64url)
-const id = generateVarId('project', 'dev', 'api', 'KEY')
-// => "cHJvamVjdHxkZXZ8YXBpfEtFWQ"
-
-// Sem service
-const id2 = generateVarId('project', 'dev', undefined, 'KEY')
-// => "cHJvamVjdHxkZXZ8fEtFWQ"
-
-// Parse (reversível!)
-const parsed = parseVarId('cHJvamVjdHxkZXZ8YXBpfEtFWQ')
-// => { project: 'project', environment: 'dev', service: 'api', key: 'KEY' }
-```
-
-### Client API
+## Client API
 
 ```typescript
 import { createClient } from 'vaulter'
@@ -137,30 +116,52 @@ await client.deleteManyByKeys(['OLD1', 'OLD2'], 'project', 'dev')
 
 ## Monorepo vs Single Repo
 
-Funciona para ambos cenários. O campo `service` é opcional:
+Funciona para ambos cenários:
 
-- **Single repo:** input `project|env||key` → base64url
-- **Monorepo:** input `project|env|service|key` → base64url
-- **Shared vars:** `service: '__shared__'` → aplica a todos os services
+- **Single repo:** Apenas `project` + `environment`
+- **Monorepo:** `project` + `environment` + `service`
+- **Shared vars:** Variáveis que se aplicam a todos os services
 
-O formato base64url é **S3 path safe** (usa `-` e `_` ao invés de `+` e `/`).
+### Shared Vars (Variáveis Compartilhadas)
+
+Shared vars são variáveis que se aplicam a **todos os services** de um monorepo.
+
+**CLI - Use `--shared`:**
+
+```bash
+# Set shared var
+vaulter set LOG_LEVEL=debug -e dev --shared
+
+# Get shared var
+vaulter get LOG_LEVEL -e dev --shared
+
+# List all shared vars
+vaulter list -e dev --shared
+
+# Delete shared var
+vaulter delete LOG_LEVEL -e dev --shared
+```
+
+**MCP Tools - Use `shared: true`:**
+
+```json
+// vaulter_set com shared=true
+{ "key": "LOG_LEVEL", "value": "debug", "environment": "dev", "shared": true }
+
+// vaulter_list com shared=true
+{ "environment": "dev", "shared": true }
+```
 
 ### Herança de Shared Vars
 
 Ao exportar variáveis de um service, as **shared vars são automaticamente herdadas**:
 
-```typescript
-// Export com herança (default)
-await client.export('project', 'dev', 'api')
-// Retorna: shared vars + api vars (merged, api sobrescreve)
+```bash
+# Export api service (inclui shared vars automaticamente)
+vaulter export -e dev -s api
 
-// Export sem herança
-await client.export('project', 'dev', 'api', { includeShared: false })
-// Retorna: apenas api vars
-
-// Export só shared
-await client.export('project', 'dev', '__shared__')
-// Retorna: apenas shared vars
+# Export só shared vars
+vaulter export -e dev --shared
 ```
 
 **MCP Tool:** `vaulter_export` aceita `includeShared: boolean` (default: `true`)
@@ -232,9 +233,23 @@ vaulter sync pull --all --dry-run
 2. Se `include` especificado → só vars que match
 3. Aplica `exclude` para filtrar
 
-### Herança de Shared Vars
+### Herança de Shared Vars em Output Targets
 
-- `inherit: true` (default) → vars do `shared.include` são adicionadas
+O `pullToOutputs` busca shared vars de **duas fontes**:
+
+1. **Vars com `--shared`**: Variáveis criadas com a flag `--shared`
+2. **Patterns `shared.include`**: Vars que matcham os patterns no config
+
+```yaml
+# Exemplo: ambas as abordagens funcionam juntas
+shared:
+  include: [LOG_LEVEL, SENTRY_*]  # Pattern-based (opcional)
+
+# E vars criadas com --shared também são incluídas automaticamente
+```
+
+**Comportamento:**
+- `inherit: true` (default) → shared vars são adicionadas ao output
 - Service-specific vars sobrescrevem shared vars com mesmo nome
 
 ### Tipos
@@ -244,7 +259,9 @@ import {
   pullToOutputs,
   filterVarsByPatterns,
   normalizeOutputTargets,
-  validateOutputsConfig
+  validateOutputsConfig,
+  getSharedVars,
+  getSharedServiceVars
 } from 'vaulter'
 
 // Pull programático

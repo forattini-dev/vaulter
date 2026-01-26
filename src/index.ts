@@ -123,6 +123,7 @@ export {
   normalizeOutputTargets,
   filterVarsByPatterns,
   getSharedVars,
+  getSharedServiceVars,
   formatEnvFile,
   pullToOutputs,
   validateOutputsConfig

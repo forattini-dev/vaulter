@@ -11,7 +11,7 @@ import { createClientFromConfig } from '../lib/create-client.js'
 import { findConfigDir, getEnvFilePathForConfig } from '../../lib/config-loader.js'
 import { parseEnvFile, hasStdinData, parseEnvFromStdin } from '../../lib/env-parser.js'
 import { createConnectedAuditLogger, logPushOperation, disconnectAuditLogger } from '../lib/audit-helper.js'
-import { c, symbols, colorEnv, print } from '../lib/colors.js'
+import { c, colorEnv, print } from '../lib/colors.js'
 import { SHARED_SERVICE } from '../../lib/shared.js'
 import * as ui from '../ui.js'
 

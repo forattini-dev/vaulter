@@ -19,7 +19,6 @@ import type {
   VaulterConfig,
   AsymmetricAlgorithm,
   EncryptionMode,
-  KeySource,
   EnvironmentKeyConfig
 } from '../types.js'
 import {
@@ -249,12 +248,7 @@ export async function generateKey(options: GenerateKeyOptions): Promise<Generate
 export async function loadKeyForEnv(
   options: LoadKeyForEnvOptions
 ): Promise<LoadKeyForEnvResult> {
-  const {
-    project,
-    environment,
-    loadPublicKey = true,
-    loadPrivateKey = true
-  } = options
+  const { project, environment } = options
 
   // Auto-load config if not provided (as documented in the interface)
   const config = options.config !== undefined ? options.config : loadConfig()

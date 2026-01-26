@@ -32,7 +32,7 @@ interface RunContext {
  * Run command handler
  */
 export async function runRun(context: RunContext): Promise<void> {
-  const { args, verbose, quiet, dryRun, service, environment } = context
+  const { verbose, quiet, dryRun, service, environment } = context
 
   // Get command to execute (everything after --)
   // The CLI parser puts rest args (after --) in args._

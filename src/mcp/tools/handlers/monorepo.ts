@@ -24,8 +24,7 @@ export async function handleCategorizeVarsCall(
   config: VaulterConfig | null,
   project: string,
   environment: Environment,
-  service: string | undefined,
-  args: Record<string, unknown>
+  service: string | undefined
 ): Promise<ToolResponse> {
   const vars = await client.list({ project, environment, service })
   const patterns = getSecretPatterns(config)
@@ -210,7 +209,6 @@ export async function handleInheritanceInfoCall(
  * Handle vaulter_audit_list call
  */
 export async function handleAuditListCall(
-  client: VaulterClient,
   config: VaulterConfig | null,
   project: string,
   environment: Environment,
@@ -364,14 +362,22 @@ export async function handleStatusCall(
         }
       }
 
-      if (overdueCount > 0) {
-        rotLines.push(`⚠️  ${overdueCount} secret(s) overdue for rotation`)
-      }
-      if (healthyCount > 0) {
-        rotLines.push(`✓ ${healthyCount} secret(s) healthy`)
-      }
-      if (overdueCount === 0 && healthyCount === 0) {
-        rotLines.push('No secrets match rotation patterns')
+      if (overdueOnly) {
+        if (overdueCount > 0) {
+          rotLines.push(`⚠️  ${overdueCount} secret(s) overdue for rotation`)
+        } else {
+          rotLines.push('✓ No secrets overdue for rotation')
+        }
+      } else {
+        if (overdueCount > 0) {
+          rotLines.push(`⚠️  ${overdueCount} secret(s) overdue for rotation`)
+        }
+        if (healthyCount > 0) {
+          rotLines.push(`✓ ${healthyCount} secret(s) healthy`)
+        }
+        if (overdueCount === 0 && healthyCount === 0) {
+          rotLines.push('No secrets match rotation patterns')
+        }
       }
     }
 

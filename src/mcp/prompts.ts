@@ -187,6 +187,32 @@ export function registerPrompts(): Prompt[] {
           required: false
         }
       ]
+    },
+    {
+      name: 'copy_environment',
+      description: 'Copy variables from one environment to another. Useful for promoting configs from dev to staging/production.',
+      arguments: [
+        {
+          name: 'source',
+          description: 'Source environment: dev, stg, prd, sbx, or dr',
+          required: true
+        },
+        {
+          name: 'target',
+          description: 'Target environment: dev, stg, prd, sbx, or dr',
+          required: true
+        },
+        {
+          name: 'filter',
+          description: 'Filter pattern (e.g., "DATABASE_*", "*_URL") or "all" for everything',
+          required: false
+        },
+        {
+          name: 'overwrite',
+          description: 'Overwrite existing variables in target (true/false)',
+          required: false
+        }
+      ]
     }
   ]
 }
@@ -212,6 +238,8 @@ export function getPrompt(name: string, args: Record<string, string>): GetPrompt
       return getSharedVarsWorkflowPrompt(args)
     case 'batch_operations':
       return getBatchOperationsPrompt(args)
+    case 'copy_environment':
+      return getCopyEnvironmentPrompt(args)
     default:
       throw new Error(`Unknown prompt: ${name}`)
   }
@@ -888,6 +916,75 @@ Please:
 - **For shared variables**: Use \`shared: true\` in multi_set to apply to all services
 - **For production**: Always preview with \`vaulter_list\` before and after
 - **For auditing**: Check \`vaulter_audit_list\` to see batch operation logs`
+        }
+      }
+    ]
+  }
+}
+
+function getCopyEnvironmentPrompt(args: Record<string, string>): GetPromptResult {
+  const source = args.source || 'dev'
+  const target = args.target || 'stg'
+  const filter = args.filter || 'all'
+  const overwrite = args.overwrite === 'true'
+
+  return {
+    description: `Copy variables from ${source} to ${target}`,
+    messages: [
+      {
+        role: 'user',
+        content: {
+          type: 'text',
+          text: `Help me copy environment variables from **${source}** to **${target}**.
+
+## Configuration
+- **Source:** ${source}
+- **Target:** ${target}
+- **Filter:** ${filter === 'all' ? 'All variables' : `Pattern: ${filter}`}
+- **Overwrite existing:** ${overwrite ? 'Yes' : 'No'}
+
+## Workflow
+
+Please:
+
+1. **Preview the copy** (dry run first):
+   \`\`\`json
+   {
+     "source": "${source}",
+     "target": "${target}",
+     ${filter !== 'all' ? `"pattern": "${filter}",` : ''}
+     "overwrite": ${overwrite},
+     "dryRun": true
+   }
+   \`\`\`
+
+2. **Show what will be copied:**
+   - List variables that will be copied
+   - Highlight any that will be skipped (already exist in target)
+
+3. **Confirm with user** before executing
+
+4. **Execute the copy** using \`vaulter_copy\`:
+   \`\`\`json
+   {
+     "source": "${source}",
+     "target": "${target}",
+     ${filter !== 'all' ? `"pattern": "${filter}",` : ''}
+     "overwrite": ${overwrite},
+     "dryRun": false
+   }
+   \`\`\`
+
+5. **Verify the result:**
+   - Use \`vaulter_compare\` to show differences
+   - Confirm variables were copied correctly
+
+## Safety Tips
+
+- **Always preview first** with dryRun=true
+- **Be careful with overwrite=true** - it will replace existing values
+- **For production copies**: Consider copying only specific keys instead of all
+- **Check audit log** after copy with \`vaulter_audit_list\``
         }
       }
     ]
