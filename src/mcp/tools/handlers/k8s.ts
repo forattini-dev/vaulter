@@ -13,7 +13,7 @@ import {
   getConfigsFilePath
 } from '../../../lib/config-loader.js'
 import { parseEnvFile } from '../../../lib/env-parser.js'
-import type { VaulterConfig, Environment, EnvVar } from '../../../types.js'
+import type { VaulterConfig, Environment } from '../../../types.js'
 import type { ToolResponse } from '../config.js'
 import { sanitizeK8sName, base64Encode } from '../config.js'
 

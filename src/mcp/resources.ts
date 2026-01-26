@@ -195,6 +195,36 @@ export async function handleResourceRead(uri: string): Promise<{ contents: Array
 async function handleInstructionsRead(uri: string): Promise<{ contents: Array<{ uri: string; mimeType: string; text: string }> }> {
   const instructions = `# ⚠️ CRITICAL: How Vaulter Works
 
+## 🤖 FOR AI AGENTS: Quick Start
+
+**Step 1: Always call \`vaulter_doctor\` first!**
+\`\`\`
+vaulter_doctor environment="dev"
+\`\`\`
+This tells you what's configured, what's missing, and what to fix.
+
+**Step 2: Common tasks and which tool to use:**
+
+| Task | Tool | Example |
+|------|------|---------|
+| Check health/diagnose | \`vaulter_doctor\` | First step always |
+| Clone dev → stg/prd | \`vaulter_clone_env\` | \`source="dev" target="stg" dryRun=true\` |
+| Copy specific vars | \`vaulter_copy\` | \`source="dev" target="prd" pattern="DATABASE_*"\` |
+| See what's different | \`vaulter_compare\` | \`source="dev" target="prd"\` |
+| Set multiple vars | \`vaulter_multi_set\` | \`variables=[{key,value,sensitive}]\` |
+| List vars | \`vaulter_list\` | \`environment="dev" showValues=true\` |
+
+**Step 3: If environment is empty:**
+\`\`\`
+# Preview what would be cloned
+vaulter_clone_env source="dev" target="prd" dryRun=true
+
+# Execute the clone
+vaulter_clone_env source="dev" target="prd"
+\`\`\`
+
+---
+
 ## Data Storage Architecture
 
 Vaulter uses **s3db.js** internally, which stores data in **S3 OBJECT METADATA**,
@@ -371,12 +401,30 @@ Backend resolution priority (first match wins):
  * Read tools guide resource - Which tool to use for each scenario
  */
 async function handleToolsGuideRead(uri: string): Promise<{ contents: Array<{ uri: string; mimeType: string; text: string }> }> {
-  const guide = `# Vaulter MCP Tools Guide (32 tools)
+  const guide = `# Vaulter MCP Tools Guide (39 tools)
+
+## 🚨 FOR AI AGENTS: START HERE
+
+Before performing any operations, **ALWAYS call \`vaulter_doctor\` first** to understand the current state:
+
+\`\`\`
+vaulter_doctor environment="dev"
+\`\`\`
+
+This will tell you:
+- If config exists and is valid
+- If encryption keys are configured
+- If backend is reachable
+- If environments have variables or are empty
+- What needs to be fixed before proceeding
 
 ## Quick Reference
 
 | Scenario | Tool to Use |
 |----------|-------------|
+| **FIRST: Check health** | \`vaulter_doctor\` ⭐ |
+| Clone entire environment | \`vaulter_clone_env\` |
+| **Diff local vs remote** | \`vaulter_diff\` ⭐ |
 | Read a single variable | \`vaulter_get\` |
 | Set/update a variable | \`vaulter_set\` |
 | Set shared variable | \`vaulter_set\` with shared=true |
@@ -384,11 +432,62 @@ async function handleToolsGuideRead(uri: string): Promise<{ contents: Array<{ ur
 | List all variables | \`vaulter_list\` |
 | Export to file format | \`vaulter_export\` |
 | Compare environments | \`vaulter_compare\` |
+| Copy vars between envs | \`vaulter_copy\` |
 | Search across envs | \`vaulter_search\` |
 | Check system status | \`vaulter_status\` |
 | **Batch: read multiple** | \`vaulter_multi_get\` |
 | **Batch: set multiple** | \`vaulter_multi_set\` |
 | **Batch: delete multiple** | \`vaulter_multi_delete\` |
+
+---
+
+## 🩺 Diagnostic Tools (Call First!)
+
+### \`vaulter_doctor\` ⭐ IMPORTANT
+**Use for:** Diagnosing configuration health before any operation
+\`\`\`
+environment: "dev"
+\`\`\`
+Returns: config status, backend connectivity, encryption keys, local files, suggestions.
+
+**Always call this first when:**
+- Starting work on a new project
+- Environment seems broken
+- You're not sure what's configured
+- Need to understand why something isn't working
+
+### \`vaulter_clone_env\`
+**Use for:** Cloning ALL variables from one environment to another
+\`\`\`
+source: "dev"
+target: "stg"
+dryRun: true  # ALWAYS preview first!
+\`\`\`
+
+**When to use:**
+- Target environment is empty and needs to be populated
+- Setting up a new environment (stg, prd) from dev
+- Creating a backup of an environment
+
+### \`vaulter_diff\` ⭐ NEW
+**Use for:** Preview differences between local .env file and remote backend
+\`\`\`
+environment: "dev"
+showValues: true  # Show masked values
+\`\`\`
+
+**Returns:**
+| Symbol | Meaning |
+|--------|---------|
+| \`+\` | Local only (will be pushed) |
+| \`-\` | Remote only (will be pulled or deleted with --prune) |
+| \`~\` | Different values (conflict) |
+| \`=\` | Identical (synced) |
+
+**When to use:**
+- Before push/pull/merge operations
+- Daily workflow: check what changed before syncing
+- Debug sync issues
 
 ---
 

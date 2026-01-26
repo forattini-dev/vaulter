@@ -3,7 +3,7 @@
  *
  * Pre-configured prompt templates for common workflows
  *
- * Prompts:
+ * Prompts (10):
  *   setup_project        → Initialize a new vaulter project
  *   migrate_dotenv       → Migrate existing .env files to vaulter
  *   deploy_secrets       → Deploy secrets to Kubernetes
@@ -11,6 +11,9 @@
  *   security_audit       → Audit secrets for security issues
  *   rotation_workflow    → Check and manage secret rotation (check/rotate/report)
  *   shared_vars_workflow → Manage monorepo shared variables (list/promote/override/audit)
+ *   batch_operations     → Batch set/get/delete operations
+ *   copy_environment     → Copy variables between environments
+ *   sync_workflow        → Sync local files with remote backend (diff/push/pull/merge)
  */
 
 import type { Prompt, GetPromptResult } from '@modelcontextprotocol/sdk/types.js'
@@ -213,6 +216,32 @@ export function registerPrompts(): Prompt[] {
           required: false
         }
       ]
+    },
+    {
+      name: 'sync_workflow',
+      description: 'Synchronize local .env files with remote backend. Covers diff, push, pull, and merge operations with conflict resolution.',
+      arguments: [
+        {
+          name: 'action',
+          description: 'Action: "diff" (preview changes), "push" (local→remote), "pull" (remote→local), "merge" (bidirectional)',
+          required: true
+        },
+        {
+          name: 'environment',
+          description: 'Environment: dev, stg, prd, sbx, or dr',
+          required: true
+        },
+        {
+          name: 'strategy',
+          description: 'Conflict resolution: "local" (local wins), "remote" (remote wins), "error" (fail on conflict)',
+          required: false
+        },
+        {
+          name: 'prune',
+          description: 'For push: delete remote vars not in local (true/false)',
+          required: false
+        }
+      ]
     }
   ]
 }
@@ -240,6 +269,8 @@ export function getPrompt(name: string, args: Record<string, string>): GetPrompt
       return getBatchOperationsPrompt(args)
     case 'copy_environment':
       return getCopyEnvironmentPrompt(args)
+    case 'sync_workflow':
+      return getSyncWorkflowPrompt(args)
     default:
       throw new Error(`Unknown prompt: ${name}`)
   }
@@ -985,6 +1016,184 @@ Please:
 - **Be careful with overwrite=true** - it will replace existing values
 - **For production copies**: Consider copying only specific keys instead of all
 - **Check audit log** after copy with \`vaulter_audit_list\``
+        }
+      }
+    ]
+  }
+}
+
+function getSyncWorkflowPrompt(args: Record<string, string>): GetPromptResult {
+  const action = args.action || 'diff'
+  const environment = args.environment || 'dev'
+  const strategy = args.strategy || 'local'
+  const prune = args.prune === 'true'
+
+  return {
+    description: `Sync workflow: ${action} for ${environment}`,
+    messages: [
+      {
+        role: 'user',
+        content: {
+          type: 'text',
+          text: `Help me synchronize local .env files with the remote backend.
+
+## Configuration
+- **Action:** ${action}
+- **Environment:** ${environment}
+- **Strategy:** ${strategy} (for conflicts)
+${prune ? '- **Prune:** Yes (delete remote vars not in local)\n' : ''}
+
+## Sync Workflow Overview
+
+The recommended workflow for daily operations:
+
+1. **Check what's different** with \`vaulter sync diff\` or \`vaulter_diff\` tool
+2. **Push local changes** with \`vaulter sync push\`
+3. **Or pull remote changes** with \`vaulter sync pull\`
+4. **Or merge bidirectionally** with \`vaulter sync merge\`
+
+---
+
+${action === 'diff' ? `## Diff: Preview Changes
+
+Please:
+
+1. **Show diff** using CLI or MCP tool:
+
+   **CLI:**
+   \`\`\`bash
+   vaulter sync diff -e ${environment} --values
+   \`\`\`
+
+   **MCP Tool:**
+   \`\`\`json
+   {
+     "tool": "vaulter_diff",
+     "args": {
+       "environment": "${environment}",
+       "showValues": true
+     }
+   }
+   \`\`\`
+
+2. **Analyze the output:**
+
+   | Symbol | Meaning |
+   |--------|---------|
+   | \`+\` | Local only (will be pushed) |
+   | \`-\` | Remote only (will be pulled or deleted with --prune) |
+   | \`~\` | Different values (conflict - strategy decides winner) |
+   | \`=\` | Identical (no action needed) |
+
+3. **Suggest next steps:**
+   - If local changes need to go remote: \`vaulter sync push -e ${environment}\`
+   - If remote changes need to come local: \`vaulter sync pull -e ${environment}\`
+   - If bidirectional sync needed: \`vaulter sync merge -e ${environment} --strategy ${strategy}\`
+` : ''}
+
+${action === 'push' ? `## Push: Local → Remote
+
+Please:
+
+1. **Preview first** (always):
+   \`\`\`bash
+   vaulter sync diff -e ${environment} --values
+   \`\`\`
+
+2. **Execute push:**
+   \`\`\`bash
+   vaulter sync push -e ${environment}${prune ? ' --prune' : ''}
+   \`\`\`
+
+   ${prune ? `**⚠️ WARNING:** \`--prune\` will DELETE remote variables not in local!` : ''}
+
+3. **What happens:**
+   - Local variables are pushed to remote
+   - ${prune ? 'Remote-only variables are DELETED' : 'Remote-only variables are kept'}
+   - Conflicts: local value wins (always, push is authoritative)
+
+4. **Verify result:**
+   \`\`\`bash
+   vaulter sync diff -e ${environment}
+   # Should show "All variables are in sync"
+   \`\`\`
+` : ''}
+
+${action === 'pull' ? `## Pull: Remote → Local
+
+Please:
+
+1. **Preview first:**
+   \`\`\`bash
+   vaulter sync diff -e ${environment} --values
+   \`\`\`
+
+2. **Execute pull:**
+   \`\`\`bash
+   vaulter sync pull -e ${environment}
+   \`\`\`
+
+3. **What happens:**
+   - Remote variables are written to local .env file
+   - If outputs are configured, writes to output targets too
+   - Local-only variables are kept (pull doesn't delete)
+
+4. **For specific output target:**
+   \`\`\`bash
+   vaulter sync pull -e ${environment} --output web
+   \`\`\`
+
+5. **For all outputs:**
+   \`\`\`bash
+   vaulter sync pull -e ${environment} --all
+   \`\`\`
+` : ''}
+
+${action === 'merge' ? `## Merge: Bidirectional Sync
+
+Please:
+
+1. **Preview first:**
+   \`\`\`bash
+   vaulter sync diff -e ${environment} --values
+   \`\`\`
+
+2. **Execute merge:**
+   \`\`\`bash
+   vaulter sync merge -e ${environment} --strategy ${strategy}
+   \`\`\`
+
+3. **Strategy options:**
+
+   | Strategy | Behavior |
+   |----------|----------|
+   | \`local\` | Local value wins on conflict (default) |
+   | \`remote\` | Remote value wins on conflict |
+   | \`error\` | Fail if any conflicts exist |
+
+4. **What happens:**
+   - Local-only vars → pushed to remote
+   - Remote-only vars → pulled to local
+   - Conflicts → resolved by strategy
+
+5. **To always use remote values:**
+   \`\`\`bash
+   vaulter sync merge -e ${environment} --strategy remote
+   \`\`\`
+
+6. **To fail on conflicts (CI/CD safe):**
+   \`\`\`bash
+   vaulter sync merge -e ${environment} --strategy error
+   \`\`\`
+` : ''}
+
+## Safety Tips
+
+- **Always diff first** before push/pull/merge
+- **Use \`--dry-run\`** to preview without changes
+- **For production:** Consider \`--strategy error\` to catch unexpected conflicts
+- **Backup:** \`vaulter export -e ${environment} > backup.env\` before major changes
+- **Audit:** Check \`vaulter_audit_list\` after operations`
         }
       }
     ]

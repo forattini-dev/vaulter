@@ -97,6 +97,7 @@
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist releases",
     "lint": "echo \"No linting configured for this project.\" && exit 0",
+    "lint:dead": "tsc --noEmit --noUnusedLocals --noUnusedParameters",
     "prepublishOnly": "pnpm build",
     "cli": "tsx src/cli/index.ts",
     "release": "pnpm version patch && git push && git push --tags",
