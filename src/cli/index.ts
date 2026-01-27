@@ -63,6 +63,8 @@ import { runVar } from './commands/var/index.js'
 import { runSyncGroup } from './commands/sync/index.js'
 import { runExportGroup } from './commands/export/index.js'
 import { runServiceGroup } from './commands/service/index.js'
+import { runLocalGroup } from './commands/local/index.js'
+import { runSnapshotGroup } from './commands/snapshot/index.js'
 
 // MCP is loaded dynamically (not available in standalone binaries)
 const IS_STANDALONE = process.env.VAULTER_STANDALONE === 'true'
@@ -471,6 +473,69 @@ const cliSchema: CLISchema = {
       }
     },
 
+    local: {
+      description: 'Local development overrides (never touches backend)',
+      commands: {
+        init: {
+          description: 'Create overrides file from base env'
+        },
+        pull: {
+          description: 'Base + overrides → .env outputs'
+        },
+        set: {
+          description: 'Add local override (KEY=val KEY2::val2)'
+        },
+        delete: {
+          description: 'Remove a local override',
+          aliases: ['rm'],
+          positional: [
+            { name: 'key', required: true, description: 'Variable name' }
+          ]
+        },
+        diff: {
+          description: 'Show overrides vs base environment'
+        },
+        reset: {
+          description: 'Clear all local overrides'
+        },
+        status: {
+          description: 'Show local state summary'
+        }
+      }
+    },
+
+    snapshot: {
+      description: 'Backup and restore environment snapshots',
+      commands: {
+        create: {
+          description: 'Save snapshot of an environment',
+          options: {
+            name: {
+              type: 'string',
+              description: 'Optional name suffix for the snapshot'
+            }
+          }
+        },
+        list: {
+          description: 'List snapshots',
+          aliases: ['ls']
+        },
+        restore: {
+          description: 'Restore snapshot to backend',
+          positional: [
+            { name: 'id', required: true, description: 'Snapshot ID' }
+          ]
+        },
+        delete: {
+          description: 'Remove a snapshot',
+          aliases: ['rm'],
+          positional: [
+            { name: 'id', required: true, description: 'Snapshot ID' }
+          ]
+        }
+      }
+    },
+
     mcp: {
       description: 'Start MCP server for Claude integration',
       options: {
@@ -834,6 +899,14 @@ async function main(): Promise<void> {
 
       case 'key':
         await runKey(context)
+        break
+
+      case 'local':
+        await runLocalGroup(context)
+        break
+
+      case 'snapshot':
+        await runSnapshotGroup(context)
         break
 
       case 'service':

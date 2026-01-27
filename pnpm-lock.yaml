@@ -23,9 +23,6 @@ importers:
       p-limit:
         specifier: ^7.2.0
         version: 7.2.0
-      recker:
-        specifier: ^1.0.66
-        version: 1.0.66
       s3db.js:
         specifier: ^19.3.21
         version: 19.3.21(@hono/node-server@1.19.9(hono@4.11.4))(express@5.2.1)(hono@4.11.4)(jose@6.1.3)(zod@4.3.5)
@@ -1660,22 +1657,6 @@ packages:
     resolution: {integrity: sha512-57frrGM/OCTLqLOAh0mhVA9VBMHd+9U7Zb2THMGdBUoZVOtGbJzjxsYGDJ3A9AYYCP4hn6y1TVbaOfzWtm5GFg==}
     engines: {node: '>= 12.13.0'}
 
-  recker@1.0.66:
-    resolution: {integrity: sha512-Q81q7A/aqOeC/mm7KggPtg3kzYAaWsu3ATSMzMFTBaoFKOvEBfE9jRVjB42S5s/QSnOKWq9vmPtQ0pLLGPX41g==}
-    engines: {node: '>=18'}
-    hasBin: true
-    peerDependencies:
-      cardinal: ^2.1.0
-      ioredis: ^5.0.0
-      ssh2-sftp-client: ^11.0.0
-    peerDependenciesMeta:
-      cardinal:
-        optional: true
-      ioredis:
-        optional: true
-      ssh2-sftp-client:
-        optional: true
-
   recker@1.0.68:
     resolution: {integrity: sha512-lIjfr9decK5JsbzExi3Rp4OvxwINlfH5BGSP0z/TGhZj9PYwS+UMqUsfXYCWODSat0OiqvEzLaPMzHvq2FMovQ==}
     engines: {node: '>=18'}
@@ -2051,6 +2032,7 @@ packages:
   tar@7.5.3:
     resolution: {integrity: sha512-ENg5JUHUm2rDD7IvKNFGzyElLXNjachNLp6RaGf4+JOgxXHkqA+gq81ZAMCUmtMtqBsoU62lcp6S27g1LCYGGQ==}
     engines: {node: '>=18'}
+    deprecated: Old versions of tar are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exhorbitant rates) by contacting i@izs.me
 
   text-decoder@1.2.3:
     resolution: {integrity: sha512-3/o9z3X0X0fTupwsYvR03pJ/DjWuqqrfwBgTQzdWDiQSm9KitAyz/9WqsT2JQW7KV2m+bC2ol/zqpW37NHxLaA==}
@@ -4318,17 +4300,6 @@ snapshots:
       util-deprecate: 1.0.2
 
   real-require@0.2.0: {}
-
-  recker@1.0.66:
-    dependencies:
-      '@maxmind/geoip2-node': 6.3.4
-      cli-args-parser: 1.0.6
-      css-select: 6.0.0
-      fuse.js: 7.1.0
-      he: 1.2.0
-      tuiuiu.js: 1.0.51
-      undici: 7.18.2
-      zod: 4.3.5
 
   recker@1.0.68:
     dependencies:

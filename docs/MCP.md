@@ -2,7 +2,7 @@
 
 Complete reference for the Vaulter Model Context Protocol (MCP) server.
 
-**Stats:** 39 tools | 5 resources | 10 prompts
+**Stats:** 47 tools | 5 resources | 10 prompts
 
 ---
 
@@ -39,7 +39,7 @@ Complete reference for the Vaulter Model Context Protocol (MCP) server.
 
 ---
 
-## Tools Reference (39)
+## Tools Reference (47)
 
 ### Core Operations (5)
 
@@ -559,6 +559,88 @@ Demote a shared variable to a specific service.
 | `environment` | string | No | `dev` | Environment name |
 | `project` | string | No | auto | Project name |
 | `deleteShared` | boolean | No | `true` | Delete the shared var after demoting |
+
+---
+
+### Local Overrides (5)
+
+Local overrides are a transparent layer on top of a base environment. They are plaintext, gitignored, and never touch the backend.
+
+#### `vaulter_local_pull`
+Pull base environment + local overrides to output targets (.env files).
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `output` | string | No | - | Specific output target name |
+| `all` | boolean | No | `false` | Pull to all output targets |
+| `service` | string | No | - | Service name (monorepo) |
+
+#### `vaulter_local_set`
+Set a local override. Only modifies local file, never touches backend.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `key` | string | **Yes** | - | Variable name |
+| `value` | string | **Yes** | - | Value to set |
+| `service` | string | No | - | Service name (monorepo) |
+
+#### `vaulter_local_delete`
+Remove a local override.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `key` | string | **Yes** | - | Variable name to remove |
+| `service` | string | No | - | Service name (monorepo) |
+
+#### `vaulter_local_diff`
+Show local overrides vs base environment.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `service` | string | No | - | Service name (monorepo) |
+
+#### `vaulter_local_status`
+Show local overrides status: base environment, overrides count, snapshots count.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `service` | string | No | - | Service name (monorepo) |
+
+---
+
+### Snapshot Tools (3)
+
+Snapshots are compressed (gzip) backups of an environment's variables with SHA256 integrity verification.
+Supports two storage drivers configured via `snapshots.driver` in `.vaulter/config.yaml`:
+- **filesystem** (default): Stored in `.vaulter/snapshots/<id>/` with `data.jsonl.gz` + `manifest.json`.
+- **s3db**: Uses s3db.js BackupPlugin, storing backups in the same S3 backend. Restore writes directly to the database.
+
+#### `vaulter_snapshot_create`
+Create a compressed snapshot of an environment. Returns checksum and path.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `environment` | string | **Yes** | - | Environment to snapshot |
+| `name` | string | No | - | Optional name suffix (e.g. `pre-deploy`) |
+| `service` | string | No | - | Service name (monorepo) |
+
+**Output includes:** id, environment, varsCount, checksum (sha256), path.
+
+#### `vaulter_snapshot_list`
+List all snapshots, optionally filtered by environment. Shows checksum and compression for each.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `environment` | string | No | - | Filter by environment |
+
+#### `vaulter_snapshot_restore`
+Restore a snapshot to the backend. Verifies SHA256 integrity before restoring. In CLI mode, omitting the ID opens an interactive tuiuiu.js selector.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `id` | string | **Yes** | - | Snapshot ID (from snapshot list) |
+| `environment` | string | **Yes** | - | Target environment to restore to |
+| `service` | string | No | - | Service name (monorepo) |
 
 ---
 
@@ -1098,7 +1180,30 @@ Claude: I'll show you the differences...
 3. vaulter_inheritance_info → Check service inheritance
 ```
 
-### 6. Output Targets (Multi-Framework)
+### 6. Local Development with Overrides
+
+```
+1. vaulter_local_set key=PORT value=3001      → Add local override
+2. vaulter_local_set key=DEBUG value=true      → Add another
+3. vaulter_local_pull all=true                 → Base + overrides → .env files
+4. vaulter_local_diff                          → See what's overridden
+5. vaulter_local_status                        → Check state
+```
+
+### 7. Snapshot Backup/Restore
+
+Snapshots use gzip compression + SHA256 verification. Stored as `data.jsonl.gz` + `manifest.json`.
+
+```
+1. vaulter_snapshot_create environment=dev     → Backup (gzip + SHA256 checksum)
+2. vaulter_multi_set ...                       → Make changes
+3. vaulter_snapshot_list environment=dev       → List with checksum & compression
+4. vaulter_snapshot_restore id=<id> environment=dev → Verify SHA256 + rollback
+```
+
+CLI: `vaulter snapshot restore -e dev` (sem ID) abre selector interativo via tuiuiu.js.
+
+### 8. Output Targets (Multi-Framework)
 
 ```
 1. Configure outputs in config.yaml

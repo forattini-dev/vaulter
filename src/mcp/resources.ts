@@ -134,7 +134,7 @@ export async function listResources(): Promise<Resource[]> {
   resources.push({
     uri: 'vaulter://tools-guide',
     name: 'Tools Guide',
-    description: 'Comprehensive guide on which vaulter tool to use for each scenario. Includes 32 tools organized by category.',
+    description: 'Comprehensive guide on which vaulter tool to use for each scenario. Includes 47 tools organized by category.',
     mimeType: 'text/markdown'
   })
 
@@ -401,7 +401,7 @@ Backend resolution priority (first match wins):
  * Read tools guide resource - Which tool to use for each scenario
  */
 async function handleToolsGuideRead(uri: string): Promise<{ contents: Array<{ uri: string; mimeType: string; text: string }> }> {
-  const guide = `# Vaulter MCP Tools Guide (39 tools)
+  const guide = `# Vaulter MCP Tools Guide (47 tools)
 
 ## 🚨 FOR AI AGENTS: START HERE
 
@@ -438,6 +438,11 @@ This will tell you:
 | **Batch: read multiple** | \`vaulter_multi_get\` |
 | **Batch: set multiple** | \`vaulter_multi_set\` |
 | **Batch: delete multiple** | \`vaulter_multi_delete\` |
+| **Local: set override** | \`vaulter_local_set\` |
+| **Local: pull with overrides** | \`vaulter_local_pull\` |
+| **Local: diff vs base** | \`vaulter_local_diff\` |
+| **Snapshot: backup env** | \`vaulter_snapshot_create\` |
+| **Snapshot: restore env** | \`vaulter_snapshot_restore\` |
 
 ---
 
@@ -731,6 +736,63 @@ mode: "split"  # or "unified"
 
 ---
 
+## 💻 Local Overrides (5 tools)
+
+Local overrides layer on top of a base environment. Plaintext, gitignored, never touch the backend.
+
+### \`vaulter_local_set\`
+**Use for:** Setting a local override (never touches backend)
+\`\`\`
+key: "PORT"
+value: "3001"
+\`\`\`
+
+### \`vaulter_local_delete\`
+**Use for:** Removing a local override
+\`\`\`
+key: "PORT"
+\`\`\`
+
+### \`vaulter_local_pull\`
+**Use for:** Generating .env files from base env + local overrides
+\`\`\`
+all: true  # or output: "web"
+\`\`\`
+
+### \`vaulter_local_diff\`
+**Use for:** Seeing what's overridden locally vs base env
+
+### \`vaulter_local_status\`
+**Use for:** Checking local state (overrides count, snapshots, base env)
+
+---
+
+## 📸 Snapshot Tools (3 tools)
+
+Snapshots are timestamped backups of environment variables.
+
+### \`vaulter_snapshot_create\`
+**Use for:** Backup before making changes
+\`\`\`
+environment: "dev"
+name: "before-migration"  # optional
+\`\`\`
+
+### \`vaulter_snapshot_list\`
+**Use for:** Listing available snapshots
+\`\`\`
+environment: "dev"  # optional filter
+\`\`\`
+
+### \`vaulter_snapshot_restore\`
+**Use for:** Rollback to a previous state
+\`\`\`
+id: "dev_2025-01-15T10-30-00"
+environment: "dev"
+\`\`\`
+
+---
+
 ## Common Workflows
 
 ### 1. First time setup
@@ -788,6 +850,17 @@ Use the official GitHub Action for automated deployments:
 ### 10. Promote/demote shared vars
 1. \`vaulter_promote_shared key="LOG_LEVEL" fromService="api"\` - Make var shared
 2. \`vaulter_demote_shared key="LOG_LEVEL" toService="api"\` - Make var service-specific
+
+### 11. Local development with overrides
+1. \`vaulter_local_set key="PORT" value="3001"\` - Override port locally
+2. \`vaulter_local_set key="DEBUG" value="true"\` - Override debug
+3. \`vaulter_local_pull all=true\` - Generate .env files (base + overrides)
+4. \`vaulter_local_diff\` - See what's overridden
+
+### 12. Snapshot backup/restore
+1. \`vaulter_snapshot_create environment="dev"\` - Backup before changes
+2. Make changes with \`vaulter_multi_set\` etc.
+3. \`vaulter_snapshot_restore id="..." environment="dev"\` - Rollback if needed
 
 ---
 

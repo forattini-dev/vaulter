@@ -1292,6 +1292,14 @@ export class VaulterClient {
   }
 
   /**
+   * Get the underlying s3db database instance.
+   * Useful for plugins (e.g., BackupPlugin for snapshot driver).
+   */
+  getDatabase(): any {
+    return this.db
+  }
+
+  /**
    * Get the current encryption mode
    */
   getEncryptionMode(): 'symmetric' | 'asymmetric' {

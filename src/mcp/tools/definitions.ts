@@ -607,6 +607,103 @@ export function registerTools(): Tool[] {
         required: ['source', 'target']
       }
     },
+    // === LOCAL OVERRIDES TOOLS ===
+    {
+      name: 'vaulter_local_pull',
+      description: 'Pull base environment + local overrides to output targets (.env files). Local overrides never touch the backend.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          output: { type: 'string', description: 'Specific output target name' },
+          all: { type: 'boolean', description: 'Pull to all output targets', default: false },
+          service: { type: 'string', description: 'Service name (for monorepos)' }
+        }
+      }
+    },
+    {
+      name: 'vaulter_local_set',
+      description: 'Set a local override. This only modifies the local overrides file and never touches the backend.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          key: { type: 'string', description: 'Variable name' },
+          value: { type: 'string', description: 'Value to set' },
+          service: { type: 'string', description: 'Service name (for monorepos)' }
+        },
+        required: ['key', 'value']
+      }
+    },
+    {
+      name: 'vaulter_local_delete',
+      description: 'Remove a local override.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          key: { type: 'string', description: 'Variable name to remove' },
+          service: { type: 'string', description: 'Service name (for monorepos)' }
+        },
+        required: ['key']
+      }
+    },
+    {
+      name: 'vaulter_local_diff',
+      description: 'Show local overrides vs base environment. Shows which variables are added or modified locally.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          service: { type: 'string', description: 'Service name (for monorepos)' }
+        }
+      }
+    },
+    {
+      name: 'vaulter_local_status',
+      description: 'Show local overrides status: base environment, overrides count, snapshots count.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          service: { type: 'string', description: 'Service name (for monorepos)' }
+        }
+      }
+    },
+
+    // === SNAPSHOT TOOLS ===
+    {
+      name: 'vaulter_snapshot_create',
+      description: 'Create a timestamped snapshot of an environment. Useful for backup before making changes.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          environment: { type: 'string', description: 'Environment to snapshot', default: 'dev' },
+          name: { type: 'string', description: 'Optional name suffix for the snapshot' },
+          service: { type: 'string', description: 'Service name (for monorepos)' }
+        },
+        required: ['environment']
+      }
+    },
+    {
+      name: 'vaulter_snapshot_list',
+      description: 'List all snapshots, optionally filtered by environment.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          environment: { type: 'string', description: 'Filter by environment' }
+        }
+      }
+    },
+    {
+      name: 'vaulter_snapshot_restore',
+      description: 'Restore a snapshot to the backend. Pushes all variables from the snapshot to the specified environment.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', description: 'Snapshot ID (from snapshot list)' },
+          environment: { type: 'string', description: 'Target environment to restore to' },
+          service: { type: 'string', description: 'Service name (for monorepos)' }
+        },
+        required: ['id', 'environment']
+      }
+    },
+
     {
       name: 'vaulter_diff',
       description: 'Show differences between local file and remote backend. Essential for understanding what will change before push/pull operations. Use showValues=true to see masked values.',

@@ -207,41 +207,6 @@ export async function logPushOperation(
 }
 
 /**
- * Log a deleteAll operation
- */
-export async function logDeleteAllOperation(
-  logger: AuditLogger | null,
-  input: {
-    project: string
-    environment: string
-    service?: string
-    deletedKeys: string[]
-    source?: AuditSource
-    metadata?: Record<string, unknown>
-  }
-): Promise<void> {
-  if (!logger) return
-
-  try {
-    await logger.log({
-      operation: 'deleteAll',
-      key: '*',
-      project: input.project,
-      environment: input.environment,
-      service: input.service,
-      source: input.source || 'cli',
-      metadata: {
-        ...input.metadata,
-        deleted: input.deletedKeys.length,
-        deletedKeys: input.deletedKeys
-      }
-    })
-  } catch {
-    // Silently ignore audit failures
-  }
-}
-
-/**
  * Disconnect audit logger safely
  */
 export async function disconnectAuditLogger(logger: AuditLogger | null): Promise<void> {

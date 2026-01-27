@@ -97,6 +97,16 @@ import {
   handleCloneEnvCall,
   handleDiffCall
 } from './handlers/doctor.js'
+import {
+  handleLocalPullCall,
+  handleLocalSetCall,
+  handleLocalDeleteCall,
+  handleLocalDiffCall,
+  handleLocalStatusCall,
+  handleSnapshotCreateCall,
+  handleSnapshotListCall,
+  handleSnapshotRestoreCall
+} from './handlers/local.js'
 
 /**
  * Main tool call dispatcher
@@ -130,6 +140,20 @@ export async function handleToolCall(
 
   if (name === 'vaulter_init') {
     return handleInitCall(args)
+  }
+
+  // Local tools that don't need backend
+  if (name === 'vaulter_local_set' && config) {
+    return handleLocalSetCall(config, args)
+  }
+  if (name === 'vaulter_local_delete' && config) {
+    return handleLocalDeleteCall(config, args)
+  }
+  if (name === 'vaulter_local_status' && config) {
+    return handleLocalStatusCall(config, args)
+  }
+  if (name === 'vaulter_snapshot_list' && config && config.snapshots?.driver !== 's3db') {
+    return handleSnapshotListCall(config, args)
   }
 
   // Key management tools - don't need backend, but need project for scoping
@@ -332,6 +356,23 @@ export async function handleToolCall(
 
       case 'vaulter_diff':
         return await handleDiffCall(client, config, project, environment, service, args)
+
+      // === LOCAL OVERRIDES TOOLS (need client for base env) ===
+      case 'vaulter_local_pull':
+        return await handleLocalPullCall(client, config!, project, environment, service, args)
+
+      case 'vaulter_local_diff':
+        return await handleLocalDiffCall(client, config!, project, environment, service, args)
+
+      // === SNAPSHOT TOOLS (need client) ===
+      case 'vaulter_snapshot_create':
+        return await handleSnapshotCreateCall(client, config!, project, environment, service, args)
+
+      case 'vaulter_snapshot_list':
+        return await handleSnapshotListCall(config!, args, client)
+
+      case 'vaulter_snapshot_restore':
+        return await handleSnapshotRestoreCall(client, config!, project, environment, service, args)
 
       default:
         return { content: [{ type: 'text', text: `Unknown tool: ${name}` }] }

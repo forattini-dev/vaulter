@@ -210,6 +210,10 @@ export interface PullToOutputsOptions {
   dryRun?: boolean
   /** Verbose output */
   verbose?: boolean
+  /** Override vars instead of fetching from client.export() */
+  varsOverride?: Record<string, string>
+  /** Override shared vars instead of fetching from getSharedServiceVars() */
+  sharedVarsOverride?: Record<string, string>
 }
 
 export interface PullToOutputsResult {
@@ -254,7 +258,9 @@ export async function pullToOutputs(options: PullToOutputsOptions): Promise<Pull
     all = false,
     output: specificOutput,
     dryRun = false,
-    verbose = false
+    verbose = false,
+    varsOverride,
+    sharedVarsOverride
   } = options
 
   const result: PullToOutputsResult = {
@@ -285,14 +291,13 @@ export async function pullToOutputs(options: PullToOutputsOptions): Promise<Pull
     throw new Error('Either --all or --output <name> is required')
   }
 
-  // Fetch all vars for this project/environment
-  // We fetch all vars and then filter per-output for efficiency
-  const allVars = await client.export(config.project, environment)
+  // Fetch all vars for this project/environment (or use overrides)
+  const allVars = varsOverride ?? await client.export(config.project, environment)
 
-  // Get shared vars from TWO sources:
+  // Get shared vars from TWO sources (or use overrides):
   // 1. Vars stored in __shared__ service (explicit shared vars)
   // 2. Vars matching config.shared.include patterns (pattern-based shared vars)
-  const sharedServiceVars = await getSharedServiceVars(client, config.project, environment)
+  const sharedServiceVars = sharedVarsOverride ?? await getSharedServiceVars(client, config.project, environment)
   const sharedPatternVars = getSharedVars(allVars, config)
 
   // Merge: pattern-based vars can override __shared__ service vars

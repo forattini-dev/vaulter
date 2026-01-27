@@ -26,26 +26,12 @@ export function setQuiet(enabled: boolean): void {
 }
 
 /**
- * Check if quiet mode is enabled
- */
-export function isQuiet(): boolean {
-  return quietMode
-}
-
-/**
  * Output data to stdout (for pipes)
  * This is the ONLY function that should write to stdout for data
  * Works even in quiet mode (data output is essential)
  */
 export function output(data: string): void {
   process.stdout.write(data + '\n')
-}
-
-/**
- * Output raw data without newline
- */
-export function outputRaw(data: string): void {
-  process.stdout.write(data)
 }
 
 /**
@@ -82,13 +68,6 @@ export function success(message: string): void {
   if (isTTY && !quietMode) {
     print.success(message)
   }
-}
-
-/**
- * Log warning message (always shown)
- */
-export function warn(message: string): void {
-  print.warning(message)
 }
 
 /**
@@ -187,41 +166,6 @@ export function formatTable(
 }
 
 /**
- * Format simple rows as a table (shorthand)
- */
-export function formatSimpleTable(
-  headers: string[],
-  rows: string[][]
-): string {
-  if (!isTTY) {
-    return rows.map(row => row.join('\t')).join('\n')
-  }
-
-  const columns = headers.map((h, i) => ({ key: `col${i}`, header: h }))
-  const data = rows.map(row => {
-    const obj: Record<string, string> = {}
-    row.forEach((cell, i) => { obj[`col${i}`] = cell })
-    return obj
-  })
-
-  return formatTable(columns, data)
-}
-
-/**
- * Format key-value pairs
- */
-export function formatKeyValue(pairs: Array<[string, string]>, separator = '='): string {
-  if (!isTTY) {
-    return pairs.map(([k, v]) => `${k}${separator}${v}`).join('\n')
-  }
-
-  const maxKeyLen = Math.max(...pairs.map(([k]) => k.length))
-  return pairs
-    .map(([k, v]) => `${k.padEnd(maxKeyLen)} ${separator} ${v}`)
-    .join('\n')
-}
-
-/**
  * Wrap an async operation with a spinner
  */
 export async function withSpinner<T>(
@@ -249,16 +193,6 @@ export async function withSpinner<T>(
 export function header(text: string): void {
   if (isTTY && !quietMode) {
     console.error(`\n${c.header(text)}\n${c.muted('─'.repeat(text.length))}`)
-  }
-}
-
-/**
- * Print a divider line (only in TTY mode)
- * Suppressed in quiet mode
- */
-export function divider(): void {
-  if (isTTY && !quietMode) {
-    console.error(c.muted('─'.repeat(40)))
   }
 }
 

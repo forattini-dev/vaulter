@@ -24,7 +24,9 @@ export type {
   // Per-environment keys
   EnvironmentKeyConfig,
   EncryptionMode,
-  AsymmetricAlgorithm
+  AsymmetricAlgorithm,
+  // Snapshots
+  SnapshotsConfig
 } from './types.js'
 
 export {
@@ -145,6 +147,27 @@ export type {
   RuntimeLoaderOptions,
   RuntimeLoaderResult
 } from './runtime/index.js'
+
+// Snapshot drivers
+export {
+  createSnapshotDriver,
+  FilesystemSnapshotDriver,
+  S3dbSnapshotDriver,
+  createSnapshot,
+  listSnapshots,
+  loadSnapshot,
+  deleteSnapshot,
+  findSnapshot,
+  verifySnapshot,
+  getSnapshotCount
+} from './lib/snapshot.js'
+
+export type {
+  SnapshotDriver,
+  SnapshotInfo,
+  SnapshotManifest,
+  SnapshotCreateOptions
+} from './lib/snapshot.js'
 
 // Encoding detection (detect pre-encoded/pre-encrypted values)
 export {

@@ -506,6 +506,19 @@ export interface NormalizedOutputTarget {
   inherit: boolean
 }
 
+// ============================================================================
+// Snapshot Configuration
+// ============================================================================
+
+export interface SnapshotsConfig {
+  /** Snapshot storage driver: 'filesystem' (default) or 's3db' */
+  driver?: 'filesystem' | 's3db'
+  /** Filesystem driver: directory path (default: '.vaulter/snapshots') */
+  path?: string
+  /** S3db driver: path prefix in S3 (default: 'vaulter-snapshots/') */
+  s3_path?: string
+}
+
 export interface VaulterConfig {
   version: '1'
   project: string
@@ -527,6 +540,8 @@ export interface VaulterConfig {
   audit?: AuditConfig
   /** MCP server configuration (defaults when running in this project) */
   mcp?: McpConfig
+  /** Snapshot configuration */
+  snapshots?: SnapshotsConfig
   /** Monorepo services list - legacy */
   services?: Array<string | ServiceConfig>
 

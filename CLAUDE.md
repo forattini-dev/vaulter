@@ -42,6 +42,13 @@ vaulter_doctor environment="dev"
 | Comparar environments | `vaulter_compare` | `source="dev" target="prd"` |
 | Setar múltiplas vars | `vaulter_multi_set` | `variables=[{key,value,sensitive}]` |
 | Listar vars | `vaulter_list` | `environment="dev" showValues=true` |
+| Override local (dev) | `vaulter_local_set` | `key="PORT" value="3001"` |
+| Pull local + overrides | `vaulter_local_pull` | `all=true` |
+| Diff overrides vs base | `vaulter_local_diff` | — |
+| Status local | `vaulter_local_status` | — |
+| Snapshot backup | `vaulter_snapshot_create` | `environment="dev"` |
+| Listar snapshots | `vaulter_snapshot_list` | `environment="dev"` |
+| Restaurar snapshot | `vaulter_snapshot_restore` | `id="dev_2026..." environment="dev"` |
 
 ### Ambiente Vazio? Use clone:
 
@@ -51,6 +58,73 @@ vaulter_clone_env source="dev" target="prd" dryRun=true
 
 # Executar
 vaulter_clone_env source="dev" target="prd"
+```
+
+### Workflow: Local Overrides (Dev)
+
+```bash
+# 1. Inicializar overrides locais
+vaulter local init
+
+# 2. Adicionar overrides (nunca toca backend)
+vaulter local set PORT=3001 DEBUG::true
+
+# 3. Ver o que está diferente do base env
+vaulter local diff
+
+# 4. Gerar .env files com base + overrides
+vaulter local pull --all
+
+# 5. Ver status
+vaulter local status
+
+# 6. Resetar overrides
+vaulter local reset
+```
+
+### Workflow: Snapshots
+
+Snapshots suportam dois drivers configuráveis via `.vaulter/config.yaml`:
+
+```yaml
+snapshots:
+  driver: filesystem          # 'filesystem' (default) | 's3db'
+  # filesystem-specific:
+  path: .vaulter/snapshots    # default, só se driver=filesystem
+  # s3db-specific:
+  s3_path: backups/           # path template no S3 (default: 'vaulter-snapshots/')
+```
+
+**filesystem** (default): Backups comprimidos (gzip) com verificação SHA256 e manifest JSON.
+Armazenados em `.vaulter/snapshots/<id>/` com `data.jsonl.gz` + `manifest.json`.
+
+**s3db**: Usa o `BackupPlugin` do s3db.js, reusando a mesma connection string do backend.
+Restore é direto no backend via plugin (sem load+setMany intermediário).
+
+```bash
+# Backup antes de mudanças
+vaulter snapshot create -e dev
+# → Cria dir com data.jsonl.gz + manifest.json (checksum SHA256)
+
+# Listar snapshots (mostra checksum e compression)
+vaulter snapshot list
+
+# Restaurar snapshot (verifica SHA256 antes de restaurar)
+vaulter snapshot restore <id> -e dev
+
+# Restaurar interativo (sem ID → abre selector TUI com tuiuiu.js)
+vaulter snapshot restore -e dev
+
+# Deletar snapshot
+vaulter snapshot delete <id>
+```
+
+**Formato do snapshot:**
+```
+.vaulter/snapshots/
+└── dev_2026-01-27T15-30-00Z/
+    ├── data.jsonl.gz       # vars como JSONL comprimido
+    └── manifest.json       # metadata + checksum SHA256
 ```
 
 ### Workflow: Editar Local → Push Remoto
@@ -294,9 +368,9 @@ await client.deleteManyByKeys(['OLD1', 'OLD2'], 'project', 'dev')
 
 ## MCP Server
 
-**39 Tools | 5 Resources | 10 Prompts**
+**47 Tools | 5 Resources | 10 Prompts**
 
-### Tools (39)
+### Tools (47)
 
 | Category | Tools |
 |----------|-------|
@@ -311,6 +385,8 @@ await client.deleteManyByKeys(['OLD1', 'OLD2'], 'project', 'dev')
 | **IaC (2)** | `vaulter_helm_values`, `vaulter_tf_vars` |
 | **Keys (6)** | `vaulter_key_generate`, `vaulter_key_list`, `vaulter_key_show`, `vaulter_key_export`, `vaulter_key_import`, `vaulter_key_rotate` |
 | **Monorepo (5)** | `vaulter_init`, `vaulter_scan`, `vaulter_services`, `vaulter_shared_list`, `vaulter_inheritance_info` |
+| **Local (5)** | `vaulter_local_pull`, `vaulter_local_set`, `vaulter_local_delete`, `vaulter_local_diff`, `vaulter_local_status` |
+| **Snapshot (3)** | `vaulter_snapshot_create`, `vaulter_snapshot_list`, `vaulter_snapshot_restore` |
 | **Other (2)** | `vaulter_categorize_vars`, `vaulter_nuke_preview` |
 
 > ⭐ **AI Agents:** Sempre chame `vaulter_doctor` primeiro para entender o estado do setup!
@@ -668,6 +744,8 @@ src/
 ├── cli/               # CLI
 ├── lib/
 │   ├── outputs.ts     # Output targets (pullToOutputs, filterVarsByPatterns)
+│   ├── local.ts       # Local overrides logic
+│   ├── snapshot.ts    # Snapshots (gzip + SHA256 + manifest)
 │   ├── pattern-matcher.ts  # Glob pattern compilation
 │   ├── encoding-detection.ts  # Detecção de valores pré-codificados
 │   └── ...            # Outros utils
