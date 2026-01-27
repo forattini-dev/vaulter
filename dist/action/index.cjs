@@ -40556,7 +40556,7 @@ function generateShellExport(vars) {
   return lines.join("\n") + "\n";
 }
 
-// node_modules/.pnpm/s3db.js@19.3.17_@hono+node-server@1.19.9_hono@4.11.4__express@5.2.1_hono@4.11.4_jose@6.1.3_zod@4.3.5/node_modules/s3db.js/dist/s3db-lite.es.js
+// node_modules/.pnpm/s3db.js@19.3.21_@hono+node-server@1.19.9_hono@4.11.4__express@5.2.1_hono@4.11.4_jose@6.1.3_zod@4.3.5/node_modules/s3db.js/dist/s3db-lite.es.js
 var import_node_assert = __toESM(require("node:assert"), 1);
 var import_node_net = __toESM(require("node:net"), 1);
 var import_node_http = __toESM(require("node:http"), 1);
@@ -42548,7 +42548,7 @@ function uniq(array) {
 }
 var uniq_default = uniq;
 
-// node_modules/.pnpm/s3db.js@19.3.17_@hono+node-server@1.19.9_hono@4.11.4__express@5.2.1_hono@4.11.4_jose@6.1.3_zod@4.3.5/node_modules/s3db.js/dist/s3db-lite.es.js
+// node_modules/.pnpm/s3db.js@19.3.21_@hono+node-server@1.19.9_hono@4.11.4__express@5.2.1_hono@4.11.4_jose@6.1.3_zod@4.3.5/node_modules/s3db.js/dist/s3db-lite.es.js
 var import_client_s3 = __toESM(require_dist_cjs72(), 1);
 var import_crypto = __toESM(require("crypto"), 1);
 var import_os = __toESM(require("os"), 1);
@@ -59122,7 +59122,7 @@ var hasRequiredMemoryCacheStore;
 function requireMemoryCacheStore() {
   if (hasRequiredMemoryCacheStore) return memoryCacheStore;
   hasRequiredMemoryCacheStore = 1;
-  const { Writable: Writable2 } = import_node_stream.default;
+  const { Writable: Writable3 } = import_node_stream.default;
   const { EventEmitter: EventEmitter2 } = import_node_events.default;
   const { assertCacheKey, assertCacheValue } = requireCache$2();
   class MemoryCacheStore extends EventEmitter2 {
@@ -59212,7 +59212,7 @@ function requireMemoryCacheStore() {
       const topLevelKey = `${key.origin}:${key.path}`;
       const store = this;
       const entry = { ...key, ...val, body: [], size: 0 };
-      return new Writable2({
+      return new Writable3({
         write(chunk2, encoding2, callback) {
           if (typeof chunk2 === "string") {
             chunk2 = Buffer.from(chunk2, encoding2);
@@ -60179,7 +60179,7 @@ var hasRequiredSqliteCacheStore;
 function requireSqliteCacheStore() {
   if (hasRequiredSqliteCacheStore) return sqliteCacheStore;
   hasRequiredSqliteCacheStore = 1;
-  const { Writable: Writable2 } = import_node_stream.default;
+  const { Writable: Writable3 } = import_node_stream.default;
   const { assertCacheKey, assertCacheValue } = requireCache$2();
   let DatabaseSync;
   const VERSION2 = 3;
@@ -60423,7 +60423,7 @@ function requireSqliteCacheStore() {
       let size = 0;
       const body2 = [];
       const store = this;
-      return new Writable2({
+      return new Writable3({
         decodeStrings: true,
         write(chunk2, encoding2, callback) {
           size += chunk2.byteLength;
@@ -65324,7 +65324,7 @@ var hasRequiredReceiver;
 function requireReceiver() {
   if (hasRequiredReceiver) return receiver;
   hasRequiredReceiver = 1;
-  const { Writable: Writable2 } = import_node_stream.default;
+  const { Writable: Writable3 } = import_node_stream.default;
   const assert = import_node_assert.default;
   const { parserStates, opcodes, states, emptyBuffer, sentCloseFrameState } = requireConstants();
   const {
@@ -65339,7 +65339,7 @@ function requireReceiver() {
   const { failWebsocketConnection } = requireConnection();
   const { WebsocketFrameSend } = requireFrame();
   const { PerMessageDeflate } = requirePermessageDeflate();
-  class ByteParser extends Writable2 {
+  class ByteParser extends Writable3 {
     #buffers = [];
     #fragmentsBytes = 0;
     #byteOffset = 0;
@@ -71214,7 +71214,7 @@ var VERSION$1 = "0.0.0-dev";
 function getDefaultUserAgent() {
   return `recker/${VERSION$1}`;
 }
-var VERSION = "1.0.66";
+var VERSION = "1.0.68";
 var _version = null;
 async function getVersion() {
   if (_version)
@@ -80795,10 +80795,15 @@ var ReckerHttpHandler = class {
       connectTimeout: 1e4,
       headersTimeout: 3e4,
       bodyTimeout: 6e4,
+      keepAlive: options.keepAlive ?? true,
       keepAliveTimeout: 4e3,
       keepAliveMaxTimeout: 6e5,
+      keepAliveTimeoutThreshold: 1e3,
       connections: 100,
       pipelining: 10,
+      maxRequestsPerClient: 100,
+      clientTtl: null,
+      maxCachedSessions: 100,
       http2: true,
       http2MaxConcurrentStreams: 100,
       http2Preset: "performance",
@@ -80836,9 +80841,14 @@ var ReckerHttpHandler = class {
         agent: {
           connections: this.options.connections,
           pipelining: this.options.pipelining,
-          keepAlive: true,
+          keepAlive: this.options.keepAlive,
           keepAliveTimeout: this.options.keepAliveTimeout,
-          keepAliveMaxTimeout: this.options.keepAliveMaxTimeout
+          keepAliveMaxTimeout: this.options.keepAliveMaxTimeout,
+          keepAliveTimeoutThreshold: this.options.keepAliveTimeoutThreshold,
+          maxRequestsPerClient: this.options.maxRequestsPerClient,
+          clientTtl: this.options.clientTtl ?? null,
+          maxCachedSessions: this.options.maxCachedSessions,
+          ...this.options.localAddress ? { localAddress: this.options.localAddress } : {}
         }
       },
       hooks,
@@ -80972,9 +80982,19 @@ var ReckerHttpHandler = class {
     };
   }
   destroy() {
+    void this.destroyAsync();
+  }
+  async destroyAsync() {
+    const client2 = this.client;
     this.client = null;
     this.deduplicator = null;
     this.circuitBreaker = null;
+    if (client2) {
+      try {
+        await client2.destroy();
+      } catch {
+      }
+    }
   }
 };
 var BaseError = class extends Error {
@@ -84269,6 +84289,8 @@ var S3Client = class extends import_events.default {
   connectionString;
   httpClientOptions;
   client;
+  httpHandler = null;
+  _rawHttpClientOptions;
   _inflightCoalescing;
   taskExecutorConfig;
   taskExecutor;
@@ -84287,6 +84309,7 @@ var S3Client = class extends import_events.default {
     this.id = id2 ?? idGenerator(77);
     this.config = new ConnectionString(connectionString);
     this.connectionString = connectionString;
+    this._rawHttpClientOptions = httpClientOptions || {};
     this.httpClientOptions = {
       keepAlive: true,
       keepAliveMsecs: 1e3,
@@ -84350,6 +84373,24 @@ var S3Client = class extends import_events.default {
     };
     return normalized;
   }
+  _normalizeHttpHandlerOptions() {
+    const options = this.httpClientOptions;
+    const raw = this._rawHttpClientOptions;
+    const connections = typeof raw.connections === "number" ? raw.connections : raw.maxSockets;
+    const keepAliveTimeout = raw.keepAliveTimeout ?? raw.keepAliveMsecs;
+    const bodyTimeout = raw.bodyTimeout ?? raw.timeout;
+    const normalized = { ...options };
+    if (connections !== void 0) {
+      normalized.connections = connections;
+    }
+    if (keepAliveTimeout !== void 0) {
+      normalized.keepAliveTimeout = keepAliveTimeout;
+    }
+    if (bodyTimeout !== void 0) {
+      normalized.bodyTimeout = bodyTimeout;
+    }
+    return normalized;
+  }
   _createTasksPool() {
     const poolConfig = {
       concurrency: this.taskExecutorConfig.concurrency,
@@ -84407,6 +84448,9 @@ var S3Client = class extends import_events.default {
     return result;
   }
   async _executeBatch(fns, options = {}) {
+    if (!this.taskExecutor) {
+      return await this._executeBatchWithLimit(fns, options);
+    }
     const wrapped = fns.map((fn, index) => Promise.resolve().then(() => fn()).then((value) => {
       options.onItemComplete?.(value, index);
       return value;
@@ -84417,6 +84461,51 @@ var S3Client = class extends import_events.default {
     const settled = await Promise.allSettled(wrapped);
     const results = settled.map((state2) => state2.status === "fulfilled" ? state2.value : null);
     const errors2 = settled.map((state2, index) => state2.status === "rejected" ? { error: state2.reason, index } : null).filter((e4) => e4 !== null);
+    return { results, errors: errors2 };
+  }
+  _resolveBatchConcurrency(total) {
+    if (total <= 1)
+      return total;
+    const env = process.env.S3DB_CONCURRENCY;
+    if (env) {
+      const parsed = parseInt(env, 10);
+      if (!isNaN(parsed) && parsed > 0) {
+        return Math.min(total, parsed);
+      }
+    }
+    const maxSockets = this.httpClientOptions.maxSockets;
+    if (typeof maxSockets === "number" && maxSockets > 0) {
+      return Math.min(total, maxSockets);
+    }
+    return Math.min(total, 10);
+  }
+  async _executeBatchWithLimit(fns, options = {}) {
+    if (fns.length === 0) {
+      return { results: [], errors: [] };
+    }
+    const results = new Array(fns.length).fill(null);
+    const errorsByIndex = new Array(fns.length).fill(null);
+    const concurrency = Math.max(1, this._resolveBatchConcurrency(fns.length));
+    let nextIndex = 0;
+    const worker = async () => {
+      while (true) {
+        const index = nextIndex++;
+        if (index >= fns.length)
+          return;
+        try {
+          const value = await fns[index]();
+          results[index] = value;
+          options.onItemComplete?.(value, index);
+        } catch (error2) {
+          const err = error2;
+          errorsByIndex[index] = { error: err, index };
+          options.onItemError?.(err, index);
+        }
+      }
+    };
+    const workers = Array.from({ length: concurrency }, () => worker());
+    await Promise.allSettled(workers);
+    const errors2 = errorsByIndex.filter((e4) => e4 !== null);
     return { results, errors: errors2 };
   }
   getQueueStats() {
@@ -84445,7 +84534,11 @@ var S3Client = class extends import_events.default {
       return;
     this.taskExecutor.stop();
   }
-  destroy() {
+  async destroy() {
+    if (this.httpHandler) {
+      await this.httpHandler.destroyAsync();
+      this.httpHandler = null;
+    }
     if (this.client && typeof this.client.destroy === "function") {
       this.client.destroy();
     }
@@ -84453,11 +84546,11 @@ var S3Client = class extends import_events.default {
     this.removeAllListeners();
   }
   createClient() {
-    const httpHandler = new ReckerHttpHandler(this.httpClientOptions);
+    this.httpHandler = new ReckerHttpHandler(this._normalizeHttpHandlerOptions());
     const options = {
       region: this.config.region,
       endpoint: this.config.endpoint,
-      requestHandler: httpHandler
+      requestHandler: this.httpHandler
     };
     if (this.config.forcePathStyle)
       options.forcePathStyle = true;
@@ -91695,6 +91788,9 @@ var AsyncEventEmitter = class extends import_events.default {
   }
   setAsyncMode(enabled) {
     this._asyncMode = enabled;
+  }
+  destroy() {
+    this.removeAllListeners();
   }
 };
 function flatten(obj, options = {}) {
@@ -99011,7 +99107,7 @@ var DatabaseConnection = class {
           db.client.removeAllListeners();
         }
         if (typeof db.client.destroy === "function") {
-          db.client.destroy();
+          await db.client.destroy();
         }
       }
       await db.emit("db:disconnected", /* @__PURE__ */ new Date());
@@ -99089,7 +99185,7 @@ var Database = class extends SafeEventEmitter {
     })();
     this.version = "1";
     this.s3dbVersion = (() => {
-      const [ok, , version] = tryFnSync(() => typeof globalThis["19.3.17"] !== "undefined" && globalThis["19.3.17"] !== "19.3.17" ? globalThis["19.3.17"] : "latest");
+      const [ok, , version] = tryFnSync(() => typeof globalThis["19.3.21"] !== "undefined" && globalThis["19.3.21"] !== "19.3.21" ? globalThis["19.3.21"] : "latest");
       return ok ? version : "latest";
     })();
     this._resourcesMap = {};
@@ -100355,6 +100451,7 @@ var globalCoordinatorService_class = /* @__PURE__ */ Object.freeze({
 
 // src/client.ts
 var import_node_os2 = __toESM(require("node:os"), 1);
+var import_node_stream2 = require("node:stream");
 
 // src/lib/crypto.ts
 var import_node_crypto3 = __toESM(require("node:crypto"), 1);
@@ -100540,17 +100637,19 @@ var VaulterClient = class {
     if (this.encryptionMode === "symmetric") {
       return value;
     }
+    let parsed;
     try {
-      const parsed = JSON.parse(value);
-      if (isHybridEncrypted(parsed)) {
-        if (!this.privateKey) {
-          throw new Error("Cannot decrypt: private key not configured");
-        }
-        return hybridDecrypt(parsed, this.privateKey);
-      }
+      parsed = JSON.parse(value);
     } catch {
+      throw new Error("Cannot decrypt: value is not hybrid-encrypted JSON");
     }
-    return value;
+    if (!isHybridEncrypted(parsed)) {
+      throw new Error("Cannot decrypt: value is not hybrid-encrypted");
+    }
+    if (!this.privateKey) {
+      throw new Error("Cannot decrypt: private key not configured");
+    }
+    return hybridDecrypt(parsed, this.privateKey);
   }
   /**
    * Check if the client can encrypt (has public key for asymmetric mode)
@@ -100607,8 +100706,14 @@ var VaulterClient = class {
               description: "string|optional",
               owner: "string|optional",
               rotateAfter: "date|optional",
-              source: { type: "string", enum: ["manual", "sync", "import"], optional: true }
-            }
+              source: { type: "string", enum: ["manual", "sync", "import", "rotation", "copy", "rename", "promote", "demote"], optional: true },
+              copiedFrom: "string|optional",
+              renamedFrom: "string|optional",
+              promotedFrom: "string|optional",
+              demotedTo: "string|optional"
+            },
+            sensitive: "boolean|optional"
+            // true = secret, false/undefined = config
           },
           // Partitions for O(1) queries
           partitions: {
@@ -100695,9 +100800,11 @@ ${errorMessages}`);
     const existing = await this.resource.getOrNull(id2);
     if (existing) {
       const filteredInputMeta = input.metadata ? Object.fromEntries(Object.entries(input.metadata).filter(([, v4]) => v4 !== void 0)) : {};
+      const sensitive = input.sensitive !== void 0 ? input.sensitive : existing.sensitive;
       const result = await this.resource.update(id2, {
         value: encryptedValue,
         tags: input.tags,
+        sensitive,
         metadata: {
           ...existing.metadata,
           ...filteredInputMeta,
@@ -100710,6 +100817,8 @@ ${errorMessages}`);
         id: id2,
         ...input,
         value: encryptedValue,
+        sensitive: input.sensitive ?? false,
+        // Default to config (not sensitive)
         metadata: {
           ...input.metadata,
           source: input.metadata?.source || "manual"
@@ -100738,7 +100847,11 @@ ${errorMessages}`);
   /**
    * List environment variables
    *
-   * Automatically selects the most efficient partition based on provided filters:
+   * NOTE: Partitions are currently DISABLED due to s3db.js bug where partition
+   * indices get out of sync with actual data. Once fixed, partitions can be
+   * re-enabled for O(1) performance instead of O(n) scan + filter.
+   *
+   * Previously would use:
    * - project + service + environment → byProjectServiceEnv
    * - project + environment → byProjectEnv
    * - project only → byProject
@@ -100747,77 +100860,383 @@ ${errorMessages}`);
   async list(options = {}) {
     this.ensureConnected();
     const { project, service, environment, limit, offset } = options;
-    let partition;
-    let partitionValues;
-    if (project && service && environment) {
-      partition = "byProjectServiceEnv";
-      partitionValues = { project, service, environment };
-    } else if (project && environment) {
-      partition = "byProjectEnv";
-      partitionValues = { project, environment };
-    } else if (project) {
-      partition = "byProject";
-      partitionValues = { project };
-    } else if (environment) {
-      partition = "byEnvironment";
-      partitionValues = { environment };
-    }
     const listOptions = {};
-    if (partition && partitionValues) {
-      listOptions.partition = partition;
-      listOptions.partitionValues = partitionValues;
-    }
     if (limit) listOptions.limit = limit;
     if (offset) listOptions.offset = offset;
-    const results = await this.resource.list(listOptions);
+    let results = await this.resource.list(listOptions);
+    if (project) {
+      results = results.filter((item) => item.project === project);
+    }
+    if (service !== void 0) {
+      results = results.filter((item) => (item.service || "") === service);
+    }
+    if (environment) {
+      results = results.filter((item) => item.environment === environment);
+    }
     return results.map((item) => ({
       ...item,
       value: this.decryptValue(item.value)
     }));
   }
   /**
-   * Bulk insert environment variables (legacy - uses sequential set)
-   * @deprecated Use setMany for better performance
+   * Set multiple environment variables efficiently using s3db.js TasksPool
+   *
+   * Uses replace() for single PUT operation per variable (no get/exists checks)
+   * and TasksPool.map() for intelligent concurrency control with:
+   * - Auto-tuning concurrency based on latency
+   * - Retry with exponential backoff
+   * - Rate limiting and throttling protection
+   *
+   * Performance comparison (per variable):
+   * - Old approach: getOrNull (GET) + update (HEAD + GET + PUT) = 4 S3 ops
+   * - New approach: replace (PUT only) = 1 S3 op
+   *
+   * @param inputs - Array of environment variables to set
+   * @param options - Optional settings
+   * @param options.preserveMetadata - If true, uses slower get+update to preserve existing metadata (default: false)
+   * @param options.concurrency - Max concurrent operations (default: 10)
    */
-  async insertMany(inputs) {
-    return this.setMany(inputs);
-  }
-  /**
-   * Set multiple environment variables efficiently
-   * Uses deterministic IDs for O(1) lookups - fully parallel without list queries
-   */
-  async setMany(inputs) {
+  async setMany(inputs, options = {}) {
     this.ensureConnected();
     if (inputs.length === 0) return [];
-    const results = await Promise.all(inputs.map(async (input) => {
-      const id2 = generateVarId(input.project, input.environment, input.service, input.key);
-      const encryptedValue = this.encryptValue(input.value);
-      const existing = await this.resource.getOrNull(id2);
-      if (existing) {
-        const filteredInputMeta = input.metadata ? Object.fromEntries(Object.entries(input.metadata).filter(([, v4]) => v4 !== void 0)) : {};
-        const result = await this.resource.update(id2, {
-          value: encryptedValue,
-          tags: input.tags,
-          metadata: {
-            ...existing.metadata,
-            ...filteredInputMeta,
-            source: input.metadata?.source || existing.metadata?.source || "manual"
-          }
-        });
-        return { ...result, value: input.value };
-      } else {
-        const result = await this.resource.insert({
-          ...input,
-          value: encryptedValue,
-          metadata: {
-            ...input.metadata,
-            source: input.metadata?.source || "manual"
-          }
-        });
-        return { ...result, value: input.value };
+    const { preserveMetadata = false, concurrency = 10 } = options;
+    if (!preserveMetadata) {
+      const { results: results2, errors: errors3 } = await TasksPool.map(
+        inputs,
+        async (input) => {
+          const id2 = generateVarId(input.project, input.environment, input.service, input.key);
+          const encryptedValue = this.encryptValue(input.value);
+          const result = await this.resource.replace(id2, {
+            key: input.key,
+            value: encryptedValue,
+            project: input.project,
+            environment: input.environment,
+            service: input.service,
+            tags: input.tags,
+            sensitive: input.sensitive ?? false,
+            // Default to config (not sensitive)
+            metadata: {
+              ...input.metadata,
+              source: input.metadata?.source || "manual"
+            }
+          });
+          return { ...result, value: input.value };
+        },
+        { concurrency }
+      );
+      if (errors3.length > 0) {
+        const errorMsg = errors3.map((e4) => `${e4.item.key}: ${e4.error.message}`).join(", ");
+        throw new Error(`Failed to set some variables: ${errorMsg}`);
       }
-    }));
+      return results2;
+    }
+    const { results, errors: errors2 } = await TasksPool.map(
+      inputs,
+      async (input) => {
+        const id2 = generateVarId(input.project, input.environment, input.service, input.key);
+        const encryptedValue = this.encryptValue(input.value);
+        const existing = await this.resource.getOrNull(id2);
+        if (existing) {
+          const filteredInputMeta = input.metadata ? Object.fromEntries(Object.entries(input.metadata).filter(([, v4]) => v4 !== void 0)) : {};
+          const sensitive = input.sensitive !== void 0 ? input.sensitive : existing.sensitive;
+          const result = await this.resource.update(id2, {
+            value: encryptedValue,
+            tags: input.tags,
+            sensitive,
+            metadata: {
+              ...existing.metadata,
+              ...filteredInputMeta,
+              source: input.metadata?.source || existing.metadata?.source || "manual"
+            }
+          });
+          return { ...result, value: input.value };
+        } else {
+          const result = await this.resource.insert({
+            ...input,
+            value: encryptedValue,
+            sensitive: input.sensitive ?? false,
+            // Default to config (not sensitive)
+            metadata: {
+              ...input.metadata,
+              source: input.metadata?.source || "manual"
+            }
+          });
+          return { ...result, value: input.value };
+        }
+      },
+      { concurrency }
+    );
+    if (errors2.length > 0) {
+      const errorMsg = errors2.map((e4) => `${e4.item.key}: ${e4.error.message}`).join(", ");
+      throw new Error(`Failed to set some variables: ${errorMsg}`);
+    }
     return results;
+  }
+  /**
+   * Set multiple environment variables with controlled concurrency using TasksPool
+   *
+   * Uses s3db.js TasksPool for intelligent concurrency control with:
+   * - Auto-tuning based on latency
+   * - Retry with exponential backoff
+   * - Progress callbacks
+   *
+   * Performance: Uses replace() by default (1 PUT per var) instead of
+   * get+update (4 S3 ops per var). Set preserveMetadata=true for merge behavior.
+   *
+   * @param inputs - Array of environment variables to set
+   * @param options - Batch options (concurrency, error handling, progress)
+   * @returns BatchResult with success/failure details
+   *
+   * @example
+   * ```ts
+   * const result = await client.setManyChunked(vars, {
+   *   concurrency: 5,
+   *   onProgress: ({ completed, total, percentage }) => {
+   *     console.log(`${percentage}% complete (${completed}/${total})`)
+   *   }
+   * })
+   * ```
+   */
+  async setManyChunked(inputs, options = {}) {
+    this.ensureConnected();
+    const startTime = Date.now();
+    const { concurrency = 10, continueOnError = true, preserveMetadata = false, onProgress } = options;
+    const result = {
+      success: [],
+      failed: [],
+      total: inputs.length,
+      durationMs: 0
+    };
+    if (inputs.length === 0) {
+      result.durationMs = Date.now() - startTime;
+      return result;
+    }
+    let completed = 0;
+    const { errors: errors2 } = await TasksPool.map(
+      inputs,
+      async (input) => {
+        const id2 = generateVarId(input.project, input.environment, input.service, input.key);
+        const encryptedValue = this.encryptValue(input.value);
+        if (!preserveMetadata) {
+          await this.resource.replace(id2, {
+            key: input.key,
+            value: encryptedValue,
+            project: input.project,
+            environment: input.environment,
+            service: input.service,
+            tags: input.tags,
+            metadata: {
+              ...input.metadata,
+              source: input.metadata?.source || "manual"
+            }
+          });
+          return input.key;
+        }
+        const existing = await this.resource.getOrNull(id2);
+        if (existing) {
+          const filteredInputMeta = input.metadata ? Object.fromEntries(Object.entries(input.metadata).filter(([, v4]) => v4 !== void 0)) : {};
+          await this.resource.update(id2, {
+            value: encryptedValue,
+            tags: input.tags,
+            metadata: {
+              ...existing.metadata,
+              ...filteredInputMeta,
+              source: input.metadata?.source || existing.metadata?.source || "manual"
+            }
+          });
+        } else {
+          await this.resource.insert({
+            ...input,
+            value: encryptedValue,
+            metadata: {
+              ...input.metadata,
+              source: input.metadata?.source || "manual"
+            }
+          });
+        }
+        return input.key;
+      },
+      {
+        concurrency,
+        onItemComplete: (key) => {
+          result.success.push(key);
+          completed++;
+          if (onProgress) {
+            onProgress({
+              completed,
+              total: inputs.length,
+              percentage: Math.round(completed / inputs.length * 100),
+              currentChunk: Math.ceil(completed / concurrency),
+              totalChunks: Math.ceil(inputs.length / concurrency)
+            });
+          }
+        },
+        onItemError: (error2, item) => {
+          result.failed.push({
+            key: item.key,
+            error: error2.message
+          });
+          completed++;
+          if (onProgress) {
+            onProgress({
+              completed,
+              total: inputs.length,
+              percentage: Math.round(completed / inputs.length * 100),
+              currentChunk: Math.ceil(completed / concurrency),
+              totalChunks: Math.ceil(inputs.length / concurrency)
+            });
+          }
+        }
+      }
+    );
+    if (!continueOnError && errors2.length > 0) {
+      const errorMsg = errors2.map((e4) => `${e4.item.key}: ${e4.error.message}`).join(", ");
+      throw new Error(`Failed to set some variables: ${errorMsg}`);
+    }
+    result.durationMs = Date.now() - startTime;
+    return result;
+  }
+  /**
+   * Create a writable stream for batch variable operations
+   *
+   * Uses Node.js streams with backpressure to efficiently process
+   * large numbers of variables without memory issues.
+   *
+   * @param options - Batch options (concurrency for internal buffering)
+   * @returns Writable stream that accepts EnvVarInput objects
+   *
+   * @example
+   * ```ts
+   * const stream = client.createWriteStream({ concurrency: 10 })
+   *
+   * stream.on('finish', () => console.log('All done!'))
+   * stream.on('error', (err) => console.error('Error:', err))
+   *
+   * for (const v of variables) {
+   *   const canContinue = stream.write(v)
+   *   if (!canContinue) {
+   *     await once(stream, 'drain')
+   *   }
+   * }
+   *
+   * stream.end()
+   * ```
+   */
+  createWriteStream(options = {}) {
+    this.ensureConnected();
+    const client2 = this;
+    const { concurrency = 5, continueOnError = true, onProgress } = options;
+    const startTime = Date.now();
+    const result = {
+      success: [],
+      failed: [],
+      total: 0,
+      durationMs: 0
+    };
+    let buffer = [];
+    let processing = false;
+    let totalReceived = 0;
+    const processBuffer = async (stream2, final = false) => {
+      if (processing) return;
+      if (buffer.length === 0 && !final) return;
+      if (buffer.length < concurrency && !final) return;
+      processing = true;
+      const chunk2 = buffer.splice(0, concurrency);
+      if (chunk2.length === 0) {
+        processing = false;
+        return;
+      }
+      try {
+        const chunkResults = await Promise.allSettled(
+          chunk2.map(async (input) => {
+            const id2 = generateVarId(input.project, input.environment, input.service, input.key);
+            const encryptedValue = client2.encryptValue(input.value);
+            const existing = await client2.resource.getOrNull(id2);
+            if (existing) {
+              const filteredInputMeta = input.metadata ? Object.fromEntries(Object.entries(input.metadata).filter(([, v4]) => v4 !== void 0)) : {};
+              await client2.resource.update(id2, {
+                value: encryptedValue,
+                tags: input.tags,
+                metadata: {
+                  ...existing.metadata,
+                  ...filteredInputMeta,
+                  source: input.metadata?.source || existing.metadata?.source || "manual"
+                }
+              });
+            } else {
+              await client2.resource.insert({
+                ...input,
+                value: encryptedValue,
+                metadata: {
+                  ...input.metadata,
+                  source: input.metadata?.source || "manual"
+                }
+              });
+            }
+            return input.key;
+          })
+        );
+        for (let i4 = 0; i4 < chunkResults.length; i4++) {
+          const chunkResult = chunkResults[i4];
+          const input = chunk2[i4];
+          if (chunkResult.status === "fulfilled") {
+            result.success.push(input.key);
+          } else {
+            result.failed.push({
+              key: input.key,
+              error: chunkResult.reason?.message || String(chunkResult.reason)
+            });
+            if (!continueOnError) {
+              stream2.destroy(new Error(`Failed to set ${input.key}: ${chunkResult.reason?.message}`));
+              return;
+            }
+          }
+        }
+        result.total = result.success.length + result.failed.length;
+        if (onProgress) {
+          onProgress({
+            completed: result.total,
+            total: totalReceived,
+            percentage: totalReceived > 0 ? Math.round(result.total / totalReceived * 100) : 0,
+            currentChunk: Math.ceil(result.total / concurrency),
+            totalChunks: Math.ceil(totalReceived / concurrency)
+          });
+        }
+      } finally {
+        processing = false;
+      }
+      if (buffer.length >= concurrency || final && buffer.length > 0) {
+        await processBuffer(stream2, final);
+      }
+    };
+    const stream = new import_node_stream2.Writable({
+      objectMode: true,
+      highWaterMark: concurrency * 2,
+      async write(chunk2, _encoding, callback) {
+        buffer.push(chunk2);
+        totalReceived++;
+        try {
+          await processBuffer(this);
+          callback();
+        } catch (err) {
+          callback(err);
+        }
+      },
+      async final(callback) {
+        try {
+          await processBuffer(this, true);
+          result.durationMs = Date.now() - startTime;
+          callback();
+        } catch (err) {
+          callback(err);
+        }
+      }
+    });
+    stream.getResult = () => {
+      result.durationMs = Date.now() - startTime;
+      return result;
+    };
+    return stream;
   }
   /**
    * Get multiple environment variables efficiently
@@ -100844,17 +101263,13 @@ ${errorMessages}`);
     const ids = keys2.map((key) => generateVarId(project, environment, service, key));
     if (typeof this.resource.deleteMany === "function") {
       const result = await this.resource.deleteMany(ids);
-      const deletedIds = new Set(result?.deleted || ids);
-      const deleted = [];
-      const notFound = [];
-      for (let i4 = 0; i4 < keys2.length; i4++) {
-        if (deletedIds.has(ids[i4])) {
-          deleted.push(keys2[i4]);
-        } else {
-          notFound.push(keys2[i4]);
-        }
+      if (result?.deleted === keys2.length) {
+        return { deleted: [...keys2], notFound: [] };
       }
-      return { deleted, notFound };
+      return {
+        deleted: [...keys2],
+        notFound: []
+      };
     } else {
       const results = await Promise.all(
         keys2.map(async (key, i4) => {
@@ -100967,6 +101382,80 @@ ${errorMessages}`);
     return result;
   }
   /**
+   * DANGER: Nuke all data from the remote storage
+   *
+   * This deletes EVERYTHING: data, partitions, metadata, historical versions.
+   * This operation is IRREVERSIBLE.
+   *
+   * Safety: Requires explicit confirmation token that matches project name.
+   *
+   * @param confirmToken - Must exactly match the project name to proceed
+   * @returns Number of objects deleted
+   */
+  async nukeAllData(confirmToken) {
+    this.ensureConnected();
+    const vars = await this.resource.list({ limit: 1 });
+    const project = vars.length > 0 ? vars[0].project : null;
+    if (!project) {
+      return { deletedCount: 0, project: confirmToken };
+    }
+    if (confirmToken !== project) {
+      throw new Error(
+        `Safety check failed: confirmation token "${confirmToken}" does not match project "${project}". To delete all data, pass the exact project name as confirmation.`
+      );
+    }
+    const nukeResource = await this.db.createResource({
+      name: "environment-variables",
+      paranoid: false,
+      // DANGER: allows deleteAllData
+      attributes: {
+        key: "string|required",
+        value: "string|required",
+        project: "string|required",
+        environment: "string|required"
+      }
+    });
+    const result = await nukeResource.deleteAllData();
+    return {
+      deletedCount: result.deletedCount,
+      project
+    };
+  }
+  /**
+   * Preview what would be deleted by nukeAllData
+   *
+   * @returns Summary of data that would be deleted
+   */
+  async nukePreview() {
+    this.ensureConnected();
+    const vars = await this.resource.list({ limit: 100 });
+    if (vars.length === 0) {
+      return {
+        project: null,
+        environments: [],
+        services: [],
+        totalVars: 0,
+        sampleVars: []
+      };
+    }
+    const project = vars[0].project;
+    const environments = [...new Set(vars.map((v4) => v4.environment))];
+    const services = [...new Set(vars.filter((v4) => v4.service).map((v4) => v4.service))];
+    const allVars = await this.resource.list({});
+    const totalVars = allVars.length;
+    return {
+      project,
+      environments,
+      services,
+      totalVars,
+      sampleVars: vars.slice(0, 10).map((v4) => ({
+        key: v4.key,
+        environment: v4.environment,
+        service: v4.service
+      }))
+    };
+  }
+  /**
    * Close the connection
    */
   async disconnect() {
@@ -100994,6 +101483,13 @@ ${errorMessages}`);
    */
   getConnectionStrings() {
     return this.connectionStrings;
+  }
+  /**
+   * Get the underlying s3db database instance.
+   * Useful for plugins (e.g., BackupPlugin for snapshot driver).
+   */
+  getDatabase() {
+    return this.db;
   }
   /**
    * Get the current encryption mode
