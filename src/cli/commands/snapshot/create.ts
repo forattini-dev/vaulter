@@ -5,7 +5,7 @@
  */
 
 import { findConfigDir } from '../../../lib/config-loader.js'
-import { createSnapshotDriver } from '../../../lib/snapshot.js'
+import { snapshotCreate } from '../../../lib/snapshot-ops.js'
 import { createClientFromConfig } from '../../lib/create-client.js'
 import { c, colorEnv, print } from '../../lib/colors.js'
 import * as ui from '../../ui.js'
@@ -37,10 +37,14 @@ export async function runSnapshotCreate(context: SnapshotContext): Promise<void>
 
   try {
     await client.connect()
-    const vars = await client.export(config.project, environment, service)
-
-    const driver = createSnapshotDriver(configDir, config.snapshots, client.getDatabase())
-    const snapshot = await driver.create(environment, vars, { name, project, service })
+    const snapshot = await snapshotCreate({
+      client,
+      config,
+      configDir,
+      environment,
+      service,
+      name
+    })
 
     if (jsonOutput) {
       ui.output(JSON.stringify(snapshot, null, 2))

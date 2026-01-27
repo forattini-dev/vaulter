@@ -6,20 +6,9 @@ import type { VaulterClient } from '../../../client.js'
 import type { VaulterConfig, Environment } from '../../../types.js'
 import type { ToolResponse } from '../config.js'
 import { findConfigDir } from '../../../lib/config-loader.js'
-import {
-  loadOverrides,
-  setOverride,
-  deleteOverride,
-  diffOverrides,
-  mergeWithOverrides,
-  getLocalStatus,
-  resolveBaseEnvironment
-} from '../../../lib/local.js'
-import {
-  createSnapshotDriver
-} from '../../../lib/snapshot.js'
-import { pullToOutputs, getSharedServiceVars } from '../../../lib/outputs.js'
-import path from 'node:path'
+import { setOverride, deleteOverride, getLocalStatus } from '../../../lib/local.js'
+import { runLocalPull, runLocalDiff } from '../../../lib/local-ops.js'
+import { snapshotCreate, snapshotList, snapshotRestore } from '../../../lib/snapshot-ops.js'
 
 /**
  * Get configDir or return error response
@@ -51,44 +40,33 @@ export async function handleLocalPullCall(
   if ('error' in result) return result.error
   const { configDir } = result
 
-  const baseEnv = resolveBaseEnvironment(config)
-  const overrides = loadOverrides(configDir, service)
-  const all = args.all === true
-  const output = args.output as string | undefined
+  try {
+    const { all, output } = {
+      all: args.all === true,
+      output: args.output as string | undefined
+    }
 
-  if (!all && !output) {
-    return { content: [{ type: 'text', text: 'Error: Requires all=true or output=<name>' }] }
+    const { baseEnvironment, overridesCount, result: pullResult } = await runLocalPull({
+      client,
+      config,
+      configDir,
+      service,
+      all,
+      output
+    })
+
+    const lines = [`✓ Pulled to ${pullResult.files.length} output(s) (base: ${baseEnvironment} + ${overridesCount} overrides)`]
+    for (const file of pullResult.files) {
+      lines.push(`  ${file.output}: ${file.fullPath} (${file.varsCount} vars)`)
+    }
+    for (const warning of pullResult.warnings) {
+      lines.push(`⚠️ ${warning}`)
+    }
+
+    return { content: [{ type: 'text', text: lines.join('\n') }] }
+  } catch (err) {
+    return { content: [{ type: 'text', text: `Error: ${(err as Error).message}` }] }
   }
-
-  if (!config.outputs || Object.keys(config.outputs).length === 0) {
-    return { content: [{ type: 'text', text: 'Error: No outputs defined in config' }] }
-  }
-
-  const projectRoot = path.dirname(configDir)
-  const baseVars = await client.export(config.project, baseEnv, service)
-  const merged = mergeWithOverrides(baseVars, overrides)
-  const sharedServiceVars = await getSharedServiceVars(client, config.project, baseEnv)
-
-  const pullResult = await pullToOutputs({
-    client,
-    config,
-    environment: baseEnv,
-    projectRoot,
-    all,
-    output,
-    varsOverride: merged,
-    sharedVarsOverride: sharedServiceVars
-  })
-
-  const lines = [`✓ Pulled to ${pullResult.files.length} output(s) (base: ${baseEnv} + ${Object.keys(overrides).length} overrides)`]
-  for (const file of pullResult.files) {
-    lines.push(`  ${file.output}: ${file.fullPath} (${file.varsCount} vars)`)
-  }
-  for (const warning of pullResult.warnings) {
-    lines.push(`⚠️ ${warning}`)
-  }
-
-  return { content: [{ type: 'text', text: lines.join('\n') }] }
 }
 
 /**
@@ -154,24 +132,25 @@ export async function handleLocalDiffCall(
   if ('error' in result) return result.error
   const { configDir } = result
 
-  const baseEnv = resolveBaseEnvironment(config)
-  const overrides = loadOverrides(configDir, service)
+  const { baseEnvironment, overrides, diff } = await runLocalDiff({
+    client,
+    config,
+    configDir,
+    service
+  })
 
-  if (Object.keys(overrides).length === 0) {
+  if (!diff) {
     return { content: [{ type: 'text', text: 'No local overrides. Use vaulter_local_set to add some.' }] }
   }
 
-  const baseVars = await client.export(config.project, baseEnv, service)
-  const diff = diffOverrides(baseVars, overrides)
-
-  const lines = [`Local overrides vs base (${baseEnv}):`]
+  const lines = [`Local overrides vs base (${baseEnvironment}):`]
   lines.push('')
   for (const key of diff.added) {
     lines.push(`  + ${key} = ${overrides[key]} (new)`)
   }
   for (const key of diff.modified) {
     lines.push(`  ~ ${key}`)
-    lines.push(`    base:     ${baseVars[key]}`)
+    lines.push(`    base:     ${diff.baseVars[key]}`)
     lines.push(`    override: ${overrides[key]}`)
   }
   lines.push('')
@@ -221,9 +200,14 @@ export async function handleSnapshotCreateCall(
   const { configDir } = result
 
   const name = args.name as string | undefined
-  const vars = await client.export(config.project, environment, service)
-  const driver = createSnapshotDriver(configDir, config.snapshots, client.getDatabase())
-  const snapshot = await driver.create(environment, vars, { name, project: config.project, service })
+  const snapshot = await snapshotCreate({
+    client,
+    config,
+    configDir,
+    environment,
+    service,
+    name
+  })
 
   return {
     content: [{
@@ -246,8 +230,12 @@ export async function handleSnapshotListCall(
   const { configDir } = result
 
   const environment = args.environment as string | undefined
-  const driver = createSnapshotDriver(configDir, config.snapshots, client?.getDatabase())
-  const snapshots = await driver.list(environment)
+  const snapshots = await snapshotList({
+    config,
+    configDir,
+    environment,
+    client
+  })
 
   if (snapshots.length === 0) {
     return { content: [{ type: 'text', text: 'No snapshots found. Create one with vaulter_snapshot_create.' }] }
@@ -283,49 +271,35 @@ export async function handleSnapshotRestoreCall(
     return { content: [{ type: 'text', text: 'Error: id is required' }] }
   }
 
-  const driver = createSnapshotDriver(configDir, config.snapshots, client.getDatabase())
-  const snapshot = await driver.find(id)
-  if (!snapshot) {
+  const resultRestore = await snapshotRestore({
+    client,
+    config,
+    configDir,
+    project,
+    environment,
+    service,
+    idOrPartial: id
+  })
+
+  if (resultRestore.status === 'not_found') {
     return { content: [{ type: 'text', text: `Snapshot not found: ${id}` }] }
   }
-
-  // Verify integrity
-  const verification = await driver.verify(snapshot.id)
-  if (verification && !verification.valid) {
-    return { content: [{ type: 'text', text: `Snapshot integrity check failed: ${snapshot.id}\n  Expected: ${verification.expected}\n  Actual: ${verification.actual}` }] }
-  }
-
-  // If the driver supports direct restore (s3db), use it
-  if (driver.restore) {
-    const count = await driver.restore(snapshot.id, project, environment, service)
+  if (resultRestore.status === 'integrity_failed') {
     return {
       content: [{
         type: 'text',
-        text: `✓ Restored ${count} vars from ${snapshot.id} to ${environment}`
+        text: `Snapshot integrity check failed: ${resultRestore.snapshot.id}\n  Expected: ${resultRestore.expected}\n  Actual: ${resultRestore.actual}`
       }]
     }
   }
-
-  // Filesystem driver: load + setMany
-  const vars = await driver.load(snapshot.id)
-  if (!vars) {
-    return { content: [{ type: 'text', text: `Could not load snapshot: ${snapshot.id}` }] }
+  if (resultRestore.status === 'load_failed') {
+    return { content: [{ type: 'text', text: `Could not load snapshot: ${resultRestore.snapshot.id}` }] }
   }
-
-  const inputs = Object.entries(vars).map(([key, value]) => ({
-    key,
-    value,
-    project,
-    environment,
-    service
-  }))
-
-  await client.setMany(inputs)
 
   return {
     content: [{
       type: 'text',
-      text: `✓ Restored ${inputs.length} vars from ${snapshot.id} to ${environment}`
+      text: `✓ Restored ${resultRestore.restoredCount} vars from ${resultRestore.snapshot.id} to ${environment}`
     }]
   }
 }

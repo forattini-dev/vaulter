@@ -5,11 +5,8 @@
  */
 
 import { findConfigDir } from '../../../lib/config-loader.js'
-import {
-  loadOverrides,
-  diffOverrides,
-  resolveBaseEnvironment
-} from '../../../lib/local.js'
+import { runLocalDiff as runLocalDiffCore } from '../../../lib/local-ops.js'
+import { resolveBaseEnvironment } from '../../../lib/local.js'
 import { createClientFromConfig } from '../../lib/create-client.js'
 import { c, symbols, box, colorEnv, print } from '../../lib/colors.js'
 import * as ui from '../../ui.js'
@@ -30,14 +27,7 @@ export async function runLocalDiff(context: LocalContext): Promise<void> {
   }
 
   const baseEnv = resolveBaseEnvironment(config)
-  const overrides = loadOverrides(configDir, service)
 
-  if (Object.keys(overrides).length === 0) {
-    ui.log('No local overrides. Use `vaulter local set KEY=value` to add some.')
-    return
-  }
-
-  // Fetch base vars
   const client = await createClientFromConfig({
     args,
     config,
@@ -48,12 +38,25 @@ export async function runLocalDiff(context: LocalContext): Promise<void> {
 
   try {
     await client.connect()
-    const baseVars = await client.export(config.project, baseEnv, service)
-    const diff = diffOverrides(baseVars, overrides)
+    const result = await runLocalDiffCore({
+      client,
+      config,
+      configDir,
+      service
+    })
+
+    const { baseEnvironment, overrides, diff } = result
+
+    if (!diff) {
+      ui.log('No local overrides. Use `vaulter local set KEY=value` to add some.')
+      return
+    }
+
+    const baseVars = diff.baseVars
 
     if (jsonOutput) {
       ui.output(JSON.stringify({
-        baseEnvironment: baseEnv,
+        baseEnvironment,
         added: diff.added,
         modified: diff.modified.map(k => ({
           key: k,
@@ -71,7 +74,7 @@ export async function runLocalDiff(context: LocalContext): Promise<void> {
 
     ui.log('')
     ui.log(c.muted(`${box.topLeft}${line}${box.topRight}`))
-    ui.log(c.muted(box.vertical) + `  ${c.header('Local overrides')} vs base (${colorEnv(baseEnv)})`.padEnd(width + 8) + c.muted(box.vertical))
+    ui.log(c.muted(box.vertical) + `  ${c.header('Local overrides')} vs base (${colorEnv(baseEnvironment)})`.padEnd(width + 8) + c.muted(box.vertical))
     ui.log(c.muted(`${box.teeRight}${line}${box.teeLeft}`))
 
     if (diff.added.length === 0 && diff.modified.length === 0) {

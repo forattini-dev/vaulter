@@ -5,15 +5,10 @@
  * then writes to output targets.
  */
 
-import path from 'node:path'
 import { findConfigDir } from '../../../lib/config-loader.js'
-import {
-  loadOverrides,
-  mergeWithOverrides,
-  resolveBaseEnvironment
-} from '../../../lib/local.js'
-import { pullToOutputs, validateOutputsConfig } from '../../../lib/outputs.js'
-import { getSharedServiceVars } from '../../../lib/outputs.js'
+import { runLocalPull as runLocalPullCore } from '../../../lib/local-ops.js'
+import { resolveBaseEnvironment } from '../../../lib/local.js'
+import { validateOutputsConfig } from '../../../lib/outputs.js'
 import { createClientFromConfig } from '../../lib/create-client.js'
 import { c, colorEnv, print } from '../../lib/colors.js'
 import * as ui from '../../ui.js'
@@ -61,15 +56,7 @@ export async function runLocalPull(context: LocalContext): Promise<void> {
     process.exit(1)
   }
 
-  const projectRoot = path.dirname(configDir)
   const baseEnv = resolveBaseEnvironment(config)
-
-  // Load local overrides
-  const overrides = loadOverrides(configDir, service)
-
-  if (verbose) {
-    ui.verbose(`Base env: ${colorEnv(baseEnv)}, overrides: ${Object.keys(overrides).length}`, true)
-  }
 
   // Fetch base vars from backend
   const client = await createClientFromConfig({
@@ -83,32 +70,32 @@ export async function runLocalPull(context: LocalContext): Promise<void> {
   try {
     await client.connect()
 
-    const baseVars = await client.export(config.project, baseEnv, service)
-    const merged = mergeWithOverrides(baseVars, overrides)
-
-    // Also get shared vars merged with overrides
-    const sharedServiceVars = await getSharedServiceVars(client, config.project, baseEnv)
-
-    const result = await pullToOutputs({
+    const {
+      baseEnvironment,
+      overridesCount,
+      result
+    } = await runLocalPullCore({
       client,
       config,
-      environment: baseEnv,
-      projectRoot,
+      configDir,
+      service,
       all,
       output: target,
       dryRun,
-      verbose,
-      varsOverride: merged,
-      sharedVarsOverride: sharedServiceVars
+      verbose
     })
+
+    if (verbose) {
+      ui.verbose(`Base env: ${colorEnv(baseEnvironment)}, overrides: ${overridesCount}`, true)
+    }
 
     if (jsonOutput) {
       ui.output(JSON.stringify({
         success: true,
         dryRun,
         project,
-        baseEnvironment: baseEnv,
-        overridesCount: Object.keys(overrides).length,
+        baseEnvironment,
+        overridesCount,
         files: result.files.map(f => ({
           output: f.output,
           path: f.fullPath,
@@ -120,7 +107,7 @@ export async function runLocalPull(context: LocalContext): Promise<void> {
       if (dryRun) {
         ui.log('Dry run - would write:')
       } else {
-        ui.success(`Pulled to ${result.files.length} output(s) (base: ${baseEnv} + ${Object.keys(overrides).length} overrides):`)
+        ui.success(`Pulled to ${result.files.length} output(s) (base: ${baseEnvironment} + ${overridesCount} overrides):`)
       }
 
       for (const file of result.files) {

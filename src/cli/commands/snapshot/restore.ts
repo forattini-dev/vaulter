@@ -6,7 +6,7 @@
  */
 
 import { findConfigDir } from '../../../lib/config-loader.js'
-import { createSnapshotDriver } from '../../../lib/snapshot.js'
+import { getSnapshotDriver, snapshotDryRun, snapshotFind, snapshotList, snapshotRestore } from '../../../lib/snapshot-ops.js'
 import type { SnapshotInfo } from '../../../lib/snapshot.js'
 import { createClientFromConfig } from '../../lib/create-client.js'
 import { c, colorEnv, print } from '../../lib/colors.js'
@@ -91,7 +91,7 @@ export async function runSnapshotRestore(context: SnapshotContext): Promise<void
 
   await client.connect()
 
-  const driver = createSnapshotDriver(configDir, config.snapshots, client.getDatabase())
+  const driver = getSnapshotDriver({ configDir, config, client })
 
   try {
     let snapshot: SnapshotInfo | null = null
@@ -99,7 +99,7 @@ export async function runSnapshotRestore(context: SnapshotContext): Promise<void
 
     if (!id) {
       // Interactive mode: show TUI selector
-      const snapshots = await driver.list(environment)
+      const snapshots = await snapshotList({ config, configDir, environment, client, driver })
       if (snapshots.length === 0) {
         print.error('No snapshots found')
         ui.log(`Create one: ${c.command('vaulter snapshot create -e ' + environment)}`)
@@ -112,7 +112,7 @@ export async function runSnapshotRestore(context: SnapshotContext): Promise<void
         return
       }
     } else {
-      snapshot = await driver.find(id)
+      snapshot = await snapshotFind({ config, configDir, idOrPartial: id, client, driver })
       if (!snapshot) {
         print.error(`Snapshot not found: ${id}`)
         ui.log(`List snapshots: ${c.command('vaulter snapshot list')}`)
@@ -120,69 +120,59 @@ export async function runSnapshotRestore(context: SnapshotContext): Promise<void
       }
     }
 
-    // Verify integrity before restoring
-    const verification = await driver.verify(snapshot.id)
-    if (verification && !verification.valid) {
-      print.error(`Snapshot integrity check failed: ${snapshot.id}`)
-      ui.log(`  Expected: ${verification.expected}`)
-      ui.log(`  Actual:   ${verification.actual}`)
-      process.exit(1)
-    }
-
     if (dryRun) {
-      // For dry run with s3db driver, we can't know var count without loading
-      const vars = await driver.load(snapshot.id)
-      const count = vars ? Object.keys(vars).length : snapshot.varsCount
-      ui.log(`Would restore ${count} vars from ${c.highlight(snapshot.id)} to ${colorEnv(environment)}`)
+      const result = await snapshotDryRun({ config, configDir, snapshot, client, driver })
+
+      if (result.status === 'integrity_failed') {
+        print.error(`Snapshot integrity check failed: ${snapshot.id}`)
+        ui.log(`  Expected: ${result.expected}`)
+        ui.log(`  Actual:   ${result.actual}`)
+        process.exit(1)
+      }
+
+      ui.log(`Would restore ${result.count} vars from ${c.highlight(snapshot.id)} to ${colorEnv(environment)}`)
       if (jsonOutput) {
-        ui.output(JSON.stringify({ snapshot: snapshot.id, environment, vars: vars ? Object.keys(vars) : [] }, null, 2))
+        ui.output(JSON.stringify({ snapshot: snapshot.id, environment, vars: result.vars ? Object.keys(result.vars) : [] }, null, 2))
       }
       return
     }
 
-    // If the driver supports direct restore (s3db), use it
-    if (driver.restore) {
-      const count = await driver.restore(snapshot.id, project, environment, service)
-
-      if (jsonOutput) {
-        ui.output(JSON.stringify({
-          success: true,
-          snapshot: snapshot.id,
-          environment,
-          varsRestored: count
-        }, null, 2))
-      } else {
-        ui.success(`Restored ${count} vars from ${c.highlight(snapshot.id)} to ${colorEnv(environment)}`)
-      }
-      return
-    }
-
-    // Filesystem driver: load + setMany
-    const vars = await driver.load(snapshot.id)
-    if (!vars) {
-      print.error(`Could not load snapshot: ${snapshot.id}`)
-      process.exit(1)
-    }
-
-    const inputs = Object.entries(vars).map(([key, value]) => ({
-      key,
-      value,
+    const restoreResult = await snapshotRestore({
+      client,
+      config,
+      configDir,
       project,
       environment,
-      service
-    }))
+      service,
+      idOrPartial: snapshot.id,
+      snapshot,
+      driver
+    })
 
-    await client.setMany(inputs)
+    if (restoreResult.status === 'not_found') {
+      print.error(`Snapshot not found: ${snapshot.id}`)
+      process.exit(1)
+    }
+    if (restoreResult.status === 'integrity_failed') {
+      print.error(`Snapshot integrity check failed: ${restoreResult.snapshot.id}`)
+      ui.log(`  Expected: ${restoreResult.expected}`)
+      ui.log(`  Actual:   ${restoreResult.actual}`)
+      process.exit(1)
+    }
+    if (restoreResult.status === 'load_failed') {
+      print.error(`Could not load snapshot: ${restoreResult.snapshot.id}`)
+      process.exit(1)
+    }
 
     if (jsonOutput) {
       ui.output(JSON.stringify({
         success: true,
-        snapshot: snapshot.id,
+        snapshot: restoreResult.snapshot.id,
         environment,
-        varsRestored: inputs.length
+        varsRestored: restoreResult.restoredCount
       }, null, 2))
     } else {
-      ui.success(`Restored ${inputs.length} vars from ${c.highlight(snapshot.id)} to ${colorEnv(environment)}`)
+      ui.success(`Restored ${restoreResult.restoredCount} vars from ${c.highlight(restoreResult.snapshot.id)} to ${colorEnv(environment)}`)
     }
   } finally {
     await client.disconnect()

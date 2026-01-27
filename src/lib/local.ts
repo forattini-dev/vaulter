@@ -12,7 +12,7 @@ import path from 'node:path'
 import { parseEnvString } from './env-parser.js'
 import { formatEnvFile } from './outputs.js'
 import { getSnapshotCount } from './snapshot.js'
-import type { VaulterConfig, Environment } from '../types.js'
+import type { VaulterConfig } from '../types.js'
 
 // ============================================================================
 // Constants
@@ -206,4 +206,3 @@ export function getLocalStatus(
 export function resolveBaseEnvironment(config: VaulterConfig): string {
   return config.default_environment || 'dev'
 }
-
