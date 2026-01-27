@@ -135,9 +135,16 @@ export class S3dbSnapshotDriver implements SnapshotDriver {
     if (this.pluginFactory) {
       this.backupPlugin = this.pluginFactory()
     } else {
-      // s3db.js BackupPlugin - import from main entry
-      const mod: any = await import('s3db.js')
-      const BackupPlugin = mod.BackupPlugin
+      // s3db.js BackupPlugin - dynamic import hidden from bundlers
+      const moduleName = 's3db.js'
+      const mod = await (new Function('m', 'return import(m)')(moduleName)) as {
+        BackupPlugin?: new (options?: unknown) => unknown
+        loadBackupPlugin?: () => Promise<new (options?: unknown) => unknown>
+      }
+      const BackupPlugin = mod.BackupPlugin || (mod.loadBackupPlugin ? await mod.loadBackupPlugin() : undefined)
+      if (!BackupPlugin) {
+        throw new Error('BackupPlugin not available in s3db.js export. Update s3db.js or disable s3db snapshots.')
+      }
       this.backupPlugin = new BackupPlugin({
         path: this.s3Path,
         compression: 'gzip',
@@ -199,7 +206,7 @@ export class S3dbSnapshotDriver implements SnapshotDriver {
     return snapshots
   }
 
-  async load(id: string): Promise<Record<string, string> | null> {
+  async load(_id: string): Promise<Record<string, string> | null> {
     // s3db BackupPlugin doesn't support reading backup data without restoring.
     // Return null — callers should use restore() directly.
     return null

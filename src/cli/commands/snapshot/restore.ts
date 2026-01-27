@@ -7,7 +7,7 @@
 
 import { findConfigDir } from '../../../lib/config-loader.js'
 import { createSnapshotDriver } from '../../../lib/snapshot.js'
-import type { SnapshotInfo, SnapshotDriver } from '../../../lib/snapshot.js'
+import type { SnapshotInfo } from '../../../lib/snapshot.js'
 import { createClientFromConfig } from '../../lib/create-client.js'
 import { c, colorEnv, print } from '../../lib/colors.js'
 import * as ui from '../../ui.js'
