@@ -23,6 +23,7 @@ import { normalizeOutputTargets, validateOutputsConfig } from '../../../lib/outp
 import { parseEnvFile } from '../../../lib/env-parser.js'
 import type { ToolResponse } from '../config.js'
 import type { VaulterClient } from '../../../client.js'
+import { getMcpOptions } from '../config.js'
 
 type CheckStatus = 'ok' | 'warn' | 'fail' | 'skip'
 
@@ -422,8 +423,11 @@ export async function handleDoctorCall(
   }
 
   // === CHECK 10: Backend connection ===
+  let connectionSucceeded = false
+  let testClient: any = null
   try {
     const { connected, error, varsCount } = await testConnection()
+    connectionSucceeded = connected
     if (connected) {
       addCheck({
         name: 'connection',
@@ -452,6 +456,352 @@ export async function handleDoctorCall(
       details: (error as Error).message,
       hint: 'Check backend configuration'
     })
+  }
+
+  // === CHECK 11: Performance & Latency ===
+  if (connectionSucceeded && project) {
+    try {
+      const { getClientForEnvironment } = await import('../config.js')
+      testClient = await getClientForEnvironment(environment, { config, connectionStrings: backendUrls, project })
+
+      if (!testClient.isConnected()) {
+        await testClient.connect()
+      }
+
+      const perfTests = {
+        connect: 0,
+        read: 0,
+        write: 0,
+        list: 0
+      }
+
+      // Test read latency
+      const readStart = Date.now()
+      await testClient.list({ project, environment, service, limit: 1 })
+      perfTests.read = Date.now() - readStart
+
+      // Test list latency (get a few items)
+      const listStart = Date.now()
+      await testClient.list({ project, environment, service, limit: 10 })
+      perfTests.list = Date.now() - listStart
+
+      const avgLatency = (perfTests.read + perfTests.list) / 2
+
+      if (avgLatency > 2000) {
+        addCheck({
+          name: 'latency',
+          status: 'warn',
+          details: `slow operations (avg: ${Math.round(avgLatency)}ms)`,
+          hint: 'Check network connectivity, backend region, or consider using a closer backend'
+        })
+      } else if (avgLatency > 1000) {
+        addCheck({
+          name: 'latency',
+          status: 'warn',
+          details: `operations slower than ideal (avg: ${Math.round(avgLatency)}ms)`,
+          hint: 'Consider using a backend in a closer region'
+        })
+      } else {
+        addCheck({
+          name: 'latency',
+          status: 'ok',
+          details: `read=${perfTests.read}ms, list=${perfTests.list}ms`
+        })
+      }
+    } catch (error) {
+      addCheck({
+        name: 'latency',
+        status: 'skip',
+        details: 'cannot measure (connection failed)'
+      })
+    }
+  }
+
+  // === CHECK 12: Write Permissions ===
+  if (connectionSucceeded && project && testClient) {
+    try {
+      const testKey = '_vaulter_healthcheck'
+      const testValue = `test-${Date.now()}`
+
+      // Try to write
+      await testClient.set({
+        key: testKey,
+        value: testValue,
+        project,
+        environment,
+        service,
+        metadata: { source: 'healthcheck' as const }
+      })
+
+      // Try to read back
+      const read = await testClient.get(testKey, project, environment, service)
+
+      if (!read || read.value !== testValue) {
+        addCheck({
+          name: 'permissions',
+          status: 'fail',
+          details: 'write succeeded but read failed',
+          hint: 'Check read permissions and encryption key'
+        })
+      } else {
+        // Try to delete
+        await testClient.delete(testKey, project, environment, service)
+
+        addCheck({
+          name: 'permissions',
+          status: 'ok',
+          details: 'read/write/delete OK'
+        })
+      }
+    } catch (error) {
+      const message = (error as Error).message
+      if (message.includes('Access Denied') || message.includes('403')) {
+        addCheck({
+          name: 'permissions',
+          status: 'fail',
+          details: 'no write permissions',
+          hint: 'Check AWS IAM permissions or MinIO policies'
+        })
+      } else {
+        addCheck({
+          name: 'permissions',
+          status: 'warn',
+          details: `write test failed: ${message.slice(0, 50)}...`,
+          hint: 'Check backend permissions and credentials'
+        })
+      }
+    }
+  }
+
+  // === CHECK 13: Encryption Round-Trip ===
+  if (connectionSucceeded && project && testClient) {
+    try {
+      const testKey = '_vaulter_encryption_test'
+      const testValue = 'encryption-test-' + Math.random().toString(36).substring(7)
+
+      await testClient.set({
+        key: testKey,
+        value: testValue,
+        project,
+        environment,
+        service,
+        metadata: { source: 'healthcheck' as const }
+      })
+
+      const retrieved = await testClient.get(testKey, project, environment, service)
+
+      // Cleanup
+      await testClient.delete(testKey, project, environment, service)
+
+      if (!retrieved) {
+        addCheck({
+          name: 'encryption',
+          status: 'fail',
+          details: 'round-trip failed (value not found)',
+          hint: 'Check encryption configuration'
+        })
+      } else if (retrieved.value !== testValue) {
+        addCheck({
+          name: 'encryption',
+          status: 'fail',
+          details: 'round-trip failed (value mismatch)',
+          hint: 'Wrong encryption key or corrupted data - check VAULTER_KEY'
+        })
+      } else {
+        addCheck({
+          name: 'encryption',
+          status: 'ok',
+          details: 'round-trip successful (encrypt → decrypt → match)'
+        })
+      }
+    } catch (error) {
+      addCheck({
+        name: 'encryption',
+        status: 'skip',
+        details: 'cannot test (write failed)'
+      })
+    }
+  }
+
+  // === CHECK 14: Sync Status ===
+  if (config && configDir && connectionSucceeded && project && testClient) {
+    try {
+      const localFilePath = getEnvFilePathForConfig(config, configDir, environment)
+
+      if (fs.existsSync(localFilePath)) {
+        const localVars = parseEnvFile(localFilePath)
+        const remoteVars = await testClient.export(project, environment, service)
+
+        const localKeys = new Set(Object.keys(localVars))
+        const remoteKeys = new Set(Object.keys(remoteVars))
+
+        let localOnly = 0
+        let remoteOnly = 0
+        let conflicts = 0
+
+        for (const key of localKeys) {
+          if (!remoteKeys.has(key)) localOnly++
+          else if (localVars[key] !== remoteVars[key]) conflicts++
+        }
+
+        for (const key of remoteKeys) {
+          if (!localKeys.has(key)) remoteOnly++
+        }
+
+        const total = localOnly + remoteOnly + conflicts
+
+        if (total === 0) {
+          addCheck({
+            name: 'sync-status',
+            status: 'ok',
+            details: 'local and remote in sync'
+          })
+        } else if (total > 10) {
+          addCheck({
+            name: 'sync-status',
+            status: 'warn',
+            details: `${localOnly} local-only, ${remoteOnly} remote-only, ${conflicts} conflicts`,
+            hint: `Run "vaulter sync diff -e ${environment} --values" to see details`
+          })
+        } else {
+          addCheck({
+            name: 'sync-status',
+            status: 'warn',
+            details: `${total} difference(s) detected`,
+            hint: `Run "vaulter sync diff -e ${environment}" for details`
+          })
+        }
+      } else {
+        addCheck({
+          name: 'sync-status',
+          status: 'skip',
+          details: 'no local file to compare'
+        })
+      }
+    } catch (error) {
+      addCheck({
+        name: 'sync-status',
+        status: 'skip',
+        details: 'cannot check sync status'
+      })
+    }
+  }
+
+  // === CHECK 15: Security Issues ===
+  if (config && configDir) {
+    const securityIssues: string[] = []
+
+    // Check if .env files are tracked in git
+    try {
+      const { execSync } = await import('node:child_process')
+      const projectRoot = path.dirname(configDir)
+
+      // Check if we're in a git repo
+      try {
+        execSync('git rev-parse --is-inside-work-tree', { cwd: projectRoot, stdio: 'ignore' })
+
+        // Check for tracked .env files
+        const trackedFiles = execSync('git ls-files "*.env" ".vaulter/**/*.env"', {
+          cwd: projectRoot,
+          encoding: 'utf8',
+          stdio: ['ignore', 'pipe', 'ignore']
+        }).trim()
+
+        if (trackedFiles) {
+          const files = trackedFiles.split('\n').filter(f => !f.includes('.example'))
+          if (files.length > 0) {
+            securityIssues.push(`${files.length} .env file(s) tracked in git: ${files.slice(0, 3).join(', ')}${files.length > 3 ? '...' : ''}`)
+          }
+        }
+      } catch {
+        // Not a git repo or git not available
+      }
+    } catch {
+      // child_process not available
+    }
+
+    // Check encryption key strength (if symmetric)
+    if (result.encryption.mode === 'symmetric' && result.encryption.keyFound) {
+      try {
+        const keyResult = await loadKeyForEnv({ project, environment, config })
+        if (keyResult.key && keyResult.key.length < 32) {
+          securityIssues.push('weak encryption key (< 32 chars)')
+        }
+      } catch {
+        // Ignore key loading errors (already checked earlier)
+      }
+    }
+
+    // Check file permissions (if on Unix)
+    if (process.platform !== 'win32') {
+      const envPath = getEnvFilePathForConfig(config, configDir, environment)
+      if (fs.existsSync(envPath)) {
+        const stats = fs.statSync(envPath)
+        const mode = stats.mode & 0o777
+        if (mode !== 0o600 && mode !== 0o400) {
+          securityIssues.push(`.env file has weak permissions (${mode.toString(8)})`)
+        }
+      }
+    }
+
+    if (securityIssues.length === 0) {
+      addCheck({
+        name: 'security',
+        status: 'ok',
+        details: 'no security issues detected'
+      })
+    } else if (securityIssues.some(i => i.includes('tracked in git'))) {
+      addCheck({
+        name: 'security',
+        status: 'fail',
+        details: securityIssues.join('; '),
+        hint: 'Add .env files to .gitignore immediately and remove from git history'
+      })
+    } else {
+      addCheck({
+        name: 'security',
+        status: 'warn',
+        details: securityIssues.join('; '),
+        hint: 'Fix security issues: generate stronger keys, fix permissions'
+      })
+    }
+  }
+
+  // === CHECK 16: Performance Config Suggestions ===
+  {
+    const perfHints: string[] = []
+    const cacheFlag = (process.env.S3DB_CACHE_ENABLED || '').toLowerCase()
+    const cacheEnabled = cacheFlag === '1' || cacheFlag === 'true' || cacheFlag === 'yes'
+
+    if (result.backend.type === 'remote' && !cacheEnabled) {
+      perfHints.push('Enable S3DB cache: S3DB_CACHE_ENABLED=true, S3DB_CACHE_DRIVER=memory|filesystem, S3DB_CACHE_TTL=300000')
+    }
+
+    const warmupFlag = (process.env.VAULTER_MCP_WARMUP || '').toLowerCase()
+    const warmupEnabled = getMcpOptions().warmup === true || warmupFlag === '1' || warmupFlag === 'true' || warmupFlag === 'yes'
+    if (!warmupEnabled) {
+      perfHints.push('Enable MCP warmup: VAULTER_MCP_WARMUP=1')
+    }
+
+    const envCount = config?.environments?.length || 0
+    if (envCount >= 4 && !process.env.VAULTER_MCP_SEARCH_CONCURRENCY) {
+      perfHints.push('Speed up vaulter_search: VAULTER_MCP_SEARCH_CONCURRENCY=4-8')
+    }
+
+    if (perfHints.length > 0) {
+      addCheck({
+        name: 'perf-config',
+        status: 'warn',
+        details: 'performance tuning available',
+        hint: perfHints.join(' | ')
+      })
+    } else {
+      addCheck({
+        name: 'perf-config',
+        status: 'skip',
+        details: 'no performance suggestions'
+      })
+    }
   }
 
   // Calculate summary
