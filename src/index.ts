@@ -8,6 +8,9 @@
 export { VaulterClient, createClient, generateVarId, parseVarId } from './client.js'
 export type { VaulterClientOptions, ListOptions, SyncResult, BatchResult, BatchOptions } from './types.js'
 
+// Timeout utilities
+export { withTimeout, createTimeoutWrapper, withRetry } from './lib/timeout.js'
+
 // Types
 export type {
   Environment,

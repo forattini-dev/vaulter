@@ -26,6 +26,7 @@ import {
   isHybridEncrypted,
   serializeEncrypted
 } from './lib/crypto.js'
+import { withTimeout } from './lib/timeout.js'
 
 // Default connection string for local development (FileSystem backend)
 const DEFAULT_CONNECTION_STRING = `file://${os.homedir()}/.vaulter/store`
@@ -109,6 +110,7 @@ export class VaulterClient {
   private publicKey: string | null
   private privateKey: string | null
   private asymmetricAlgorithm: AsymmetricAlgorithm
+  private timeoutMs: number
 
   constructor(options: VaulterClientOptions = {}) {
     // Support single connectionString or array of connectionStrings
@@ -121,6 +123,7 @@ export class VaulterClient {
     }
     this.passphrase = options.passphrase || DEFAULT_PASSPHRASE
     this.verbose = options.verbose || false
+    this.timeoutMs = options.timeoutMs ?? 30000 // Default 30s timeout
 
     // Asymmetric encryption configuration
     this.encryptionMode = options.encryptionMode || 'symmetric'
@@ -227,7 +230,7 @@ export class VaulterClient {
           logLevel: this.verbose ? 'debug' : 'silent'
         })
 
-        await this.db.connect()
+        await withTimeout(this.db.connect(), this.timeoutMs, 'connect to backend')
 
         // Create or get the environment-variables resource
         // In symmetric mode, use 'secret' type for s3db.js auto-encryption
@@ -352,7 +355,11 @@ export class VaulterClient {
     const id = generateVarId(project, environment, service, key)
 
     // Use getOrNull to avoid exception handling for missing keys
-    const found = await this.resource.getOrNull(id)
+    const found = await withTimeout<any>(
+      this.resource.getOrNull(id),
+      this.timeoutMs,
+      `get variable ${key}`
+    )
 
     if (!found) return null
 
@@ -377,7 +384,11 @@ export class VaulterClient {
     const id = generateVarId(input.project, input.environment, input.service, input.key)
 
     // Use getOrNull - returns null if not found (no exception)
-    const existing = await this.resource.getOrNull(id)
+    const existing = await withTimeout<any>(
+      this.resource.getOrNull(id),
+      this.timeoutMs,
+      `check existing variable ${input.key}`
+    )
 
     if (existing) {
       // Update existing - filter undefined values to preserve existing metadata
@@ -388,31 +399,39 @@ export class VaulterClient {
       // Preserve existing sensitive flag if not explicitly provided
       const sensitive = input.sensitive !== undefined ? input.sensitive : existing.sensitive
 
-      const result = await this.resource.update(id, {
-        value: encryptedValue,
-        tags: input.tags,
-        sensitive,
-        metadata: {
-          ...existing.metadata,
-          ...filteredInputMeta,
-          source: input.metadata?.source || existing.metadata?.source || 'manual'
-        }
-      })
+      const result = await withTimeout<any>(
+        this.resource.update(id, {
+          value: encryptedValue,
+          tags: input.tags,
+          sensitive,
+          metadata: {
+            ...existing.metadata,
+            ...filteredInputMeta,
+            source: input.metadata?.source || existing.metadata?.source || 'manual'
+          }
+        }),
+        this.timeoutMs,
+        `update variable ${input.key}`
+      )
 
       // Return with decrypted value
       return { ...result, value: input.value }
     } else {
       // Create new - pass pre-calculated ID to ensure consistency
-      const result = await this.resource.insert({
-        id,
-        ...input,
-        value: encryptedValue,
-        sensitive: input.sensitive ?? false, // Default to config (not sensitive)
-        metadata: {
-          ...input.metadata,
-          source: input.metadata?.source || 'manual'
-        }
-      })
+      const result = await withTimeout<any>(
+        this.resource.insert({
+          id,
+          ...input,
+          value: encryptedValue,
+          sensitive: input.sensitive ?? false, // Default to config (not sensitive)
+          metadata: {
+            ...input.metadata,
+            source: input.metadata?.source || 'manual'
+          }
+        }),
+        this.timeoutMs,
+        `insert variable ${input.key}`
+      )
 
       // Return with decrypted value
       return { ...result, value: input.value }
@@ -435,7 +454,11 @@ export class VaulterClient {
     const id = generateVarId(project, environment, service, key)
 
     try {
-      await this.resource.delete(id)
+      await withTimeout(
+        this.resource.delete(id),
+        this.timeoutMs,
+        `delete variable ${key}`
+      )
       return true
     } catch (err: any) {
       // Handle "not found" errors gracefully
@@ -448,53 +471,43 @@ export class VaulterClient {
 
   /**
    * List environment variables
-   *
-   * NOTE: Partitions are currently DISABLED due to s3db.js bug where partition
-   * indices get out of sync with actual data. Once fixed, partitions can be
-   * re-enabled for O(1) performance instead of O(n) scan + filter.
-   *
-   * Previously would use:
-   * - project + service + environment → byProjectServiceEnv
-   * - project + environment → byProjectEnv
-   * - project only → byProject
-   * - environment only → byEnvironment (cross-project, for auditing)
    */
   async list(options: ListOptions = {}): Promise<EnvVar[]> {
     this.ensureConnected()
 
     const { project, service, environment, limit, offset } = options
 
-    // WORKAROUND: Partition indices are broken in s3db.js (asyncPartitions bug?)
-    // They return fewer results than actually exist.
-    // For now, we do a full scan and filter manually.
-    // TODO: Re-enable partitions when s3db.js fixes the bug
-    //
-    // Original partition logic (disabled):
-    // if (project && service && environment) {
-    //   partition = 'byProjectServiceEnv'
-    //   partitionValues = { project, service, environment }
-    // } else if (project && environment) {
-    //   partition = 'byProjectEnv'
-    //   partitionValues = { project, environment }
-    // } ...
+    let partition: string | undefined
+    let partitionValues: Record<string, string> = {}
+
+    // Use partitions for O(1) listing where possible
+    if (project && service !== undefined && environment) {
+      partition = 'byProjectServiceEnv'
+      partitionValues = { project, service, environment }
+    } else if (project && environment) {
+      partition = 'byProjectEnv'
+      partitionValues = { project, environment }
+    } else if (project) {
+      partition = 'byProject'
+      partitionValues = { project }
+    } else if (environment) {
+      partition = 'byEnvironment'
+      partitionValues = { environment }
+    }
 
     const listOptions: any = {}
     if (limit) listOptions.limit = limit
     if (offset) listOptions.offset = offset
+    if (partition) {
+      listOptions.partition = partition
+      listOptions.partitionValues = partitionValues
+    }
 
-    let results = await this.resource.list(listOptions)
-
-    // Manual filtering (workaround for partition bug)
-    if (project) {
-      results = results.filter((item: EnvVar) => item.project === project)
-    }
-    if (service !== undefined) {
-      // service can be empty string for "no service" or '__shared__' for shared
-      results = results.filter((item: EnvVar) => (item.service || '') === service)
-    }
-    if (environment) {
-      results = results.filter((item: EnvVar) => item.environment === environment)
-    }
+    const results = await withTimeout<any[]>(
+      this.resource.list(listOptions),
+      this.timeoutMs,
+      'list variables'
+    )
 
     // Decrypt values if in asymmetric mode
     return results.map((item: EnvVar) => ({
@@ -1070,16 +1083,36 @@ export class VaulterClient {
     // If service is specified and includeShared is true, merge shared vars first
     // Service-specific vars will override shared vars (inheritance)
     if (service && service !== '__shared__' && includeShared) {
-      const sharedVars = await this.list({ project, environment, service: '__shared__' })
+      const [sharedVars, serviceVars] = await Promise.all([
+        withTimeout<EnvVar[]>(
+          this.list({ project, environment, service: '__shared__' }),
+          this.timeoutMs,
+          'list shared variables'
+        ),
+        withTimeout<EnvVar[]>(
+          this.list({ project, environment, service }),
+          this.timeoutMs,
+          'list service variables'
+        )
+      ])
+
       for (const v of sharedVars) {
         result[v.key] = v.value
       }
+      for (const v of serviceVars) {
+        result[v.key] = v.value // Overrides shared if same key
+      }
+      return result
     }
 
     // Get service-specific vars (or all vars if no service)
-    const vars = await this.list({ project, environment, service })
+    const vars = await withTimeout<EnvVar[]>(
+      this.list({ project, environment, service }),
+      this.timeoutMs,
+      'list service variables'
+    )
     for (const v of vars) {
-      result[v.key] = v.value // Overrides shared if same key
+      result[v.key] = v.value
     }
 
     return result

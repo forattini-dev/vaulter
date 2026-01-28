@@ -690,6 +690,8 @@ export interface VaulterClientOptions {
   config?: VaulterConfig
   /** Enable verbose logging */
   verbose?: boolean
+  /** Timeout for operations in milliseconds (default: 30000ms = 30s) */
+  timeoutMs?: number
 }
 
 export interface ListOptions {
@@ -906,6 +908,8 @@ export interface McpConfig {
   default_key?: string
   /** Default working directory (where to look for .vaulter/config.yaml) */
   default_cwd?: string
+  /** Default timeout for backend operations in milliseconds (default: 30000ms = 30s) */
+  timeout_ms?: number
 }
 
 /**
