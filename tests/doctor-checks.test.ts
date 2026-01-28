@@ -40,7 +40,7 @@ describe('Doctor - Enhanced Checks', () => {
       await client.list({ project: 'test', environment: 'dev', limit: 1 })
       const readTime = Date.now() - readStart
 
-      expect(readTime).toBeLessThan(1000) // Should be fast in memory
+      expect(readTime).toBeLessThan(2000) // Should be fast in memory (increased for CI tolerance)
 
       await client.disconnect()
     })

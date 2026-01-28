@@ -409,12 +409,10 @@ describe('VaulterClient', () => {
     })
 
     it('should list all variables for project+environment', async () => {
-      // Mock returns all data; filtering is done in-memory (partition workaround)
+      // Mock returns partition-filtered data (partition query works in s3db.js 19.5.2+)
       const vars = [
         { id: '1', key: 'VAR_1', value: 'value1', project: 'test-project', environment: 'dev' },
-        { id: '2', key: 'VAR_2', value: 'value2', project: 'test-project', environment: 'dev' },
-        { id: '3', key: 'VAR_3', value: 'value3', project: 'other-project', environment: 'dev' },
-        { id: '4', key: 'VAR_4', value: 'value4', project: 'test-project', environment: 'prd' }
+        { id: '2', key: 'VAR_2', value: 'value2', project: 'test-project', environment: 'dev' }
       ]
       mockResource.list.mockResolvedValue(vars)
 
@@ -423,20 +421,22 @@ describe('VaulterClient', () => {
         environment: 'dev'
       })
 
-      // Should filter to only matching project+environment
+      // Should return partition-filtered results
       expect(results.length).toBe(2)
       expect(results.every(r => r.project === 'test-project' && r.environment === 'dev')).toBe(true)
-      // Partitions are disabled; list is called with empty options
-      expect(mockResource.list).toHaveBeenCalledWith({})
+      // Verifies 2-key partition query was used (fixed in 19.5.2)
+      expect(mockResource.list).toHaveBeenCalledWith({
+        partition: 'byProjectEnv',
+        partitionValues: { project: 'test-project', environment: 'dev' }
+      })
     })
 
     it('should list all variables for project', async () => {
-      // Mock returns all data; filtering is done in-memory (partition workaround)
+      // Mock returns partition-filtered data (partition query works in s3db.js 19.5.2+)
       const vars = [
         { id: '1', key: 'VAR_1', value: 'value1', project: 'test-project', environment: 'dev' },
         { id: '2', key: 'VAR_2', value: 'value2', project: 'test-project', environment: 'dev' },
-        { id: '3', key: 'VAR_3', value: 'value3', project: 'test-project', environment: 'prd' },
-        { id: '4', key: 'VAR_4', value: 'value4', project: 'other-project', environment: 'dev' }
+        { id: '3', key: 'VAR_3', value: 'value3', project: 'test-project', environment: 'prd' }
       ]
       mockResource.list.mockResolvedValue(vars)
 
@@ -444,11 +444,14 @@ describe('VaulterClient', () => {
         project: 'test-project'
       })
 
-      // Should filter to only matching project
+      // Should return partition-filtered results
       expect(results.length).toBe(3)
       expect(results.every(r => r.project === 'test-project')).toBe(true)
-      // Partitions are disabled; list is called with empty options
-      expect(mockResource.list).toHaveBeenCalledWith({})
+      // Verifies 1-key partition query was used (fixed in 19.5.2)
+      expect(mockResource.list).toHaveBeenCalledWith({
+        partition: 'byProject',
+        partitionValues: { project: 'test-project' }
+      })
     })
 
     it('should return empty array for non-existent project', async () => {
@@ -477,11 +480,9 @@ describe('VaulterClient', () => {
     })
 
     it('should list variables for project+service+environment', async () => {
-      // Mock returns all data; filtering is done in-memory (partition workaround)
+      // Mock returns only matching data (3-key partition works in s3db.js 19.5.2+)
       const vars = [
-        { id: '1', key: 'VAR_1', value: 'value1', project: 'test-project', service: 'api', environment: 'dev' },
-        { id: '2', key: 'VAR_2', value: 'value2', project: 'test-project', service: 'web', environment: 'dev' },
-        { id: '3', key: 'VAR_3', value: 'value3', project: 'test-project', service: 'api', environment: 'prd' }
+        { id: '1', key: 'VAR_1', value: 'value1', project: 'test-project', service: 'api', environment: 'dev' }
       ]
       mockResource.list.mockResolvedValue(vars)
 
@@ -491,19 +492,21 @@ describe('VaulterClient', () => {
         environment: 'dev'
       })
 
-      // Should filter to only matching project+service+environment
+      // Uses 3-key partition (fixed in s3db.js 19.5.2+)
       expect(results.length).toBe(1)
       expect(results[0].key).toBe('VAR_1')
-      // Partitions are disabled; list is called with empty options
-      expect(mockResource.list).toHaveBeenCalledWith({})
+      // Now uses partition query for O(1) performance
+      expect(mockResource.list).toHaveBeenCalledWith({
+        partition: 'byProjectServiceEnv',
+        partitionValues: { project: 'test-project', service: 'api', environment: 'dev' }
+      })
     })
 
     it('should list variables by environment only (cross-project)', async () => {
-      // Mock returns all data; filtering is done in-memory (partition workaround)
+      // Mock returns partition-filtered data (partition query works in s3db.js 19.5.2+)
       const vars = [
         { id: '1', key: 'VAR_1', value: 'value1', project: 'project-a', environment: 'prd' },
-        { id: '2', key: 'VAR_2', value: 'value2', project: 'project-b', environment: 'prd' },
-        { id: '3', key: 'VAR_3', value: 'value3', project: 'project-a', environment: 'dev' }
+        { id: '2', key: 'VAR_2', value: 'value2', project: 'project-b', environment: 'prd' }
       ]
       mockResource.list.mockResolvedValue(vars)
 
@@ -511,11 +514,14 @@ describe('VaulterClient', () => {
         environment: 'prd'
       })
 
-      // Should filter to only matching environment across all projects
+      // Should return partition-filtered results
       expect(results.length).toBe(2)
       expect(results.every(r => r.environment === 'prd')).toBe(true)
-      // Partitions are disabled; list is called with empty options
-      expect(mockResource.list).toHaveBeenCalledWith({})
+      // Verifies 1-key partition query was used (fixed in 19.5.2)
+      expect(mockResource.list).toHaveBeenCalledWith({
+        partition: 'byEnvironment',
+        partitionValues: { environment: 'prd' }
+      })
     })
 
     it('should list all variables without filters', async () => {

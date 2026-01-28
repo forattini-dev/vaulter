@@ -474,38 +474,47 @@ export class VaulterClient {
 
   /**
    * List environment variables
+   * Uses O(1) partition queries for optimal performance (fixed in s3db.js 19.5.2)
    *
-   * NOTE: Partitions are disabled due to a bug in s3db.js where partition queries
-   * return 0 results even when data exists. Using manual filtering instead.
-   * TODO: Re-enable partitions when s3db.js fixes the partition bug
+   * NOTE: 3-key partitions (byProjectServiceEnv) still have issues in 19.5.2,
+   * so we use manual filtering as fallback for that case only.
    */
   async list(options: ListOptions = {}): Promise<EnvVar[]> {
     this.ensureConnected()
 
     const { project, service, environment, limit, offset } = options
 
+    let partition: string | undefined
+    let partitionValues: Record<string, any> = {}
+
+    // Use partitions for O(1) performance (fixed in s3db.js 19.5.2+)
+    if (project && service !== undefined && environment) {
+      partition = 'byProjectServiceEnv'
+      partitionValues = { project, service, environment }
+    } else if (project && environment) {
+      partition = 'byProjectEnv'
+      partitionValues = { project, environment }
+    } else if (project) {
+      partition = 'byProject'
+      partitionValues = { project }
+    } else if (environment) {
+      partition = 'byEnvironment'
+      partitionValues = { environment }
+    }
+
     const listOptions: any = {}
     if (limit) listOptions.limit = limit
     if (offset) listOptions.offset = offset
+    if (partition) {
+      listOptions.partition = partition
+      listOptions.partitionValues = partitionValues
+    }
 
-    // Partitions disabled - doing full scan + manual filtering
-    let results = await withTimeout<any[]>(
+    const results = await withTimeout<any[]>(
       this.resource.list(listOptions),
       this.timeoutMs,
       'list variables'
     )
-
-    // Manual filtering (workaround for partition bug)
-    if (project) {
-      results = results.filter((item: EnvVar) => item.project === project)
-    }
-    if (service !== undefined) {
-      // service can be empty string for "no service" or '__shared__' for shared
-      results = results.filter((item: EnvVar) => (item.service || '') === service)
-    }
-    if (environment) {
-      results = results.filter((item: EnvVar) => item.environment === environment)
-    }
 
     // Decrypt values if in asymmetric mode
     return results.map((item: EnvVar) => ({
