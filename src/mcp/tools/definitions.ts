@@ -719,6 +719,54 @@ export function registerTools(): Tool[] {
           showValues: { type: 'boolean', description: 'Show masked values in diff (e.g., pg://us***)', default: false }
         }
       }
+    },
+
+    // === VERSIONING TOOLS ===
+    {
+      name: 'vaulter_list_versions',
+      description: 'List version history for a variable (requires versioning enabled in config). Shows all previous values with timestamps, users, and operations.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          key: { type: 'string', description: 'Variable name' },
+          environment: { type: 'string', description: 'Environment name', default: 'dev' },
+          project: { type: 'string', description: 'Project name' },
+          service: { type: 'string', description: 'Service name (for monorepos)' },
+          showValues: { type: 'boolean', description: 'Show decrypted values (default: masked for security)', default: false }
+        },
+        required: ['key']
+      }
+    },
+    {
+      name: 'vaulter_get_version',
+      description: 'Get a specific version of a variable by version number (requires versioning enabled in config)',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          key: { type: 'string', description: 'Variable name' },
+          version: { type: 'number', description: 'Version number to retrieve' },
+          environment: { type: 'string', description: 'Environment name', default: 'dev' },
+          project: { type: 'string', description: 'Project name' },
+          service: { type: 'string', description: 'Service name (for monorepos)' }
+        },
+        required: ['key', 'version']
+      }
+    },
+    {
+      name: 'vaulter_rollback',
+      description: 'Rollback a variable to a previous version (requires versioning enabled in config). Creates a new version with the old value.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          key: { type: 'string', description: 'Variable name to rollback' },
+          version: { type: 'number', description: 'Target version number to rollback to' },
+          environment: { type: 'string', description: 'Environment name', default: 'dev' },
+          project: { type: 'string', description: 'Project name' },
+          service: { type: 'string', description: 'Service name (for monorepos)' },
+          dryRun: { type: 'boolean', description: 'Preview changes without applying', default: false }
+        },
+        required: ['key', 'version']
+      }
     }
   ]
 }

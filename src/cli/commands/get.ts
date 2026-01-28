@@ -32,12 +32,16 @@ export async function runGet(context: GetContext): Promise<void> {
   // Check for --shared flag
   const isShared = args.shared || context.shared
 
+  // Check for --version flag
+  const requestedVersion = args.version as number | undefined
+
   // Get key from positional args
   const key = args._[1]
 
   if (!key) {
     print.error('Key name is required')
     ui.log(`${c.label('Usage:')} ${c.command('vaulter var get')} ${c.key('<key>')} ${c.highlight('-e')} ${colorEnv('<env>')}`)
+    ui.log(`${c.muted('       ')} ${c.command('vaulter var get')} ${c.key('<key>')} ${c.highlight('--version')} ${c.value('<num>')}`)
     process.exit(1)
   }
 
@@ -58,6 +62,40 @@ export async function runGet(context: GetContext): Promise<void> {
   try {
     await client.connect()
 
+    // Handle version request
+    if (requestedVersion !== undefined) {
+      const versionInfo = await client.getVersion(key, project, environment, requestedVersion, effectiveService)
+
+      if (!versionInfo) {
+        if (jsonOutput) {
+          ui.output(JSON.stringify({ error: 'version_not_found', key, version: requestedVersion }))
+        } else {
+          print.error(`Version ${requestedVersion} not found for ${c.key(key)}`)
+          ui.log('')
+          ui.log(c.muted(`Run "${c.command(`vaulter var versions ${key} -e ${environment}`)}" to see available versions`))
+        }
+        process.exit(1)
+      }
+
+      if (jsonOutput) {
+        ui.output(JSON.stringify({
+          key,
+          value: versionInfo.value,
+          version: versionInfo.version,
+          timestamp: versionInfo.timestamp,
+          user: versionInfo.user,
+          operation: versionInfo.operation,
+          source: versionInfo.source,
+          checksum: versionInfo.checksum
+        }))
+      } else {
+        // Output just the value for easy piping
+        ui.output(versionInfo.value)
+      }
+      return
+    }
+
+    // Standard get (current value)
     // If we have a service and want resolved value (with inheritance), check both
     let envVar = await client.get(key, project, environment, effectiveService)
     let source: 'shared' | 'service' | 'override' = 'service'

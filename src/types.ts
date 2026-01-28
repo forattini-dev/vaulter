@@ -47,6 +47,28 @@ export const COMMON_ENVIRONMENT_NAMES: Record<string, string> = {
 // Environment Variable Types
 // ============================================================================
 
+/**
+ * Individual version entry in version history
+ */
+export interface VersionEntry {
+  /** Version number (1-indexed) */
+  version: number
+  /** Encrypted value for this version */
+  value: string
+  /** When this version was created */
+  timestamp: string
+  /** Who created this version */
+  user: string
+  /** Source of the operation that created this version */
+  source: AuditSource
+  /** Operation that created this version */
+  operation: 'set' | 'rotate' | 'copy' | 'rename' | 'rollback'
+  /** SHA256 checksum of plaintext value (for integrity verification) */
+  checksum: string
+  /** Optional metadata for this version */
+  metadata?: Record<string, unknown>
+}
+
 export interface EnvVarMetadata {
   description?: string
   owner?: string
@@ -58,6 +80,9 @@ export interface EnvVarMetadata {
   renamedFrom?: string   // Original key name for rename operations
   promotedFrom?: string  // Source service for promote_shared operations
   demotedTo?: string     // Target service for demote_shared operations
+  // Versioning
+  currentVersion?: number  // Current version number (starts at 1)
+  versions?: VersionEntry[]  // Version history (sorted desc by version)
 }
 
 export interface EnvVar {
@@ -519,6 +544,58 @@ export interface SnapshotsConfig {
   s3_path?: string
 }
 
+// ============================================================================
+// Versioning Configuration
+// ============================================================================
+
+/**
+ * Retention mode for version history
+ * - count: Keep N most recent versions
+ * - days: Keep versions from last N days
+ * - both: Keep N versions AND versions from last N days (union)
+ */
+export type VersionRetentionMode = 'count' | 'days' | 'both'
+
+/**
+ * Versioning configuration
+ */
+export interface VersioningConfig {
+  /** Enable versioning (default: false) */
+  enabled?: boolean
+  /** Retention mode (default: 'count') */
+  retention_mode?: VersionRetentionMode
+  /** Maximum number of versions to keep (default: 10) */
+  max_versions?: number
+  /** Number of days to keep versions (only used when retention_mode is 'days' or 'both') */
+  retention_days?: number
+  /** Glob patterns for keys that should be versioned (default: all keys) */
+  include?: string[]
+  /** Glob patterns for keys that should NOT be versioned */
+  exclude?: string[]
+}
+
+/**
+ * Version information (for CLI/MCP responses)
+ */
+export interface VersionInfo {
+  /** Version number */
+  version: number
+  /** Decrypted value */
+  value: string
+  /** When this version was created */
+  timestamp: string
+  /** Who created this version */
+  user: string
+  /** Source of the operation */
+  source: AuditSource
+  /** Operation that created this version */
+  operation: 'set' | 'rotate' | 'copy' | 'rename' | 'rollback'
+  /** SHA256 checksum (for integrity) */
+  checksum: string
+  /** Optional metadata */
+  metadata?: Record<string, unknown>
+}
+
 export interface VaulterConfig {
   version: '1'
   project: string
@@ -542,6 +619,8 @@ export interface VaulterConfig {
   mcp?: McpConfig
   /** Snapshot configuration */
   snapshots?: SnapshotsConfig
+  /** Versioning configuration */
+  versioning?: VersioningConfig
   /** Monorepo services list - legacy */
   services?: Array<string | ServiceConfig>
 
@@ -797,7 +876,7 @@ export const DEFAULT_SECRET_PATTERNS = [
 /**
  * Operations that can be audited
  */
-export type AuditOperation = 'set' | 'delete' | 'sync' | 'push' | 'rotate' | 'deleteAll'
+export type AuditOperation = 'set' | 'delete' | 'sync' | 'push' | 'rotate' | 'deleteAll' | 'rollback'
 
 /**
  * Source of the audit event

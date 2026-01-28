@@ -9,6 +9,8 @@
 import { S3db, TasksPool } from 's3db.js/lite'
 import os from 'node:os'
 import { Writable } from 'node:stream'
+import crypto from 'node:crypto'
+import { execSync } from 'node:child_process'
 import type {
   EnvVar,
   EnvVarInput,
@@ -18,7 +20,11 @@ import type {
   SyncResult,
   BatchResult,
   BatchOptions,
-  AsymmetricAlgorithm
+  AsymmetricAlgorithm,
+  VersionEntry,
+  VersionInfo,
+  VersioningConfig,
+  AuditSource
 } from './types.js'
 import {
   hybridEncrypt,
@@ -27,6 +33,7 @@ import {
   serializeEncrypted
 } from './lib/crypto.js'
 import { withTimeout } from './lib/timeout.js'
+import { compileGlobPatterns } from './lib/pattern-matcher.js'
 
 // Default connection string for local development (FileSystem backend)
 const DEFAULT_CONNECTION_STRING = `file://${os.homedir()}/.vaulter/store`
@@ -113,6 +120,9 @@ export class VaulterClient {
   private asymmetricAlgorithm: AsymmetricAlgorithm
   private timeoutMs: number
 
+  // Versioning configuration
+  private versioningConfig: VersioningConfig
+
   constructor(options: VaulterClientOptions = {}) {
     // Support single connectionString or array of connectionStrings
     if (options.connectionStrings && options.connectionStrings.length > 0) {
@@ -138,6 +148,15 @@ export class VaulterClient {
       if (!this.publicKey && !this.privateKey) {
         throw new Error('Asymmetric mode requires at least a public key (for encryption) or private key (for decryption)')
       }
+    }
+
+    // Versioning configuration (from config.yaml)
+    this.versioningConfig = options.config?.versioning || {
+      enabled: false,
+      retention_mode: 'count',
+      max_versions: 10,
+      include: [],
+      exclude: []
     }
   }
 
@@ -260,11 +279,15 @@ export class VaulterClient {
               description: 'string|optional',
               owner: 'string|optional',
               rotateAfter: 'date|optional',
+              rotatedAt: 'string|optional',
               source: { type: 'string', enum: ['manual', 'sync', 'import', 'rotation', 'copy', 'rename', 'promote', 'demote'], optional: true },
               copiedFrom: 'string|optional',
               renamedFrom: 'string|optional',
               promotedFrom: 'string|optional',
-              demotedTo: 'string|optional'
+              demotedTo: 'string|optional',
+              // Versioning fields
+              currentVersion: 'number|optional',
+              versions: 'array|items:json|optional' // Array of VersionEntry objects
             },
             sensitive: 'boolean|optional' // true = secret, false/undefined = config
           },
@@ -366,6 +389,13 @@ export class VaulterClient {
 
     if (!found) return null
 
+    // Parse versions if present (s3db.js serializes JSON items as strings)
+    if (found.metadata?.versions) {
+      found.metadata.versions = found.metadata.versions.map((v: any) =>
+        typeof v === 'string' ? JSON.parse(v) : v
+      )
+    }
+
     // Decrypt value if in asymmetric mode
     return {
       ...found,
@@ -402,39 +432,133 @@ export class VaulterClient {
       // Preserve existing sensitive flag if not explicitly provided
       const sensitive = input.sensitive !== undefined ? input.sensitive : existing.sensitive
 
-      const result = await withTimeout<any>(
+      // Versioning: Create version entry if enabled
+      let updatedMetadata = {
+        ...existing.metadata,
+        ...filteredInputMeta,
+        source: input.metadata?.source || existing.metadata?.source || 'manual'
+      }
+
+      if (this.shouldVersion(input.key)) {
+        const currentVersion = (existing.metadata?.currentVersion || 0) + 1
+        const user = this.getCurrentUser()
+        const source = (input.metadata?.source as AuditSource) || 'cli'
+
+        // Determine operation type based on metadata hints
+        let operation: 'set' | 'rotate' | 'copy' | 'rename' | 'rollback' = 'set'
+        if (input.metadata?.source === 'rotation') {
+          operation = 'rotate'
+        } else if ((input.metadata as any)?._operation === 'rollback') {
+          operation = 'rollback'
+        } else if ((input.metadata as any)?._operation === 'copy') {
+          operation = 'copy'
+        } else if ((input.metadata as any)?._operation === 'rename') {
+          operation = 'rename'
+        }
+
+        // Create new version entry
+        const newVersion = this.createVersionEntry(
+          input.value,
+          encryptedValue,
+          currentVersion,
+          user,
+          source,
+          operation as any,
+          filteredInputMeta as any
+        )
+
+        // Get existing versions and add new one
+        // Parse versions (s3db.js serializes JSON items as strings)
+        const existingVersions = (existing.metadata?.versions || []).map((v: any) =>
+          typeof v === 'string' ? JSON.parse(v) : v
+        )
+        const allVersions = [newVersion, ...existingVersions]
+
+        // Apply retention policy
+        const retainedVersions = this.applyRetentionPolicy(allVersions)
+
+        updatedMetadata = {
+          ...updatedMetadata,
+          currentVersion,
+          versions: retainedVersions
+        }
+      }
+
+      await withTimeout<any>(
         this.resource.update(id, {
           value: encryptedValue,
           tags: input.tags,
           sensitive,
-          metadata: {
-            ...existing.metadata,
-            ...filteredInputMeta,
-            source: input.metadata?.source || existing.metadata?.source || 'manual'
-          }
+          metadata: updatedMetadata
         }),
         this.timeoutMs,
         `update variable ${input.key}`
       )
 
-      // Return with decrypted value
-      return { ...result, value: input.value }
+      // Get updated document to return with all metadata
+      const result = await withTimeout<any>(
+        this.resource.get(id),
+        this.timeoutMs,
+        `get updated variable ${input.key}`
+      )
+
+      // Parse versions if present (s3db.js serializes JSON items as strings)
+      if (result?.metadata?.versions) {
+        result.metadata.versions = result.metadata.versions.map((v: any) =>
+          typeof v === 'string' ? JSON.parse(v) : v
+        )
+      }
+
+      // Return with decrypted value (fallback to existing data if get fails)
+      return result ? { ...result, value: input.value } : { ...existing, value: input.value }
     } else {
       // Create new - pass pre-calculated ID to ensure consistency
+      let initialMetadata = {
+        ...input.metadata,
+        source: input.metadata?.source || 'manual'
+      }
+
+      // Versioning: Create initial version if enabled
+      if (this.shouldVersion(input.key)) {
+        const currentVersion = 1
+        const user = this.getCurrentUser()
+        const source = (input.metadata?.source as AuditSource) || 'cli'
+
+        const initialVersion = this.createVersionEntry(
+          input.value,
+          encryptedValue,
+          currentVersion,
+          user,
+          source,
+          'set',
+          input.metadata as any
+        )
+
+        initialMetadata = {
+          ...initialMetadata,
+          currentVersion: 1,
+          versions: [initialVersion]
+        }
+      }
+
       const result = await withTimeout<any>(
         this.resource.insert({
           id,
           ...input,
           value: encryptedValue,
           sensitive: input.sensitive ?? false, // Default to config (not sensitive)
-          metadata: {
-            ...input.metadata,
-            source: input.metadata?.source || 'manual'
-          }
+          metadata: initialMetadata
         }),
         this.timeoutMs,
         `insert variable ${input.key}`
       )
+
+      // Parse versions if present (s3db.js serializes JSON items as strings)
+      if (result.metadata?.versions) {
+        result.metadata.versions = result.metadata.versions.map((v: any) =>
+          typeof v === 'string' ? JSON.parse(v) : v
+        )
+      }
 
       // Return with decrypted value
       return { ...result, value: input.value }
@@ -1296,6 +1420,210 @@ export class VaulterClient {
         service: v.service
       }))
     }
+  }
+
+  // ============================================================================
+  // Versioning Methods
+  // ============================================================================
+
+  /**
+   * Check if a key should be versioned based on config patterns
+   */
+  private shouldVersion(key: string): boolean {
+    if (!this.versioningConfig.enabled) return false
+
+    const { include = [], exclude = [] } = this.versioningConfig
+
+    // If include patterns specified, key must match one of them
+    if (include.length > 0) {
+      const includeMatcher = compileGlobPatterns(include)
+      if (!includeMatcher(key)) return false
+    }
+
+    // If exclude patterns specified, key must NOT match any
+    if (exclude.length > 0) {
+      const excludeMatcher = compileGlobPatterns(exclude)
+      if (excludeMatcher(key)) return false
+    }
+
+    return true
+  }
+
+  /**
+   * Create a version entry from current value
+   */
+  private createVersionEntry(
+    value: string,
+    encryptedValue: string,
+    currentVersion: number,
+    user: string,
+    source: AuditSource,
+    operation: 'set' | 'rotate' | 'copy' | 'rename' | 'rollback',
+    metadata?: Record<string, unknown>
+  ): VersionEntry {
+    // Calculate checksum of plaintext for integrity verification
+    const checksum = crypto.createHash('sha256').update(value).digest('hex')
+
+    return {
+      version: currentVersion,
+      value: encryptedValue,
+      timestamp: new Date().toISOString(),
+      user,
+      source,
+      operation,
+      checksum,
+      metadata
+    }
+  }
+
+  /**
+   * Apply retention policy to version history
+   */
+  private applyRetentionPolicy(versions: VersionEntry[]): VersionEntry[] {
+    if (!this.versioningConfig.enabled || versions.length === 0) {
+      return versions
+    }
+
+    const { retention_mode = 'count', max_versions = 10, retention_days } = this.versioningConfig
+
+    // Sort versions descending by version number (newest first)
+    const sorted = [...versions].sort((a, b) => b.version - a.version)
+
+    if (retention_mode === 'count') {
+      // Keep only max_versions most recent
+      return sorted.slice(0, max_versions)
+    }
+
+    if (retention_mode === 'days' && retention_days) {
+      // Keep versions from last N days
+      const cutoffDate = new Date()
+      cutoffDate.setDate(cutoffDate.getDate() - retention_days)
+      return sorted.filter((v) => new Date(v.timestamp) >= cutoffDate)
+    }
+
+    if (retention_mode === 'both' && retention_days) {
+      // Keep versions that satisfy EITHER condition (union)
+      const cutoffDate = new Date()
+      cutoffDate.setDate(cutoffDate.getDate() - retention_days)
+
+      const recentByCount = sorted.slice(0, max_versions)
+      const recentByDate = sorted.filter((v) => new Date(v.timestamp) >= cutoffDate)
+
+      // Union: keep unique versions that appear in either set
+      const union = new Map<number, VersionEntry>()
+      for (const v of [...recentByCount, ...recentByDate]) {
+        union.set(v.version, v)
+      }
+
+      return Array.from(union.values()).sort((a, b) => b.version - a.version)
+    }
+
+    return sorted
+  }
+
+  /**
+   * Get current user for audit tracking
+   */
+  private getCurrentUser(): string {
+    // Try git config first
+    try {
+      const gitUser = execSync('git config user.name', { encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'] })
+      if (gitUser && gitUser.trim()) return gitUser.trim()
+    } catch {
+      // Ignore git errors
+    }
+
+    // Fall back to environment variables
+    return process.env.USER || process.env.USERNAME || 'unknown'
+  }
+
+  /**
+   * List version history for a variable
+   */
+  async listVersions(
+    key: string,
+    project: string,
+    environment: Environment,
+    service?: string
+  ): Promise<VersionInfo[]> {
+    this.ensureConnected()
+
+    const envVar = await this.get(key, project, environment, service)
+    if (!envVar || !envVar.metadata?.versions) {
+      return []
+    }
+
+    // Parse versions (s3db.js serializes JSON items as strings)
+    const versions = envVar.metadata.versions.map((v: any) => {
+      // If it's a string, parse it; otherwise use as-is
+      const parsed = typeof v === 'string' ? JSON.parse(v) : v
+      return {
+        ...parsed,
+        value: this.decryptValue(parsed.value)
+      }
+    })
+
+    return versions
+  }
+
+  /**
+   * Get a specific version of a variable
+   */
+  async getVersion(
+    key: string,
+    project: string,
+    environment: Environment,
+    version: number,
+    service?: string
+  ): Promise<VersionInfo | null> {
+    this.ensureConnected()
+
+    const versions = await this.listVersions(key, project, environment, service)
+    const found = versions.find((v) => v.version === version)
+    return found || null
+  }
+
+  /**
+   * Rollback a variable to a previous version
+   */
+  async rollback(
+    key: string,
+    project: string,
+    environment: Environment,
+    targetVersion: number,
+    service?: string,
+    source: AuditSource = 'cli'
+  ): Promise<EnvVar> {
+    this.ensureConnected()
+
+    // Get current variable first to check if it exists
+    const current = await this.get(key, project, environment, service)
+    if (!current) {
+      throw new Error(`Variable ${key} not found`)
+    }
+
+    // Get the target version
+    const versionInfo = await this.getVersion(key, project, environment, targetVersion, service)
+    if (!versionInfo) {
+      throw new Error(`Version ${targetVersion} not found for key ${key}`)
+    }
+
+    // Set the value to the target version's value
+    // This will create a new version entry with operation='rollback'
+    return this.set({
+      key,
+      value: versionInfo.value,
+      project,
+      environment,
+      service,
+      tags: current.tags,
+      sensitive: current.sensitive,
+      metadata: {
+        ...current.metadata,
+        source: 'manual',
+        _operation: 'rollback' // Internal hint for version tracking
+      } as any
+    })
   }
 
   /**

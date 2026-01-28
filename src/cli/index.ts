@@ -254,7 +254,13 @@ const cliSchema: CLISchema = {
           description: 'Get a single variable',
           positional: [
             { name: 'key', required: true, description: 'Variable name' }
-          ]
+          ],
+          options: {
+            version: {
+              type: 'number',
+              description: 'Get specific version (requires versioning enabled)'
+            }
+          }
         },
         set: {
           description: 'Set variables (supports batch: KEY1=v1 KEY2=v2)'
@@ -276,6 +282,27 @@ const cliSchema: CLISchema = {
               description: 'List across all environments'
             }
           }
+        },
+        versions: {
+          description: 'List version history for a variable',
+          aliases: ['history'],
+          positional: [
+            { name: 'key', required: true, description: 'Variable name' }
+          ],
+          options: {
+            values: {
+              type: 'boolean',
+              default: false,
+              description: 'Show decrypted values (masked by default)'
+            }
+          }
+        },
+        rollback: {
+          description: 'Rollback variable to a previous version',
+          positional: [
+            { name: 'key', required: true, description: 'Variable name' },
+            { name: 'version', required: true, description: 'Version number to rollback to' }
+          ]
         }
       }
     },

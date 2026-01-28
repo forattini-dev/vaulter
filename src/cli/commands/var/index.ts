@@ -94,15 +94,38 @@ export async function runVar(context: VarContext): Promise<void> {
       break
     }
 
+    case 'versions':
+    case 'history': {
+      const { runVersions } = await import('../versions.js')
+      const shiftedArgs = {
+        ...args,
+        _: ['versions', ...args._.slice(2)]
+      }
+      await runVersions({ ...context, args: shiftedArgs })
+      break
+    }
+
+    case 'rollback': {
+      const { runRollback } = await import('../rollback.js')
+      const shiftedArgs = {
+        ...args,
+        _: ['rollback', ...args._.slice(2)]
+      }
+      await runRollback({ ...context, args: shiftedArgs })
+      break
+    }
+
     default:
       if (!subcommand) {
         ui.log(`${c.label('Usage:')} ${c.command('vaulter var')} ${c.subcommand('<command>')} [options]`)
         ui.log('')
         ui.log(c.header('Commands:'))
-        ui.log(`  ${c.subcommand('get')} ${c.muted('<key>')}      Get a single variable`)
-        ui.log(`  ${c.subcommand('set')} ${c.muted('<vars>')}     Set variables (see syntax below)`)
-        ui.log(`  ${c.subcommand('delete')} ${c.muted('<key>')}   Delete a variable`)
-        ui.log(`  ${c.subcommand('list')}           List all variables`)
+        ui.log(`  ${c.subcommand('get')} ${c.muted('<key>')}             Get a single variable`)
+        ui.log(`  ${c.subcommand('set')} ${c.muted('<vars>')}            Set variables (see syntax below)`)
+        ui.log(`  ${c.subcommand('delete')} ${c.muted('<key>')}          Delete a variable`)
+        ui.log(`  ${c.subcommand('list')}                  List all variables`)
+        ui.log(`  ${c.subcommand('versions')} ${c.muted('<key>')}        List version history`)
+        ui.log(`  ${c.subcommand('rollback')} ${c.muted('<key> <ver>')}  Rollback to version`)
         ui.log('')
         ui.log(c.header('Set Syntax:'))
         ui.log(`  ${c.key('KEY')}${c.secret('=')}${c.value('value')}        ${c.secretType('secret')} ${c.muted('(encrypted, synced to backend)')}`)

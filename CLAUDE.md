@@ -157,6 +157,11 @@ O `vaulter doctor` agora executa **15 checks** para diagnosticar problemas:
 | Comparar environments | `vaulter_compare` | `source="dev" target="prd"` |
 | Setar múltiplas vars | `vaulter_multi_set` | `variables=[{key,value,sensitive}]` |
 | Listar vars | `vaulter_list` | `environment="dev" showValues=true` |
+| **Versioning** | | |
+| Ver histórico de versões | `vaulter_list_versions` | `key="API_KEY" environment="dev" showValues=true` |
+| Ver versão específica | `vaulter_get_version` | `key="API_KEY" version=2 environment="dev"` |
+| Rollback para versão anterior | `vaulter_rollback` | `key="API_KEY" version=2 environment="dev" dryRun=true` |
+| **Local Overrides** | | |
 | Override local (dev) | `vaulter_local_set` | `key="PORT" value="3001"` |
 | Pull local + overrides | `vaulter_local_pull` | `all=true` |
 | Diff overrides vs base | `vaulter_local_diff` | — |
@@ -241,6 +246,76 @@ vaulter snapshot delete <id>
     ├── data.jsonl.gz       # vars como JSONL comprimido
     └── manifest.json       # metadata + checksum SHA256
 ```
+
+### Workflow: Versioning (History & Rollback)
+
+Vaulter mantém histórico automático de versões para rastreabilidade e rollback de mudanças.
+
+**Configuração** (`.vaulter/config.yaml`):
+```yaml
+versioning:
+  enabled: true
+  retention_mode: count  # 'count' | 'days' | 'both'
+  max_versions: 10       # keep last 10 versions
+  retention_days: 30     # keep versions from last 30 days
+  include: ['*']         # patterns to version
+  exclude: ['TEMP_*']    # patterns to skip
+```
+
+**CLI Workflow:**
+```bash
+# 1. Ver histórico de mudanças
+vaulter var versions API_KEY -e prd
+# ● v3 (current)
+#   └─ 2h ago - admin
+#      Operation: set Source: cli
+#      Value: sk-****xxx
+# ○ v2
+#   └─ 1d ago - deploy
+#      Operation: rotate Source: automation
+#      Value: sk-****yyy
+# ○ v1
+#   └─ 7d ago - admin
+#      Operation: set Source: cli
+#      Value: sk-****zzz
+
+# 2. Ver valores completos (decrypted)
+vaulter var versions API_KEY -e prd --values
+
+# 3. Visualizar versão específica
+vaulter var get API_KEY --version 2 -e prd
+
+# 4. Rollback (dry-run primeiro)
+vaulter var rollback API_KEY 2 -e prd --dry-run
+# From: v3 → sk-****xxx
+# To:   v2 → sk-****yyy
+
+# 5. Executar rollback
+vaulter var rollback API_KEY 2 -e prd
+# ✓ Rolled back API_KEY
+# From: v3
+# To:   v2
+# New:  v4 (rollback operation)
+```
+
+**MCP Tools:**
+```bash
+# Ver histórico
+vaulter_list_versions key="API_KEY" environment="prd" showValues=false
+
+# Ver versão específica
+vaulter_get_version key="API_KEY" version=2 environment="prd"
+
+# Rollback
+vaulter_rollback key="API_KEY" version=2 environment="prd" dryRun=true
+```
+
+**Comportamento:**
+- ✅ Cada `set`, `rotate`, `copy`, `rename`, `rollback` cria nova versão
+- ✅ Retention policy remove versões antigas automaticamente
+- ✅ Rollback cria nova versão (não deleta histórico)
+- ✅ Valores são encriptados por versão
+- ✅ Checksum SHA256 garante integridade
 
 ### Workflow: Editar Local → Push Remoto
 
@@ -483,9 +558,9 @@ await client.deleteManyByKeys(['OLD1', 'OLD2'], 'project', 'dev')
 
 ## MCP Server
 
-**47 Tools | 5 Resources | 10 Prompts**
+**50 Tools | 5 Resources | 10 Prompts**
 
-### Tools (47)
+### Tools (50)
 
 | Category | Tools |
 |----------|-------|
@@ -502,6 +577,7 @@ await client.deleteManyByKeys(['OLD1', 'OLD2'], 'project', 'dev')
 | **Monorepo (5)** | `vaulter_init`, `vaulter_scan`, `vaulter_services`, `vaulter_shared_list`, `vaulter_inheritance_info` |
 | **Local (5)** | `vaulter_local_pull`, `vaulter_local_set`, `vaulter_local_delete`, `vaulter_local_diff`, `vaulter_local_status` |
 | **Snapshot (3)** | `vaulter_snapshot_create`, `vaulter_snapshot_list`, `vaulter_snapshot_restore` |
+| **Versioning (3)** | `vaulter_list_versions`, `vaulter_get_version`, `vaulter_rollback` |
 | **Other (2)** | `vaulter_categorize_vars`, `vaulter_nuke_preview` |
 
 > ⭐ **AI Agents:** Sempre chame `vaulter_doctor` primeiro para entender o estado do setup!

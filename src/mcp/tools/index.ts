@@ -110,6 +110,11 @@ import {
   handleSnapshotListCall,
   handleSnapshotRestoreCall
 } from './handlers/local.js'
+import {
+  handleListVersions,
+  handleGetVersion,
+  handleRollback
+} from './handlers/versioning.js'
 
 /**
  * Main tool call dispatcher
@@ -393,6 +398,16 @@ export async function handleToolCall(
 
       case 'vaulter_snapshot_restore':
         return await handleSnapshotRestoreCall(client, config!, project, environment, service, args)
+
+      // === VERSIONING TOOLS ===
+      case 'vaulter_list_versions':
+        return await handleListVersions(args, { client, project, config: config! })
+
+      case 'vaulter_get_version':
+        return await handleGetVersion(args, { client, project, config: config! })
+
+      case 'vaulter_rollback':
+        return await handleRollback(args, { client, project, config: config! })
 
       default:
         return { content: [{ type: 'text', text: `Unknown tool: ${name}` }] }
