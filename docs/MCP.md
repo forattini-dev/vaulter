@@ -6,6 +6,189 @@ Complete reference for the Vaulter Model Context Protocol (MCP) server.
 
 ---
 
+## 🚨 FOR AI AGENTS - READ THIS FIRST
+
+### When to Use `vaulter_doctor`
+
+Use doctor strategically - **not before every operation**, but in these specific scenarios:
+
+#### ✅ 1. **Start of Conversation** (Once) 🆕
+```
+User: "Help me manage environment variables"
+Agent: [Calls vaulter_doctor] ← Understand context ONCE
+Agent: [Proceeds with normal operations]
+```
+**Why:** Get initial context, then work normally without repeated diagnostics.
+
+#### ✅ 2. **When Operation Fails** (Diagnosis) 🐛
+```
+User: "Set DATABASE_URL..."
+Agent: [Calls vaulter_set] ← Try normally first
+  ↓ FAILS (timeout/error)
+Agent: [Calls vaulter_doctor] ← NOW diagnose
+Agent: [Reports root cause to user]
+```
+**Why:** Only diagnose when something actually fails - don't waste time when things work.
+
+#### ✅ 3. **User Asks Status Questions** ❓
+```
+User: "Is my setup ok?"
+User: "Why is vaulter slow?"
+User: "Are variables synced?"
+Agent: [Calls vaulter_doctor] ← Explicit status check
+```
+
+#### ✅ 4. **Environment Switch** 🔄
+```
+User: "Now work on production"
+Agent: [Calls vaulter_doctor environment="prd"] ← New env check
+```
+
+#### ❌ DON'T Call Before Every Operation
+```
+❌ SLOW & WASTEFUL:
+  vaulter_doctor → vaulter_set
+  vaulter_doctor → vaulter_get
+  vaulter_doctor → vaulter_list
+
+✅ FAST & EFFICIENT:
+  vaulter_set (try directly)
+    ↓ if fails
+  vaulter_doctor (diagnose)
+```
+
+### What Doctor Checks (15 comprehensive checks)
+
+| Check | What It Does | Why It Matters |
+|-------|--------------|----------------|
+| **1. Config** | `.vaulter/config.yaml` exists | Can't do anything without config |
+| **2. Project** | Project name is set | All operations need a project |
+| **3. Environment** | Environment is valid | Prevents typos (dev vs dvg) |
+| **4. Service** | Service exists (monorepo) | Avoids creating orphan vars |
+| **5. Backend** | Backend URLs configured | Need to know where to store |
+| **6. Encryption** | Encryption keys exist | Can't encrypt/decrypt without keys |
+| **7. Shared Key** | Shared vars key exists | Needed for monorepo shared vars |
+| **8. Local Files** | `.env` files exist locally | For sync operations |
+| **9. Outputs** | Output files configured | For framework integration |
+| **10. Connection** | Backend responds | **Most important - tests connectivity** |
+| **11. Latency** | Operations are fast | Detects slow backends |
+| **12. Permissions** | Can read/write/delete | Tests full access |
+| **13. Encryption** | Round-trip works | Detects wrong keys |
+| **14. Sync Status** | Local vs remote diff | Shows out-of-sync vars |
+| **15. Security** | No leaked secrets | Finds .env in git, weak keys |
+
+### Doctor Output Example
+
+```
+✓ ok: 13 | ⚠ warn: 1 | ✗ fail: 1 | ○ skip: 0
+
+✓ connection: connected (24 vars in dev)
+✓ latency: read=45ms, list=67ms
+✓ permissions: read/write/delete OK
+✓ encryption: round-trip successful
+⚠ sync-status: 5 local-only, 3 remote-only, 2 conflicts
+✗ security: 2 .env files tracked in git
+```
+
+### How to Interpret Results
+
+- **✓ ok:** Healthy - proceed normally
+- **⚠ warn:** Works but needs attention - inform user
+- **✗ fail:** Broken - MUST fix before operations
+- **○ skip:** Could not check (prerequisite failed)
+
+### Intelligent Retry Strategy
+
+Instead of calling doctor before every operation, use **retry with escalating timeout**:
+
+```typescript
+async function executeWithIntelligentRetry(operation, environment) {
+  try {
+    // 1. Try operation normally (default timeout: 30s)
+    return await operation()
+
+  } catch (error) {
+    if (error.message.includes("timeout")) {
+      // 2. Retry with 2x timeout (60s)
+      try {
+        return await operation({ timeout_ms: 60000 })
+      } catch (retryError) {
+        // 3. NOW diagnose with doctor
+        const diagnosis = await vaulter_doctor({ environment })
+        return formatDiagnosisForUser(diagnosis)
+      }
+    }
+
+    // 4. For non-timeout errors, diagnose immediately
+    const diagnosis = await vaulter_doctor({ environment })
+    return formatErrorWithDiagnosis(error, diagnosis)
+  }
+}
+```
+
+**Example Flow:**
+
+```
+User: "Set DATABASE_URL to postgres://..."
+
+Step 1: vaulter_set (timeout: 30s)
+  ↓ timeout!
+
+Step 2: vaulter_set (timeout: 60s)
+  ↓ timeout again!
+
+Step 3: vaulter_doctor
+  ↓ Result: "✗ connection: backend not responding"
+
+Report to user:
+  "❌ Cannot connect to backend. Doctor diagnosis:
+   - Connection: FAILED (backend not responding)
+   - Suggestion: Check backend URL and credentials"
+```
+
+### Decision Tree for AI Agents
+
+```
+START
+  ↓
+Try operation normally
+  ↓
+Success? ✓ → DONE
+  ↓ NO
+  ↓
+Timeout?
+  ↓ YES → Retry with 2x timeout
+  ↓       Success? ✓ → DONE (warn: "slower than expected")
+  ↓       Failed? → Call vaulter_doctor
+  ↓
+  ↓ NO (other error)
+  ↓
+Call vaulter_doctor
+  ↓
+Format diagnosis for user
+  ↓
+DONE
+```
+
+### First Conversation Check
+
+```typescript
+// ONLY at start of conversation (once)
+const diagnosis = await vaulter_doctor({ environment: "dev" })
+
+if (diagnosis.summary.fail > 0) {
+  return "⚠️ Setup has critical issues:\n" + diagnosis.suggestions.join("\n")
+}
+
+if (diagnosis.summary.warn > 0) {
+  inform("⚠️ " + diagnosis.summary.warn + " warning(s) detected")
+}
+
+// Now proceed with normal operations (no doctor before each one!)
+```
+
+---
+
 ## Quick Start
 
 ### Claude Desktop Configuration
@@ -647,20 +830,69 @@ Restore a snapshot to the backend. Verifies SHA256 integrity before restoring. I
 ### Diagnostic Tools (3)
 
 #### `vaulter_doctor`
-**⭐ IMPORTANT: Call this FIRST** to diagnose vaulter configuration health. Returns comprehensive status including config, backend, encryption, local files, and connection.
+**⭐ CRITICAL: Call this FIRST in EVERY conversation** to diagnose vaulter health. Performs **15 comprehensive checks** and returns actionable diagnostics.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `environment` | string | No | `dev` | Environment to check |
 | `project` | string | No | auto | Project name |
 | `service` | string | No | - | Service name (monorepo) |
+| `timeout_ms` | number | No | 30000 | Override timeout (useful for slow backends) |
+
+**15 Checks Performed:**
+
+**Basic Checks (1-9):**
+1. ✅ Config file exists
+2. ✅ Project name configured
+3. ✅ Environment valid
+4. ✅ Service exists (monorepo)
+5. ✅ Backend URLs configured
+6. ✅ Encryption keys found
+7. ✅ Shared key environment configured
+8. ✅ Local `.env` files exist
+9. ✅ Outputs configuration valid
+
+**Advanced Checks (10-15):**
+10. ✅ **Backend connection** - Tests connectivity and lists vars
+11. ✅ **Performance/Latency** - Measures operation speed (read, list)
+12. ✅ **Write permissions** - Tests read/write/delete access
+13. ✅ **Encryption round-trip** - Validates encrypt → decrypt → match
+14. ✅ **Sync status** - Compares local vs remote (differences)
+15. ✅ **Security issues** - Detects .env in git, weak keys, bad permissions
 
 **Returns:**
-- Config status (exists, valid)
-- Backend connectivity
-- Encryption key availability
-- Local file status
-- Actionable suggestions for issues
+```json
+{
+  "summary": {
+    "ok": 13,
+    "warn": 1,
+    "fail": 1,
+    "skip": 0,
+    "healthy": false
+  },
+  "checks": [
+    { "name": "connection", "status": "ok", "details": "connected (24 vars)" },
+    { "name": "latency", "status": "ok", "details": "read=45ms, list=67ms" },
+    { "name": "permissions", "status": "ok", "details": "read/write/delete OK" },
+    { "name": "encryption", "status": "ok", "details": "round-trip successful" },
+    { "name": "sync-status", "status": "warn", "details": "5 local-only, 3 remote-only" },
+    { "name": "security", "status": "fail", "details": "2 .env files tracked in git" }
+  ],
+  "suggestions": [
+    "Add .env files to .gitignore immediately",
+    "Run 'vaulter sync diff -e dev' to see details"
+  ]
+}
+```
+
+**When to Use:**
+- ✅ **Start of conversation** - Understand current state
+- ✅ **Before operations** - Ensure setup is healthy
+- ✅ **When errors occur** - Diagnose root cause
+- ✅ **After environment changes** - Validate new environment
+- ✅ **User asks questions** - Get comprehensive status
+
+**Full Documentation:** See [docs/DOCTOR.md](DOCTOR.md) for complete guide with examples and troubleshooting.
 
 #### `vaulter_clone_env`
 Clone ALL variables from one environment to another. Use `dryRun=true` to preview first.

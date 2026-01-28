@@ -11,6 +11,9 @@ import { scanMonorepo, formatScanResult } from '../../../lib/monorepo-detect.js'
 import type { VaulterConfig, Environment } from '../../../types.js'
 import { DEFAULT_ENVIRONMENTS } from '../../../types.js'
 import type { ToolResponse } from '../config.js'
+import pLimit from 'p-limit'
+
+const SEARCH_CONCURRENCY = Math.max(1, Number(process.env.VAULTER_MCP_SEARCH_CONCURRENCY || 4))
 
 export async function handleCompareCall(
   client: VaulterClient,
@@ -101,8 +104,9 @@ export async function handleSearchCall(
 
   const regex = new RegExp('^' + pattern.replace(/\*/g, '.*') + '$', 'i')
   const results: Array<{ env: string; key: string; found: boolean }> = []
+  const limit = pLimit(SEARCH_CONCURRENCY)
 
-  for (const env of environments) {
+  await Promise.all(environments.map(env => limit(async () => {
     try {
       const vars = await client.list({ project, environment: env, service })
       for (const v of vars) {
@@ -113,7 +117,7 @@ export async function handleSearchCall(
     } catch {
       // Environment might not exist
     }
-  }
+  })))
 
   if (results.length === 0) {
     return { content: [{ type: 'text', text: `No variables matching "${pattern}" found in any environment` }] }

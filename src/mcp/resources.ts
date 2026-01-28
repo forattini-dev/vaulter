@@ -197,11 +197,17 @@ async function handleInstructionsRead(uri: string): Promise<{ contents: Array<{ 
 
 ## 🤖 FOR AI AGENTS: Quick Start
 
-**Step 1: Always call \`vaulter_doctor\` first!**
+**Step 1: Call \`vaulter_doctor\` at start of conversation (ONCE)**
 \`\`\`
 vaulter_doctor environment="dev"
 \`\`\`
-This tells you what's configured, what's missing, and what to fix.
+This gives you initial context. Then proceed with normal operations.
+
+**DON'T call doctor before every operation - only when:**
+- ✅ Start of conversation (once)
+- ✅ When operation fails (diagnose)
+- ✅ User asks status questions
+- ❌ NOT before every vaulter_set/get/list
 
 **Step 2: Common tasks and which tool to use:**
 

@@ -21,14 +21,129 @@ Keep this managed block so 'openspec update' can refresh the instructions.
 
 ## 🤖 Para AI Agents - Leia Primeiro!
 
-**SEMPRE chame `vaulter_doctor` primeiro** para entender o estado atual:
+### 🎯 Quando Usar `vaulter_doctor`
 
-```bash
-# CLI
-vaulter doctor -e dev
+**USE `vaulter_doctor` nestes cenários:**
 
-# MCP Tool
-vaulter_doctor environment="dev"
+#### ✅ 1. Início de Conversa (Uma vez)
+```
+User inicia conversa pela primeira vez
+  → Agent: vaulter_doctor environment="dev"
+  → Entende o contexto atual
+  → Prossegue com operações normais
+```
+
+#### ✅ 2. Quando Operação Falha (Diagnóstico)
+```
+Agent: vaulter_set ← Tenta normalmente
+  ↓ FALHA (timeout, erro, etc)
+Agent: vaulter_doctor ← AGORA SIM, diagnostica
+  → Identifica problema
+  → Informa user com sugestões
+```
+
+#### ✅ 3. User Pergunta Status
+```
+User: "Meu setup está ok?"
+User: "Por que está lento?"
+User: "Variáveis sincronizadas?"
+  → Agent: vaulter_doctor
+```
+
+#### ❌ NÃO use antes de toda operação
+```
+❌ ERRADO (muito lento):
+  vaulter_doctor → vaulter_set
+  vaulter_doctor → vaulter_get
+  vaulter_doctor → vaulter_list
+
+✅ CORRETO (rápido):
+  vaulter_set (tenta direto)
+    ↓ se falhar
+  vaulter_doctor (diagnostica)
+```
+
+**Estratégia de Retry Inteligente:**
+
+```typescript
+// Pseudo-código do workflow ideal:
+
+try {
+  // 1. Tentar operação normalmente (timeout: 30s)
+  await vaulter_set({ key, value, environment })
+  return "✓ Success"
+
+} catch (error) {
+  if (error.message.includes("timeout")) {
+    // 2. Retry com timeout maior (60s)
+    try {
+      await vaulter_set({ key, value, environment, timeout_ms: 60000 })
+      return "✓ Success (slower than expected)"
+
+    } catch (retryError) {
+      // 3. AGORA SIM - diagnosticar com doctor
+      const diagnosis = await vaulter_doctor({ environment })
+
+      // 4. Informar user com diagnóstico
+      return `❌ Operation failed. Diagnosis:\n${formatDiagnosis(diagnosis)}`
+    }
+  }
+
+  // Se não foi timeout, diagnosticar direto
+  const diagnosis = await vaulter_doctor({ environment })
+  return `❌ ${error.message}\n\nDiagnosis:\n${formatDiagnosis(diagnosis)}`
+}
+```
+
+**Por que essa estratégia é melhor:**
+- ⚡ **Rápido** - Não adiciona latência quando tudo funciona
+- 🎯 **Eficiente** - Doctor só quando necessário
+- 🔍 **Diagnóstico preciso** - Quando falha, mostra o porquê
+- 📊 **Retry inteligente** - Aumenta timeout antes de desistir
+
+### ⏱️ Timeouts
+
+Todas as operações têm timeout de 30s por padrão. Se operações estão falhando por timeout:
+
+```yaml
+# .vaulter/config.yaml ou ~/.vaulter/config.yaml
+mcp:
+  timeout_ms: 60000  # Aumentar para 60s se necessário
+```
+
+Ver [docs/TIMEOUT.md](docs/TIMEOUT.md) para detalhes.
+
+### 🩺 Vaulter Doctor - Checks Completos
+
+O `vaulter doctor` agora executa **15 checks** para diagnosticar problemas:
+
+**Checks Básicos:**
+1. ✅ Config file - `.vaulter/config.yaml` existe
+2. ✅ Project name - Configurado
+3. ✅ Environment - Válido
+4. ✅ Service - Existe (monorepo)
+5. ✅ Backend URLs - Configurado
+6. ✅ Encryption keys - Existem e são válidas
+7. ✅ Shared key env - Chave para shared vars
+8. ✅ Local env files - Arquivos locais existem
+9. ✅ Outputs config - Outputs configurados
+
+**Checks Avançados (novos!):**
+10. ✅ **Backend connection** - Conecta e lista vars
+11. ✅ **Performance/Latency** - Mede velocidade das operações (read, list)
+12. ✅ **Write permissions** - Testa read/write/delete no backend
+13. ✅ **Encryption round-trip** - Encripta → descriptografa → valida
+14. ✅ **Sync status** - Compara local vs remoto (diferenças)
+15. ✅ **Security issues** - Detecta .env no git, chaves fracas, permissões
+
+**Exemplo de saída:**
+```
+✓ latency: read=45ms, list=67ms
+✓ permissions: read/write/delete OK
+✓ encryption: round-trip successful
+⚠ sync-status: 5 local-only, 3 remote-only, 2 conflicts
+✗ security: 2 .env file(s) tracked in git
+  → Add to .gitignore immediately
 ```
 
 ### Tarefas Comuns (MCP Tools)

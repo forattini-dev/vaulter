@@ -83,6 +83,52 @@ That's it! For most local development, vaulter is just a structured dotenv.
 
 ---
 
+## 🩺 Health Check - Doctor
+
+**Always start with `vaulter doctor`** to diagnose your setup:
+
+```bash
+vaulter doctor -e dev
+```
+
+Doctor performs **15 comprehensive checks**:
+
+| Check | What It Does |
+|-------|--------------|
+| ✅ **Connection** | Tests backend connectivity |
+| ✅ **Latency** | Measures operation speed |
+| ✅ **Permissions** | Validates read/write/delete access |
+| ✅ **Encryption** | Tests encrypt → decrypt round-trip |
+| ✅ **Sync Status** | Compares local vs remote |
+| ✅ **Security** | Detects .env in git, weak keys |
+| ✅ **+9 more** | Config, project, environment, backend, keys, etc. |
+
+**Example output:**
+
+```
+✓ ok: 13 | ⚠ warn: 1 | ✗ fail: 1
+
+✓ connection: connected (24 vars in dev)
+✓ latency: read=45ms, list=67ms
+✓ permissions: read/write/delete OK
+✓ encryption: round-trip successful
+⚠ sync-status: 5 local-only, 3 remote-only, 2 conflicts
+✗ security: 2 .env files tracked in git
+  → Add to .gitignore immediately
+```
+
+**When to use:**
+- 🆕 Initial setup - validate configuration
+- 🐛 Debugging - identify root cause
+- 🚀 Pre-deploy - ensure everything is synced
+- 🔄 Routine - weekly health check
+
+**For AI Agents:** Call `vaulter_doctor` (MCP tool) at the start of EVERY conversation to understand current state before performing any operations.
+
+See [docs/DOCTOR.md](docs/DOCTOR.md) for complete guide.
+
+---
+
 ## Commands
 
 ### Setup

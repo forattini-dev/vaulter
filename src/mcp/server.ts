@@ -42,7 +42,17 @@ import {
   ErrorCode,
   McpError
 } from '@modelcontextprotocol/sdk/types.js'
-import { registerTools, handleToolCall, setMcpOptions, resolveMcpConfigWithSources, formatResolvedConfig, type McpServerOptions } from './tools.js'
+import {
+  registerTools,
+  handleToolCall,
+  setMcpOptions,
+  resolveMcpConfigWithSources,
+  formatResolvedConfig,
+  getConfigAndDefaults,
+  getClientForEnvironment,
+  getClientForSharedVars,
+  type McpServerOptions
+} from './tools.js'
 import { handleResourceRead, listResources } from './resources.js'
 import { registerPrompts, getPrompt } from './prompts.js'
 import fs from 'node:fs'
@@ -154,6 +164,47 @@ export function createServer(): Server {
   return server
 }
 
+async function warmupClients(options: McpServerOptions): Promise<void> {
+  const { config, defaults, connectionStrings } = getConfigAndDefaults()
+  const project = defaults.project || config?.project
+
+  if (!project) {
+    if (options.verbose) {
+      console.error('[vaulter] MCP warmup skipped (project not set)')
+    }
+    return
+  }
+
+  const connectIfNeeded = async (label: string, client: { isConnected: () => boolean; connect: () => Promise<void> }) => {
+    if (!client.isConnected()) {
+      await client.connect()
+    }
+    if (options.verbose) {
+      console.error(`[vaulter] MCP warmup connected: ${label}`)
+    }
+  }
+
+  try {
+    const client = await getClientForEnvironment(defaults.environment as any, { config, connectionStrings, project })
+    await connectIfNeeded(`${project}/${defaults.environment}`, client)
+  } catch (error) {
+    if (options.verbose) {
+      console.error(`[vaulter] MCP warmup failed (default env): ${(error as Error).message}`)
+    }
+  }
+
+  try {
+    const { client: sharedClient, sharedKeyEnv } = await getClientForSharedVars({ config, connectionStrings, project })
+    if (sharedKeyEnv !== defaults.environment) {
+      await connectIfNeeded(`${project}/${sharedKeyEnv} (shared)`, sharedClient)
+    }
+  } catch (error) {
+    if (options.verbose) {
+      console.error(`[vaulter] MCP warmup failed (shared env): ${(error as Error).message}`)
+    }
+  }
+}
+
 /**
  * Start the MCP server with stdio transport
  *
@@ -168,6 +219,13 @@ export async function startServer(options: McpServerOptions = {}): Promise<void>
     const resolvedConfig = resolveMcpConfigWithSources()
     console.error(formatResolvedConfig(resolvedConfig))
     console.error('')
+  }
+
+  const warmupEnabled = options.warmup === true
+    || ['1', 'true', 'yes'].includes((process.env.VAULTER_MCP_WARMUP || '').toLowerCase())
+
+  if (warmupEnabled) {
+    await warmupClients(options)
   }
 
   const server = createServer()
