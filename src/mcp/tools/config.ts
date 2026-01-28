@@ -19,6 +19,11 @@ import crypto from 'node:crypto'
 import os from 'node:os'
 import path from 'node:path'
 
+const CONFIG_CACHE_TTL_MS = Math.max(0, Number(process.env.VAULTER_MCP_CONFIG_TTL_MS || 1000))
+const KEY_CACHE_TTL_MS = Math.max(0, Number(process.env.VAULTER_MCP_KEY_TTL_MS || 1000))
+
+type CacheEntry<T> = { ts: number; value: T }
+
 // ─────────────────────────────────────────────────────────────────────────────
 // MCP Server Options (set by server.ts when CLI args are passed)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -30,9 +35,41 @@ export interface McpServerOptions {
   cwd?: string
   /** Verbose mode */
   verbose?: boolean
+  /** Warm-up connections on startup */
+  warmup?: boolean
 }
 
 let mcpOptions: McpServerOptions = {}
+
+let resolvedConfigCache: CacheEntry<ReturnType<typeof resolveConfigAndConnectionStrings>> & { key: string } | null = null
+const keyCache = new Map<string, CacheEntry<{
+  passphrase?: string | null
+  publicKey?: string | null
+  privateKey?: string | null
+  algorithm?: string | null
+}>>()
+
+function getCacheEntry<T>(entry: CacheEntry<T> | null, ttlMs: number): T | null {
+  if (!entry || ttlMs <= 0) return null
+  if (Date.now() - entry.ts > ttlMs) return null
+  return entry.value
+}
+
+function getKeyCacheEntry<T>(key: string): T | null {
+  if (KEY_CACHE_TTL_MS <= 0) return null
+  const entry = keyCache.get(key)
+  if (!entry) return null
+  if (Date.now() - entry.ts > KEY_CACHE_TTL_MS) {
+    keyCache.delete(key)
+    return null
+  }
+  return entry.value as T
+}
+
+function setKeyCacheEntry(key: string, value: CacheEntry<any>['value']): void {
+  if (KEY_CACHE_TTL_MS <= 0) return
+  keyCache.set(key, { ts: Date.now(), value })
+}
 
 /**
  * Set MCP server options (called by server.ts with CLI args)
@@ -330,6 +367,18 @@ function resolveConfigAndConnectionStrings(): {
   defaults: McpDefaults
   connectionStrings: string[]
 } {
+  const cacheKey = [
+    mcpOptions.backend || '',
+    mcpOptions.cwd || '',
+    process.env.VAULTER_CWD || '',
+    process.cwd()
+  ].join('|')
+
+  if (CONFIG_CACHE_TTL_MS > 0 && resolvedConfigCache?.key === cacheKey) {
+    const cached = getCacheEntry(resolvedConfigCache, CONFIG_CACHE_TTL_MS)
+    if (cached) return cached
+  }
+
   // Load global MCP config as fallback
   const mcpConfig = loadMcpConfig()
 
@@ -366,7 +415,9 @@ function resolveConfigAndConnectionStrings(): {
   // 5. Default (empty - VaulterClient uses filesystem fallback)
   const connectionStrings = resolveConnectionStrings(config, mcpConfig)
 
-  return { config, mcpConfig, defaults, connectionStrings }
+  const result = { config, mcpConfig, defaults, connectionStrings }
+  resolvedConfigCache = { key: cacheKey, ts: Date.now(), value: result }
+  return result
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -421,13 +472,15 @@ export async function getClientForEnvironment(
     connectionStrings?: string[]
     forceNew?: boolean
     project?: string
+    timeoutMs?: number
   }
 ): Promise<VaulterClient> {
   const {
     config: providedConfig,
     connectionStrings: providedConnStrings,
     forceNew,
-    project: providedProject
+    project: providedProject,
+    timeoutMs: providedTimeout
   } = options || {}
 
   // Get config if not provided
@@ -447,24 +500,49 @@ export async function getClientForEnvironment(
   const connKey = connectionStrings.join(',') || 'default'
   const projectKey = project || 'default'
 
+  // Get timeout from config (project or global MCP config) or use provided override
+  const mcpConfig = loadMcpConfig()
+  const timeoutMs = providedTimeout ?? config?.mcp?.timeout_ms ?? mcpConfig?.timeout_ms ?? 30000
+
   let client: VaulterClient
   let keyHash: string
 
   if (encryptionMode === 'asymmetric' && config) {
     // Load asymmetric keys for this environment
-    const keyResult = await loadKeyForEnv({
-      project: projectKey,
-      environment,
-      config,
-      loadPublicKey: true,
-      loadPrivateKey: true
-    })
+    const keyCacheKey = `asym:${projectKey}:${environment}`
+    const cached = getKeyCacheEntry<{
+      publicKey?: string | null
+      privateKey?: string | null
+      algorithm?: string | null
+    }>(keyCacheKey)
+
+    const keyResult = cached
+      ? {
+        publicKey: cached.publicKey || null,
+        key: cached.privateKey || null,
+        algorithm: cached.algorithm || undefined
+      }
+      : await loadKeyForEnv({
+        project: projectKey,
+        environment,
+        config,
+        loadPublicKey: true,
+        loadPrivateKey: true
+      })
+
+    if (!cached) {
+      setKeyCacheEntry(keyCacheKey, {
+        publicKey: keyResult.publicKey || null,
+        privateKey: keyResult.key || null,
+        algorithm: keyResult.algorithm || null
+      })
+    }
 
     // Hash both public and private keys for cache invalidation
     keyHash = hashKeyContent((keyResult.publicKey || '') + (keyResult.key || ''))
 
-    // Create cache key including key hash
-    const cacheKey = `${connKey}:${projectKey}:${environment}:${encryptionMode}:${keyHash}`
+    // Create cache key including key hash and timeout
+    const cacheKey = `${connKey}:${projectKey}:${environment}:${encryptionMode}:${keyHash}:${timeoutMs}`
 
     // Return cached client if available (unless forceNew)
     if (!forceNew && clientCache.has(cacheKey)) {
@@ -476,20 +554,27 @@ export async function getClientForEnvironment(
       encryptionMode: 'asymmetric',
       publicKey: keyResult.publicKey || undefined,
       privateKey: keyResult.key || undefined,
-      asymmetricAlgorithm: (keyResult.algorithm || 'rsa-4096') as AsymmetricAlgorithm
+      asymmetricAlgorithm: (keyResult.algorithm || 'rsa-4096') as AsymmetricAlgorithm,
+      timeoutMs
     })
 
     // Cache the client
     clientCache.set(cacheKey, client)
   } else {
     // Symmetric mode - load key for specific environment
-    const passphrase = await loadEncryptionKeyForEnv(config, projectKey, environment)
+    const keyCacheKey = `sym:${projectKey}:${environment}`
+    const cached = getKeyCacheEntry<{ passphrase?: string | null }>(keyCacheKey)
+    const passphrase = cached?.passphrase ?? await loadEncryptionKeyForEnv(config, projectKey, environment)
+
+    if (!cached) {
+      setKeyCacheEntry(keyCacheKey, { passphrase })
+    }
 
     // Hash the passphrase for cache invalidation
     keyHash = hashKeyContent(passphrase)
 
-    // Create cache key including key hash
-    const cacheKey = `${connKey}:${projectKey}:${environment}:${encryptionMode}:${keyHash}`
+    // Create cache key including key hash and timeout
+    const cacheKey = `${connKey}:${projectKey}:${environment}:${encryptionMode}:${keyHash}:${timeoutMs}`
 
     // Return cached client if available (unless forceNew)
     if (!forceNew && clientCache.has(cacheKey)) {
@@ -499,7 +584,8 @@ export async function getClientForEnvironment(
     client = new VaulterClient({
       connectionStrings: connectionStrings.length > 0 ? connectionStrings : undefined,
       encryptionMode: 'symmetric',
-      passphrase: passphrase || undefined
+      passphrase: passphrase || undefined,
+      timeoutMs
     })
 
     // Cache the client
@@ -515,6 +601,8 @@ export async function getClientForEnvironment(
  */
 export function clearClientCache(): void {
   clientCache.clear()
+  keyCache.clear()
+  resolvedConfigCache = null
 }
 
 /**
@@ -530,9 +618,10 @@ export async function getClientForSharedVars(
     config?: VaulterConfig | null
     connectionStrings?: string[]
     project?: string
+    timeoutMs?: number
   }
 ): Promise<{ client: VaulterClient; sharedKeyEnv: string }> {
-  const { config: providedConfig, connectionStrings, project: providedProject } = options || {}
+  const { config: providedConfig, connectionStrings, project: providedProject, timeoutMs } = options || {}
   const { config, defaults } = providedConfig !== undefined
     ? { config: providedConfig, defaults: { environment: 'dev', project: '', key: undefined } }
     : getConfigAndDefaults()
@@ -544,7 +633,7 @@ export async function getClientForSharedVars(
     || 'dev'
 
   const project = providedProject || config?.project || defaults.project || 'default'
-  const client = await getClientForEnvironment(sharedKeyEnv, { config, connectionStrings, project })
+  const client = await getClientForEnvironment(sharedKeyEnv, { config, connectionStrings, project, timeoutMs })
 
   return { client, sharedKeyEnv }
 }

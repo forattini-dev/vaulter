@@ -7,11 +7,13 @@
 import type { Environment } from '../../types.js'
 import type { VaulterClient } from '../../client.js'
 import { SHARED_SERVICE } from '../../lib/shared.js'
+import { withRetry } from '../../lib/timeout.js'
 import {
   getConfigAndDefaults,
   getClientForEnvironment,
   getClientForSharedVars,
   clearClientCache,
+  getMcpOptions,
   type ToolResponse
 } from './config.js'
 
@@ -125,6 +127,7 @@ export async function handleToolCall(
   const project = (args.project as string) || defaults.project
   const environment = (args.environment as Environment) || defaults.environment
   const service = args.service as string | undefined
+  const timeoutMs = args.timeout_ms as number | undefined
 
   // Determine if this is a shared var operation
   const isSharedOperation = args.shared === true || service === SHARED_SERVICE
@@ -253,13 +256,29 @@ export async function handleToolCall(
   let client: VaulterClient | undefined
   try {
     if (isSharedOperation) {
-      const { client: sharedClient } = await getClientForSharedVars({ config, connectionStrings, project })
+      const { client: sharedClient } = await getClientForSharedVars({ config, connectionStrings, project, timeoutMs })
       client = sharedClient
     } else {
-      client = await getClientForEnvironment(environment, { config, connectionStrings, project })
+      client = await getClientForEnvironment(environment, { config, connectionStrings, project, timeoutMs })
     }
 
-    await client.connect()
+    // Only connect if not already connected (reuse existing connection)
+    if (!client.isConnected()) {
+      // Retry connection with exponential backoff (3 attempts: 1s, 2s, 4s)
+      const options = getMcpOptions()
+      await withRetry(
+        () => client!.connect(),
+        {
+          maxAttempts: 3,
+          delayMs: 1000,
+          onRetry: (attempt, error) => {
+            if (options.verbose) {
+              console.error(`[vaulter] Connection attempt ${attempt} failed, retrying...`, error.message)
+            }
+          }
+        }
+      )
+    }
 
     switch (name) {
       case 'vaulter_get':
@@ -377,9 +396,12 @@ export async function handleToolCall(
       default:
         return { content: [{ type: 'text', text: `Unknown tool: ${name}` }] }
     }
-  } finally {
-    if (client) {
-      await client.disconnect()
-    }
+  } catch (error) {
+    // Re-throw to let caller handle it
+    throw error
   }
+  // NOTE: We intentionally do NOT disconnect the client here.
+  // Clients are cached and reused across MCP calls for better performance.
+  // Disconnecting would force a new connection on every call, adding latency.
+  // The connection will be kept alive for the lifetime of the MCP server.
 }

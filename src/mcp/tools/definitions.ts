@@ -101,7 +101,8 @@ export function registerTools(): Tool[] {
           },
           environment: { type: 'string', description: 'Environment name', default: 'dev' },
           project: { type: 'string', description: 'Project name (auto-detected from config if omitted)' },
-          service: { type: 'string', description: 'Service name for monorepos' }
+          service: { type: 'string', description: 'Service name for monorepos' },
+          timeout_ms: { type: 'number', description: 'Override timeout for this operation in milliseconds (default: 30000 = 30s)', minimum: 1000, maximum: 300000 }
         },
         required: ['keys']
       }
@@ -140,7 +141,8 @@ export function registerTools(): Tool[] {
           project: { type: 'string', description: 'Project name' },
           service: { type: 'string', description: 'Service name for monorepos' },
           shared: { type: 'boolean', description: 'Set as shared variables (applies to all services in monorepo)', default: false },
-          sensitive: { type: 'boolean', description: 'Default sensitive flag for all variables (overridden by per-variable sensitive)', default: false }
+          sensitive: { type: 'boolean', description: 'Default sensitive flag for all variables (overridden by per-variable sensitive)', default: false },
+          timeout_ms: { type: 'number', description: 'Override timeout for this operation in milliseconds (default: 30000 = 30s). Useful for large batches.', minimum: 1000, maximum: 300000 }
         },
         required: ['variables']
       }
@@ -158,7 +160,8 @@ export function registerTools(): Tool[] {
           },
           environment: { type: 'string', description: 'Environment name', default: 'dev' },
           project: { type: 'string', description: 'Project name' },
-          service: { type: 'string', description: 'Service name' }
+          service: { type: 'string', description: 'Service name' },
+          timeout_ms: { type: 'number', description: 'Override timeout for this operation in milliseconds (default: 30000 = 30s)', minimum: 1000, maximum: 300000 }
         },
         required: ['keys']
       }
