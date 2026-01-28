@@ -91,7 +91,7 @@ That's it! For most local development, vaulter is just a structured dotenv.
 vaulter doctor -e dev
 ```
 
-Doctor performs **15 comprehensive checks**:
+Doctor performs **16 comprehensive checks**:
 
 | Check | What It Does |
 |-------|--------------|
@@ -101,12 +101,13 @@ Doctor performs **15 comprehensive checks**:
 | ✅ **Encryption** | Tests encrypt → decrypt round-trip |
 | ✅ **Sync Status** | Compares local vs remote |
 | ✅ **Security** | Detects .env in git, weak keys |
+| ✅ **Perf Config** | Suggests cache/warmup/concurrency tuning |
 | ✅ **+9 more** | Config, project, environment, backend, keys, etc. |
 
 **Example output:**
 
 ```
-✓ ok: 13 | ⚠ warn: 1 | ✗ fail: 1
+✓ ok: 14 | ⚠ warn: 1 | ✗ fail: 1
 
 ✓ connection: connected (24 vars in dev)
 ✓ latency: read=45ms, list=67ms
@@ -123,7 +124,7 @@ Doctor performs **15 comprehensive checks**:
 - 🚀 Pre-deploy - ensure everything is synced
 - 🔄 Routine - weekly health check
 
-**For AI Agents:** Call `vaulter_doctor` (MCP tool) at the start of EVERY conversation to understand current state before performing any operations.
+**For AI Agents:** Call `vaulter_doctor` once at the start of a new session (or when operations fail / environments change) to understand the current state before performing sensitive operations.
 
 See [docs/DOCTOR.md](docs/DOCTOR.md) for complete guide.
 
@@ -958,7 +959,7 @@ const result = await loadRuntime({
 
 ## MCP Server
 
-Claude AI integration via Model Context Protocol. **39 tools, 5 resources, 10 prompts.**
+Claude AI integration via Model Context Protocol. **47 tools, 5 resources, 10 prompts.**
 
 ```bash
 vaulter mcp
@@ -977,7 +978,7 @@ vaulter mcp
 }
 ```
 
-### Tools (39)
+### Tools (47)
 
 | Category | Tools |
 |:---------|:------|
@@ -989,10 +990,13 @@ vaulter mcp
 | **K8s (2)** | `vaulter_k8s_secret`, `vaulter_k8s_configmap` |
 | **IaC (2)** | `vaulter_helm_values`, `vaulter_tf_vars` |
 | **Keys (6)** | `vaulter_key_generate`, `vaulter_key_list`, `vaulter_key_show`, `vaulter_key_export`, `vaulter_key_import`, `vaulter_key_rotate` |
-| **Monorepo (6)** | `vaulter_init`, `vaulter_scan`, `vaulter_services`, `vaulter_shared_list`, `vaulter_inheritance_info`, `vaulter_nuke_preview` |
+| **Monorepo (5)** | `vaulter_init`, `vaulter_scan`, `vaulter_services`, `vaulter_shared_list`, `vaulter_inheritance_info` |
+| **Categorization (1)** | `vaulter_categorize_vars` |
+| **Dangerous (1)** | `vaulter_nuke_preview` |
 | **Utility (4)** | `vaulter_copy`, `vaulter_rename`, `vaulter_promote_shared`, `vaulter_demote_shared` |
+| **Local Overrides (5)** | `vaulter_local_pull`, `vaulter_local_set`, `vaulter_local_delete`, `vaulter_local_diff`, `vaulter_local_status` |
+| **Snapshot (3)** | `vaulter_snapshot_create`, `vaulter_snapshot_list`, `vaulter_snapshot_restore` |
 | **Diagnostic (3)** | `vaulter_doctor`, `vaulter_clone_env`, `vaulter_diff` |
-| **Other (1)** | `vaulter_categorize_vars` |
 
 ### Resources (5)
 

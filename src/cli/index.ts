@@ -97,6 +97,7 @@ const cliSchema: CLISchema = {
   version: VERSION,
   description: 'Multi-backend environment variable and secrets manager',
   autoShort: false,
+  strict: true,
   separators: VAULTER_SEPARATORS,
   formatter: vaulterFormatter,
   help: {
@@ -540,9 +541,14 @@ const cliSchema: CLISchema = {
       description: 'Start MCP server for Claude integration',
       options: {
         cwd: {
-          type: 'string' as const,
+          type: 'string',
           description: 'Working directory (where to look for .vaulter/config.yaml)',
-          aliases: ['C']
+          short: 'C'
+        },
+        warmup: {
+          type: 'boolean',
+          default: false,
+          description: 'Warm up backend connections on startup'
         }
       }
     },
@@ -926,7 +932,8 @@ async function main(): Promise<void> {
         await startServer({
           backend: opts.backend as string | undefined,
           cwd: opts.cwd as string | undefined,
-          verbose: opts.verbose as boolean | undefined
+          verbose: opts.verbose as boolean | undefined,
+          warmup: opts.warmup as boolean | undefined
         })
         break
 

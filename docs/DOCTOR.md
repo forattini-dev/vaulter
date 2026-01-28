@@ -1,6 +1,6 @@
 # Vaulter Doctor - Health Checks
 
-O `vaulter doctor` é uma ferramenta de diagnóstico completa que executa **15 checks** para identificar problemas de configuração, performance e segurança.
+O `vaulter doctor` é uma ferramenta de diagnóstico completa que executa **16 checks** para identificar problemas de configuração, performance e segurança.
 
 ## Quick Start
 
@@ -15,7 +15,7 @@ vaulter_doctor environment="dev"
 vaulter doctor -e dev -s api
 ```
 
-## Os 15 Checks
+## Os 16 Checks
 
 ### ✅ Checks Básicos (1-9)
 
@@ -104,7 +104,7 @@ Valida configuração de outputs.
 
 ---
 
-### ⚡ Checks Avançados (10-15)
+### ⚡ Checks Avançados (10-16)
 
 #### 10. Backend Connection
 Testa conexão com o backend e lista variáveis.
@@ -278,6 +278,22 @@ chmod 400 .vaulter/environments/prd.env
 
 ---
 
+#### 16. Perf Config
+Sugestões de tunning quando o ambiente permite:
+
+```
+⚠ perf-config: performance tuning available
+  → Enable S3DB cache, warmup, or increase search concurrency
+○ perf-config: no performance suggestions
+```
+
+**O que sugere:**
+- Cache do s3db (reduz leituras repetidas)
+- Warmup do MCP (remove a latência do primeiro call)
+- Concurrency do `vaulter_search` em monorepos grandes
+
+---
+
 ## Output Completo - Exemplo
 
 ```
@@ -309,7 +325,7 @@ chmod 400 .vaulter/environments/prd.env
   → Add .env files to .gitignore immediately and remove from git history
 
 ## Summary
-✓ ok: 13 | ⚠ warn: 1 | ✗ fail: 1 | ○ skip: 0
+✓ ok: 14 | ⚠ warn: 1 | ✗ fail: 1 | ○ skip: 0
 
 ## Suggestions
 - ⚠️ Fix failing checks before proceeding
@@ -320,7 +336,7 @@ chmod 400 .vaulter/environments/prd.env
 ## Interpretando o Summary
 
 ```
-✓ ok: 13 | ⚠ warn: 1 | ✗ fail: 1 | ○ skip: 0
+✓ ok: 14 | ⚠ warn: 1 | ✗ fail: 1 | ○ skip: 0
 ```
 
 - **✓ ok:** Checks que passaram - tudo certo
@@ -382,10 +398,8 @@ vaulter doctor -e prd
 ### Check falha mas não sei o porquê
 
 Use verbose mode:
-```yaml
-# .vaulter/config.yaml
-mcp:
-  verbose: true
+```bash
+vaulter doctor -e dev -v
 ```
 
 Saída mostrará detalhes dos erros:

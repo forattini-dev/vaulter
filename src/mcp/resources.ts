@@ -411,7 +411,7 @@ async function handleToolsGuideRead(uri: string): Promise<{ contents: Array<{ ur
 
 ## 🚨 FOR AI AGENTS: START HERE
 
-Before performing any operations, **ALWAYS call \`vaulter_doctor\` first** to understand the current state:
+Call \`vaulter_doctor\` once at the start of a new session (or when operations fail / environments change) to understand the current state:
 
 \`\`\`
 vaulter_doctor environment="dev"
@@ -502,7 +502,7 @@ showValues: true  # Show masked values
 
 ---
 
-## 📦 Core Operations (8 tools)
+## 📦 Core Operations (5 tools)
 
 ### \`vaulter_get\`
 **Use for:** Retrieving a single variable value
@@ -544,6 +544,10 @@ Returns variables with \`[secret]\` or \`[config]\` type based on \`sensitive\` 
 environment: "dev"
 format: "json"
 \`\`\`
+
+---
+
+## 🔄 Sync Operations (3 tools)
 
 ### \`vaulter_sync\`
 **Use for:** Bidirectional sync between local .env and backend
@@ -608,7 +612,7 @@ environment: "dev"
 
 ---
 
-## 🔍 Analysis & Discovery (3 tools)
+## 🔍 Analysis & Discovery (2 tools)
 
 ### \`vaulter_compare\`
 **Use for:** Comparing two environments
@@ -622,9 +626,6 @@ target: "prd"
 \`\`\`
 pattern: "DATABASE_*"
 \`\`\`
-
-### \`vaulter_scan\`
-**Use for:** Scanning monorepo for packages
 
 ---
 
@@ -658,6 +659,13 @@ environment: "dev"
 \`\`\`
 > **Note:** Variables are now explicitly marked as secret/config via the \`sensitive\` field.
 > Use \`vaulter_list\` to see \`[secret]\` or \`[config]\` for each variable.
+
+---
+
+## ⚠️ Dangerous Operations (1 tool)
+
+### \`vaulter_nuke_preview\`
+**Use for:** Previewing what would be deleted by a nuke operation (no changes made).
 
 ---
 
@@ -706,7 +714,7 @@ namespace: "my-app"
 
 ---
 
-## 🔑 Key Management (5 tools)
+## 🔑 Key Management (6 tools)
 
 ### \`vaulter_key_generate\`
 **Use for:** Generating encryption keys
@@ -727,12 +735,18 @@ algorithm: "rsa-4096"
 ### \`vaulter_key_import\`
 **Use for:** Importing key from bundle
 
+### \`vaulter_key_rotate\`
+**Use for:** Rotating encryption key (re-encrypts all variables)
+
 ---
 
-## 🏢 Monorepo (2 tools)
+## 🏢 Monorepo (3 tools)
 
 ### \`vaulter_services\`
 **Use for:** Listing discovered services
+
+### \`vaulter_scan\`
+**Use for:** Scanning monorepo for packages/apps
 
 ### \`vaulter_init\`
 **Use for:** Initializing new project

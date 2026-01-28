@@ -692,6 +692,8 @@ export interface VaulterClientOptions {
   verbose?: boolean
   /** Timeout for operations in milliseconds (default: 30000ms = 30s) */
   timeoutMs?: number
+  /** Cache settings passed to s3db.js (memory cache) */
+  cache?: { enabled?: boolean; ttl?: number; maxSize?: number } | boolean
 }
 
 export interface ListOptions {
@@ -910,6 +912,16 @@ export interface McpConfig {
   default_cwd?: string
   /** Default timeout for backend operations in milliseconds (default: 30000ms = 30s) */
   timeout_ms?: number
+  /** Warm-up connections on MCP startup */
+  warmup?: boolean
+  /** Concurrency for multi-env search operations */
+  search_concurrency?: number
+  /** Cache TTL for MCP config resolution */
+  config_ttl_ms?: number
+  /** Cache TTL for encryption key resolution */
+  key_ttl_ms?: number
+  /** s3db cache configuration for MCP clients */
+  s3db_cache?: { enabled?: boolean; ttl_ms?: number; max_size?: number } | boolean
 }
 
 /**

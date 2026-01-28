@@ -104,6 +104,7 @@ export class VaulterClient {
   private passphrase: string
   private initialized = false
   private verbose: boolean
+  private cacheConfig: { enabled?: boolean; ttl?: number; maxSize?: number } | boolean | undefined
 
   // Asymmetric encryption properties
   private encryptionMode: 'symmetric' | 'asymmetric'
@@ -124,6 +125,7 @@ export class VaulterClient {
     this.passphrase = options.passphrase || DEFAULT_PASSPHRASE
     this.verbose = options.verbose || false
     this.timeoutMs = options.timeoutMs ?? 30000 // Default 30s timeout
+    this.cacheConfig = options.cache
 
     // Asymmetric encryption configuration
     this.encryptionMode = options.encryptionMode || 'symmetric'
@@ -227,7 +229,8 @@ export class VaulterClient {
         this.db = new S3db({
           connectionString,
           passphrase: this.passphrase,
-          logLevel: this.verbose ? 'debug' : 'silent'
+          logLevel: this.verbose ? 'debug' : 'silent',
+          cache: this.cacheConfig
         })
 
         await withTimeout(this.db.connect(), this.timeoutMs, 'connect to backend')

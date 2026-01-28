@@ -25,6 +25,7 @@ export {
   getConfigAndDefaults,
   getClientForEnvironment,
   getClientForSharedVars,
+  getMcpRuntimeOptions,
   resolveMcpConfigWithSources,
   formatResolvedConfig,
 

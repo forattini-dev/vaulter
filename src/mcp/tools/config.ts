@@ -13,14 +13,15 @@ import {
   loadMcpConfig
 } from '../../lib/config-loader.js'
 import { loadKeyForEnv } from '../../lib/keys.js'
-import type { VaulterConfig, AsymmetricAlgorithm, Environment } from '../../types.js'
+import type { VaulterConfig, AsymmetricAlgorithm, Environment, McpConfig } from '../../types.js'
 import { resolveBackendUrls } from '../../index.js'
 import crypto from 'node:crypto'
 import os from 'node:os'
 import path from 'node:path'
 
-const CONFIG_CACHE_TTL_MS = Math.max(0, Number(process.env.VAULTER_MCP_CONFIG_TTL_MS || 1000))
-const KEY_CACHE_TTL_MS = Math.max(0, Number(process.env.VAULTER_MCP_KEY_TTL_MS || 1000))
+const DEFAULT_CONFIG_CACHE_TTL_MS = 1000
+const DEFAULT_KEY_CACHE_TTL_MS = 1000
+const DEFAULT_SEARCH_CONCURRENCY = 4
 
 type CacheEntry<T> = { ts: number; value: T }
 
@@ -49,6 +50,128 @@ const keyCache = new Map<string, CacheEntry<{
   algorithm?: string | null
 }>>()
 
+export interface McpRuntimeOptions {
+  configTtlMs: number
+  keyTtlMs: number
+  searchConcurrency: number
+  warmup: boolean
+  cache?: { enabled?: boolean; ttl?: number; maxSize?: number } | boolean
+}
+
+let runtimeOptions: McpRuntimeOptions = {
+  configTtlMs: Math.max(0, Number(process.env.VAULTER_MCP_CONFIG_TTL_MS || DEFAULT_CONFIG_CACHE_TTL_MS)),
+  keyTtlMs: Math.max(0, Number(process.env.VAULTER_MCP_KEY_TTL_MS || DEFAULT_KEY_CACHE_TTL_MS)),
+  searchConcurrency: Math.max(1, Number(process.env.VAULTER_MCP_SEARCH_CONCURRENCY || DEFAULT_SEARCH_CONCURRENCY)),
+  warmup: ['1', 'true', 'yes'].includes((process.env.VAULTER_MCP_WARMUP || '').toLowerCase()),
+  cache: undefined
+}
+
+function parseBool(value: string | undefined): boolean | undefined {
+  if (!value) return undefined
+  const normalized = value.toLowerCase()
+  if (['1', 'true', 'yes', 'y', 'on'].includes(normalized)) return true
+  if (['0', 'false', 'no', 'n', 'off'].includes(normalized)) return false
+  return undefined
+}
+
+function parseNumber(value: string | undefined): number | undefined {
+  if (!value) return undefined
+  const num = Number(value)
+  if (!Number.isFinite(num)) return undefined
+  return num
+}
+
+function normalizeCacheConfig(
+  value: McpConfig['s3db_cache'],
+  envOverrides: { enabled?: boolean; ttl?: number; maxSize?: number }
+): { enabled?: boolean; ttl?: number; maxSize?: number } | boolean | undefined {
+  let cacheConfig: { enabled?: boolean; ttl?: number; maxSize?: number } | boolean | undefined
+  if (value !== undefined) {
+    if (typeof value === 'boolean') {
+      cacheConfig = value
+    } else {
+      cacheConfig = {
+        enabled: value.enabled ?? true,
+        ttl: value.ttl_ms,
+        maxSize: value.max_size
+      }
+    }
+  }
+
+  const hasEnvOverride = Object.values(envOverrides).some(v => v !== undefined)
+  if (!hasEnvOverride) return cacheConfig
+
+  if (cacheConfig === undefined) {
+    cacheConfig = {}
+  }
+  if (typeof cacheConfig === 'boolean') {
+    cacheConfig = { enabled: cacheConfig }
+  }
+
+  if (envOverrides.enabled !== undefined) cacheConfig.enabled = envOverrides.enabled
+  if (envOverrides.ttl !== undefined) cacheConfig.ttl = envOverrides.ttl
+  if (envOverrides.maxSize !== undefined) cacheConfig.maxSize = envOverrides.maxSize
+  return cacheConfig
+}
+
+function resolveRuntimeOptions(
+  config: VaulterConfig | null,
+  mcpConfig: McpConfig | null
+): McpRuntimeOptions {
+  const projectMcp = config?.mcp
+
+  const warmupFromEnv = parseBool(process.env.VAULTER_MCP_WARMUP)
+  const warmup = mcpOptions.warmup
+    ?? warmupFromEnv
+    ?? projectMcp?.warmup
+    ?? mcpConfig?.warmup
+    ?? false
+
+  const searchConcurrency = Math.max(
+    1,
+    parseNumber(process.env.VAULTER_MCP_SEARCH_CONCURRENCY)
+      ?? projectMcp?.search_concurrency
+      ?? mcpConfig?.search_concurrency
+      ?? DEFAULT_SEARCH_CONCURRENCY
+  )
+
+  const configTtlMs = Math.max(
+    0,
+    parseNumber(process.env.VAULTER_MCP_CONFIG_TTL_MS)
+      ?? projectMcp?.config_ttl_ms
+      ?? mcpConfig?.config_ttl_ms
+      ?? DEFAULT_CONFIG_CACHE_TTL_MS
+  )
+
+  const keyTtlMs = Math.max(
+    0,
+    parseNumber(process.env.VAULTER_MCP_KEY_TTL_MS)
+      ?? projectMcp?.key_ttl_ms
+      ?? mcpConfig?.key_ttl_ms
+      ?? DEFAULT_KEY_CACHE_TTL_MS
+  )
+
+  const cacheOverrides = {
+    enabled: parseBool(process.env.S3DB_CACHE_ENABLED),
+    ttl: parseNumber(process.env.S3DB_CACHE_TTL) ?? parseNumber(process.env.S3DB_CACHE_TTL_MS),
+    maxSize: parseNumber(process.env.S3DB_CACHE_MAX_SIZE)
+  }
+
+  const cache = normalizeCacheConfig(projectMcp?.s3db_cache ?? mcpConfig?.s3db_cache, cacheOverrides)
+
+  return {
+    warmup,
+    searchConcurrency,
+    configTtlMs,
+    keyTtlMs,
+    cache
+  }
+}
+
+export function getMcpRuntimeOptions(): McpRuntimeOptions {
+  return runtimeOptions
+}
+
 function getCacheEntry<T>(entry: CacheEntry<T> | null, ttlMs: number): T | null {
   if (!entry || ttlMs <= 0) return null
   if (Date.now() - entry.ts > ttlMs) return null
@@ -56,10 +179,11 @@ function getCacheEntry<T>(entry: CacheEntry<T> | null, ttlMs: number): T | null 
 }
 
 function getKeyCacheEntry<T>(key: string): T | null {
-  if (KEY_CACHE_TTL_MS <= 0) return null
+  const ttlMs = runtimeOptions.keyTtlMs
+  if (ttlMs <= 0) return null
   const entry = keyCache.get(key)
   if (!entry) return null
-  if (Date.now() - entry.ts > KEY_CACHE_TTL_MS) {
+  if (Date.now() - entry.ts > ttlMs) {
     keyCache.delete(key)
     return null
   }
@@ -67,7 +191,7 @@ function getKeyCacheEntry<T>(key: string): T | null {
 }
 
 function setKeyCacheEntry(key: string, value: CacheEntry<any>['value']): void {
-  if (KEY_CACHE_TTL_MS <= 0) return
+  if (runtimeOptions.keyTtlMs <= 0) return
   keyCache.set(key, { ts: Date.now(), value })
 }
 
@@ -374,8 +498,8 @@ function resolveConfigAndConnectionStrings(): {
     process.cwd()
   ].join('|')
 
-  if (CONFIG_CACHE_TTL_MS > 0 && resolvedConfigCache?.key === cacheKey) {
-    const cached = getCacheEntry(resolvedConfigCache, CONFIG_CACHE_TTL_MS)
+  if (runtimeOptions.configTtlMs > 0 && resolvedConfigCache?.key === cacheKey) {
+    const cached = getCacheEntry(resolvedConfigCache, runtimeOptions.configTtlMs)
     if (cached) return cached
   }
 
@@ -415,6 +539,7 @@ function resolveConfigAndConnectionStrings(): {
   // 5. Default (empty - VaulterClient uses filesystem fallback)
   const connectionStrings = resolveConnectionStrings(config, mcpConfig)
 
+  runtimeOptions = resolveRuntimeOptions(config, mcpConfig)
   const result = { config, mcpConfig, defaults, connectionStrings }
   resolvedConfigCache = { key: cacheKey, ts: Date.now(), value: result }
   return result
@@ -499,6 +624,12 @@ export async function getClientForEnvironment(
 
   const connKey = connectionStrings.join(',') || 'default'
   const projectKey = project || 'default'
+  const cacheConfig = runtimeOptions.cache
+  const cacheConfigKey = cacheConfig === undefined
+    ? 'nocache'
+    : typeof cacheConfig === 'boolean'
+      ? `cache:${cacheConfig}`
+      : `cache:${cacheConfig.enabled ?? 'auto'}:${cacheConfig.ttl ?? 'none'}:${cacheConfig.maxSize ?? 'none'}`
 
   // Get timeout from config (project or global MCP config) or use provided override
   const mcpConfig = loadMcpConfig()
@@ -542,7 +673,7 @@ export async function getClientForEnvironment(
     keyHash = hashKeyContent((keyResult.publicKey || '') + (keyResult.key || ''))
 
     // Create cache key including key hash and timeout
-    const cacheKey = `${connKey}:${projectKey}:${environment}:${encryptionMode}:${keyHash}:${timeoutMs}`
+    const cacheKey = `${connKey}:${projectKey}:${environment}:${encryptionMode}:${keyHash}:${timeoutMs}:${cacheConfigKey}`
 
     // Return cached client if available (unless forceNew)
     if (!forceNew && clientCache.has(cacheKey)) {
@@ -555,7 +686,8 @@ export async function getClientForEnvironment(
       publicKey: keyResult.publicKey || undefined,
       privateKey: keyResult.key || undefined,
       asymmetricAlgorithm: (keyResult.algorithm || 'rsa-4096') as AsymmetricAlgorithm,
-      timeoutMs
+      timeoutMs,
+      cache: cacheConfig
     })
 
     // Cache the client
@@ -574,7 +706,7 @@ export async function getClientForEnvironment(
     keyHash = hashKeyContent(passphrase)
 
     // Create cache key including key hash and timeout
-    const cacheKey = `${connKey}:${projectKey}:${environment}:${encryptionMode}:${keyHash}:${timeoutMs}`
+    const cacheKey = `${connKey}:${projectKey}:${environment}:${encryptionMode}:${keyHash}:${timeoutMs}:${cacheConfigKey}`
 
     // Return cached client if available (unless forceNew)
     if (!forceNew && clientCache.has(cacheKey)) {
@@ -585,7 +717,8 @@ export async function getClientForEnvironment(
       connectionStrings: connectionStrings.length > 0 ? connectionStrings : undefined,
       encryptionMode: 'symmetric',
       passphrase: passphrase || undefined,
-      timeoutMs
+      timeoutMs,
+      cache: cacheConfig
     })
 
     // Cache the client
@@ -603,6 +736,7 @@ export function clearClientCache(): void {
   clientCache.clear()
   keyCache.clear()
   resolvedConfigCache = null
+  runtimeOptions = resolveRuntimeOptions(null, null)
 }
 
 /**

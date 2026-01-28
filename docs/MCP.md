@@ -57,7 +57,7 @@ Agent: [Calls vaulter_doctor environment="prd"] ← New env check
   vaulter_doctor (diagnose)
 ```
 
-### What Doctor Checks (15 comprehensive checks)
+### What Doctor Checks (16 comprehensive checks)
 
 | Check | What It Does | Why It Matters |
 |-------|--------------|----------------|
@@ -76,11 +76,12 @@ Agent: [Calls vaulter_doctor environment="prd"] ← New env check
 | **13. Encryption** | Round-trip works | Detects wrong keys |
 | **14. Sync Status** | Local vs remote diff | Shows out-of-sync vars |
 | **15. Security** | No leaked secrets | Finds .env in git, weak keys |
+| **16. Perf Config** | Tuning suggestions | Cache/warmup/concurrency tips |
 
 ### Doctor Output Example
 
 ```
-✓ ok: 13 | ⚠ warn: 1 | ✗ fail: 1 | ○ skip: 0
+✓ ok: 14 | ⚠ warn: 1 | ✗ fail: 1 | ○ skip: 0
 
 ✓ connection: connected (24 vars in dev)
 ✓ latency: read=45ms, list=67ms
@@ -830,7 +831,7 @@ Restore a snapshot to the backend. Verifies SHA256 integrity before restoring. I
 ### Diagnostic Tools (3)
 
 #### `vaulter_doctor`
-**⭐ CRITICAL: Call this FIRST in EVERY conversation** to diagnose vaulter health. Performs **15 comprehensive checks** and returns actionable diagnostics.
+**⭐ CRITICAL: Call this FIRST at the start of a new session (or when operations fail / environments change)** to diagnose vaulter health. Performs **16 comprehensive checks** and returns actionable diagnostics.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
@@ -839,7 +840,7 @@ Restore a snapshot to the backend. Verifies SHA256 integrity before restoring. I
 | `service` | string | No | - | Service name (monorepo) |
 | `timeout_ms` | number | No | 30000 | Override timeout (useful for slow backends) |
 
-**15 Checks Performed:**
+**16 Checks Performed:**
 
 **Basic Checks (1-9):**
 1. ✅ Config file exists
@@ -852,13 +853,15 @@ Restore a snapshot to the backend. Verifies SHA256 integrity before restoring. I
 8. ✅ Local `.env` files exist
 9. ✅ Outputs configuration valid
 
-**Advanced Checks (10-15):**
+**Advanced Checks (10-16):**
 10. ✅ **Backend connection** - Tests connectivity and lists vars
 11. ✅ **Performance/Latency** - Measures operation speed (read, list)
 12. ✅ **Write permissions** - Tests read/write/delete access
 13. ✅ **Encryption round-trip** - Validates encrypt → decrypt → match
 14. ✅ **Sync status** - Compares local vs remote (differences)
 15. ✅ **Security issues** - Detects .env in git, weak keys, bad permissions
+16. ✅ **Perf config** - Suggests cache/warmup/concurrency tuning
+16. ✅ **Perf config** - Suggests cache/warmup/concurrency tuning
 
 **Returns:**
 ```json
@@ -996,13 +999,20 @@ Comprehensive guide on which tool to use for each scenario. Includes:
 | Batch delete multiple | `vaulter_multi_delete` |
 
 Also covers:
-- Core operations (8 tools)
+- Core operations (5 tools)
 - Batch operations (3 tools)
-- Analysis & Discovery (3 tools)
+- Sync operations (3 tools)
+- Analysis & Discovery (2 tools)
 - Status & Audit (2 tools)
 - K8s/IaC Integration (4 tools)
-- Key Management (5 tools)
-- Monorepo Support (5 tools)
+- Key Management (6 tools)
+- Monorepo support (5 tools)
+- Categorization (1 tool)
+- Dangerous operations (1 tool)
+- Utility tools (4 tools)
+- Local overrides (5 tools)
+- Snapshot tools (3 tools)
+- Diagnostic tools (3 tools)
 
 ---
 
@@ -1034,6 +1044,42 @@ Shows WHERE each MCP setting comes from with a priority chain. Useful for debugg
   ]
 }
 ```
+
+### MCP Configuration Options (`mcp:`)
+
+You can set MCP defaults in either:
+- Project config: `.vaulter/config.yaml` → `mcp:`
+- Global config: `~/.vaulter/config.yaml` → `mcp:`
+
+**Example:**
+```yaml
+mcp:
+  default_backend: s3://your-bucket
+  default_project: my-app
+  default_environment: dev
+  default_key: master
+  default_cwd: /path/to/project
+  timeout_ms: 30000
+
+  # Performance tuning
+  warmup: true
+  search_concurrency: 6
+  config_ttl_ms: 2000
+  key_ttl_ms: 2000
+
+  # s3db in-memory cache
+  s3db_cache:
+    enabled: true
+    ttl_ms: 300000
+    max_size: 2000
+```
+
+**Env overrides (highest priority):**
+- `VAULTER_MCP_WARMUP`
+- `VAULTER_MCP_SEARCH_CONCURRENCY`
+- `VAULTER_MCP_CONFIG_TTL_MS`
+- `VAULTER_MCP_KEY_TTL_MS`
+- `S3DB_CACHE_ENABLED`, `S3DB_CACHE_TTL`, `S3DB_CACHE_MAX_SIZE`
 
 ---
 

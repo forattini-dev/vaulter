@@ -26,6 +26,7 @@ export {
   getClientForEnvironment,
   getClientForSharedVars,
   clearClientCache,
+  getMcpRuntimeOptions,
   resolveMcpConfigWithSources,
   formatResolvedConfig,
   sanitizeK8sName,

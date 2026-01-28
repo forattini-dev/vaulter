@@ -11,9 +11,8 @@ import { scanMonorepo, formatScanResult } from '../../../lib/monorepo-detect.js'
 import type { VaulterConfig, Environment } from '../../../types.js'
 import { DEFAULT_ENVIRONMENTS } from '../../../types.js'
 import type { ToolResponse } from '../config.js'
+import { getMcpRuntimeOptions } from '../config.js'
 import pLimit from 'p-limit'
-
-const SEARCH_CONCURRENCY = Math.max(1, Number(process.env.VAULTER_MCP_SEARCH_CONCURRENCY || 4))
 
 export async function handleCompareCall(
   client: VaulterClient,
@@ -104,7 +103,7 @@ export async function handleSearchCall(
 
   const regex = new RegExp('^' + pattern.replace(/\*/g, '.*') + '$', 'i')
   const results: Array<{ env: string; key: string; found: boolean }> = []
-  const limit = pLimit(SEARCH_CONCURRENCY)
+  const limit = pLimit(getMcpRuntimeOptions().searchConcurrency)
 
   await Promise.all(environments.map(env => limit(async () => {
     try {
