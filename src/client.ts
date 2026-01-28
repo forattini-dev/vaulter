@@ -474,43 +474,38 @@ export class VaulterClient {
 
   /**
    * List environment variables
+   *
+   * NOTE: Partitions are disabled due to a bug in s3db.js where partition queries
+   * return 0 results even when data exists. Using manual filtering instead.
+   * TODO: Re-enable partitions when s3db.js fixes the partition bug
    */
   async list(options: ListOptions = {}): Promise<EnvVar[]> {
     this.ensureConnected()
 
     const { project, service, environment, limit, offset } = options
 
-    let partition: string | undefined
-    let partitionValues: Record<string, string> = {}
-
-    // Use partitions for O(1) listing where possible
-    if (project && service !== undefined && environment) {
-      partition = 'byProjectServiceEnv'
-      partitionValues = { project, service, environment }
-    } else if (project && environment) {
-      partition = 'byProjectEnv'
-      partitionValues = { project, environment }
-    } else if (project) {
-      partition = 'byProject'
-      partitionValues = { project }
-    } else if (environment) {
-      partition = 'byEnvironment'
-      partitionValues = { environment }
-    }
-
     const listOptions: any = {}
     if (limit) listOptions.limit = limit
     if (offset) listOptions.offset = offset
-    if (partition) {
-      listOptions.partition = partition
-      listOptions.partitionValues = partitionValues
-    }
 
-    const results = await withTimeout<any[]>(
+    // Partitions disabled - doing full scan + manual filtering
+    let results = await withTimeout<any[]>(
       this.resource.list(listOptions),
       this.timeoutMs,
       'list variables'
     )
+
+    // Manual filtering (workaround for partition bug)
+    if (project) {
+      results = results.filter((item: EnvVar) => item.project === project)
+    }
+    if (service !== undefined) {
+      // service can be empty string for "no service" or '__shared__' for shared
+      results = results.filter((item: EnvVar) => (item.service || '') === service)
+    }
+    if (environment) {
+      results = results.filter((item: EnvVar) => item.environment === environment)
+    }
 
     // Decrypt values if in asymmetric mode
     return results.map((item: EnvVar) => ({
