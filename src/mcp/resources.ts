@@ -5,12 +5,13 @@
  * Resources provide static/cached data that doesn't require input parameters.
  * For actions that require input, use Tools instead.
  *
- * Resources (5 types - no redundancy with tools):
- *   vaulter://instructions  → CRITICAL: How vaulter works (READ THIS FIRST!)
- *   vaulter://tools-guide   → Guide on which tools to use for each scenario
- *   vaulter://mcp-config    → MCP configuration with sources
- *   vaulter://config        → Current project configuration (YAML)
- *   vaulter://services      → List of services in monorepo
+ * Resources (6 types - no redundancy with tools):
+ *   vaulter://instructions     → CRITICAL: How vaulter works (READ THIS FIRST!)
+ *   vaulter://tools-guide      → Guide on which tools to use for each scenario
+ *   vaulter://monorepo-example → Complete example of monorepo isolation
+ *   vaulter://mcp-config       → MCP configuration with sources
+ *   vaulter://config           → Current project configuration (YAML)
+ *   vaulter://services         → List of services in monorepo
  *
  * Removed (use Tools instead - avoid redundancy):
  *   ❌ vaulter://keys/*           → use vaulter_key_list / vaulter_key_show tools
@@ -27,16 +28,18 @@ import { findConfigDir } from '../lib/config-loader.js'
 /**
  * Parse a vaulter:// URI
  *
- * Supported formats (5 resources - no redundancy with tools):
- *   vaulter://instructions  → How vaulter works (critical!)
- *   vaulter://tools-guide   → Guide on which tools to use
- *   vaulter://mcp-config    → MCP configuration sources
- *   vaulter://config        → Project configuration
- *   vaulter://services      → Monorepo services
+ * Supported formats (6 resources - no redundancy with tools):
+ *   vaulter://instructions     → How vaulter works (critical!)
+ *   vaulter://tools-guide      → Guide on which tools to use
+ *   vaulter://monorepo-example → Complete monorepo isolation example
+ *   vaulter://mcp-config       → MCP configuration sources
+ *   vaulter://config           → Project configuration
+ *   vaulter://services         → Monorepo services
  */
 type ParsedUri =
   | { type: 'instructions' }
   | { type: 'tools-guide' }
+  | { type: 'monorepo-example' }
   | { type: 'mcp-config' }
   | { type: 'config' }
   | { type: 'services' }
@@ -51,6 +54,11 @@ function parseResourceUri(uri: string): ParsedUri {
   // vaulter://tools-guide
   if (uri === 'vaulter://tools-guide') {
     return { type: 'tools-guide' }
+  }
+
+  // vaulter://monorepo-example (complete isolation example)
+  if (uri === 'vaulter://monorepo-example') {
+    return { type: 'monorepo-example' }
   }
 
   // vaulter://mcp-config (shows WHERE each setting comes from)
@@ -117,7 +125,7 @@ function discoverServices(rootDir: string): Array<{ name: string; path: string; 
 
 /**
  * List available resources
- * Returns 5 static resources (no redundancy with tools)
+ * Returns 6 static resources (no redundancy with tools)
  */
 export async function listResources(): Promise<Resource[]> {
   const resources: Resource[] = []
@@ -135,6 +143,14 @@ export async function listResources(): Promise<Resource[]> {
     uri: 'vaulter://tools-guide',
     name: 'Tools Guide',
     description: 'Comprehensive guide on which vaulter tool to use for each scenario. Includes 47 tools organized by category.',
+    mimeType: 'text/markdown'
+  })
+
+  // Monorepo Example - complete isolation example with var counts
+  resources.push({
+    uri: 'vaulter://monorepo-example',
+    name: 'Monorepo Isolation Example',
+    description: 'Complete example showing how shared vars, services, and environments work together. Includes var count calculations and isolation guarantees.',
     mimeType: 'text/markdown'
   })
 
@@ -172,7 +188,7 @@ export async function handleResourceRead(uri: string): Promise<{ contents: Array
   const parsed = parseResourceUri(uri)
 
   if (!parsed) {
-    throw new Error(`Invalid resource URI: ${uri}. Valid resources: vaulter://instructions, vaulter://tools-guide, vaulter://mcp-config, vaulter://config, vaulter://services. For keys/env/compare, use the corresponding tools instead.`)
+    throw new Error(`Invalid resource URI: ${uri}. Valid resources: vaulter://instructions, vaulter://tools-guide, vaulter://monorepo-example, vaulter://mcp-config, vaulter://config, vaulter://services. For keys/env/compare, use the corresponding tools instead.`)
   }
 
   switch (parsed.type) {
@@ -180,6 +196,8 @@ export async function handleResourceRead(uri: string): Promise<{ contents: Array
       return handleInstructionsRead(uri)
     case 'tools-guide':
       return handleToolsGuideRead(uri)
+    case 'monorepo-example':
+      return handleMonorepoExampleRead(uri)
     case 'mcp-config':
       return handleMcpConfigRead(uri)
     case 'config':
@@ -549,11 +567,12 @@ format: "json"
 
 ## 🔄 Sync Operations (3 tools)
 
-### \`vaulter_sync\`
+### \`vaulter_sync\` ⚠️ DEPRECATED
+**Status:** Deprecated - Use \`vaulter_push\` with \`dryRun=true\` instead
 **Use for:** Bidirectional sync between local .env and backend
 \`\`\`
 environment: "dev"
-dry_run: true  # preview changes first
+dryRun: true  # preview changes first
 \`\`\`
 
 ### \`vaulter_pull\`
@@ -566,6 +585,7 @@ environment: "dev"
 **Use for:** Upload local .env to backend
 \`\`\`
 environment: "dev"
+dryRun: true  # preview changes without applying (replaces vaulter_sync)
 \`\`\`
 
 ---
@@ -710,7 +730,12 @@ namespace: "my-app"
 **Use for:** Generating Helm values.yaml
 
 ### \`vaulter_tf_vars\`
-**Use for:** Generating Terraform .tfvars
+**Use for:** Generating comprehensive Terraform .tfvars
+
+**Difference from \`vaulter_export format=tfvars\`:**
+- Adds header comments (project, environment, service)
+- Outputs individual vars (lowercase names) + an \`env_vars\` map
+- Supports JSON format for Terraform JSON config
 
 ---
 
@@ -926,6 +951,303 @@ deleteShared: true  # default
       uri,
       mimeType: 'text/markdown',
       text: guide
+    }]
+  }
+}
+
+/**
+ * Read monorepo example resource - Complete isolation example
+ */
+async function handleMonorepoExampleRead(uri: string): Promise<{ contents: Array<{ uri: string; mimeType: string; text: string }> }> {
+  const example = `# Monorepo Environment Isolation Example
+
+## 🎯 Quick Summary
+
+This example demonstrates:
+- **Environment isolation**: dev, stg, prd variables never overlap
+- **Shared vars per environment**: shared vars in 'dev' only apply to 'dev' services
+- **Service inheritance**: each service gets shared + its own variables
+- **Var count calculation**: how to predict total vars per service
+
+---
+
+## 📊 The Setup
+
+**Project:** \`apps-lair\` (monorepo with 4 services)
+**Environments:** \`dev\`, \`stg\`, \`prd\`
+**Services:** \`api\`, \`worker\`, \`web\`, \`scheduler\`
+
+### Shared Variables (per environment)
+
+Shared vars use the special service \`__shared__\` and apply to ALL services in that environment.
+
+\`\`\`yaml
+# Shared secrets (sensitive: true) - 3 per env
+DATABASE_URL:     "postgres://..." # Different per env!
+REDIS_URL:        "redis://..."
+JWT_SECRET:       "secret-..."
+
+# Shared configs (sensitive: false) - 3 per env
+LOG_LEVEL:        "debug"    # dev
+                  "info"     # stg
+                  "error"    # prd
+NODE_ENV:         "development" / "staging" / "production"
+SENTRY_DSN:       "https://sentry.io/..."
+\`\`\`
+
+### Service-Specific Variables
+
+Each service has its own secrets and configs:
+
+\`\`\`yaml
+# api service
+secrets:          API_STRIPE_KEY, API_SENDGRID_KEY     # 2 secrets
+configs:          PORT, API_RATE_LIMIT, CORS_ORIGIN    # 3 configs
+
+# worker service
+secrets:          WORKER_QUEUE_SECRET                   # 1 secret
+configs:          CONCURRENCY, QUEUE_NAME, RETRY_ATTEMPTS # 3 configs
+
+# web service
+secrets:          WEB_SESSION_SECRET                    # 1 secret
+configs:          SSR_ENABLED, CACHE_TTL, PORT          # 3 configs
+
+# scheduler service
+secrets:          SCHEDULER_API_KEY                     # 1 secret
+configs:          CRON_TIMEZONE, MAX_JOBS               # 2 configs
+\`\`\`
+
+---
+
+## 🧮 Var Count Calculation
+
+### Formula:
+\`\`\`
+Total vars = Shared vars + Service-specific vars
+\`\`\`
+
+### Example: \`api\` service in \`dev\` environment
+
+| Category | Shared | Service | Total |
+|----------|--------|---------|-------|
+| Secrets  | 3      | 2       | **5** |
+| Configs  | 3      | 3       | **6** |
+| **Total**| **6**  | **5**   | **11**|
+
+### All Services Summary (per environment):
+
+| Service   | Shared Secrets | Svc Secrets | Shared Configs | Svc Configs | Total |
+|-----------|----------------|-------------|----------------|-------------|-------|
+| api       | 3              | 2           | 3              | 3           | 11    |
+| worker    | 3              | 1           | 3              | 3           | 10    |
+| web       | 3              | 1           | 3              | 3           | 10    |
+| scheduler | 3              | 1           | 3              | 2           | 9     |
+
+---
+
+## 🔒 Isolation Guarantees
+
+### 1. Environment Isolation
+
+Variables in different environments NEVER overlap:
+
+\`\`\`
+dev:DATABASE_URL = postgres://dev:dev@localhost/dev
+stg:DATABASE_URL = postgres://stg:stg@stg-db.internal/stg
+prd:DATABASE_URL = postgres://prd:SUPER_SECRET@prd-db.internal/prd
+\`\`\`
+
+Each has a unique ID:
+\`\`\`
+apps-lair|dev|__shared__|DATABASE_URL  → base64url ID 1
+apps-lair|stg|__shared__|DATABASE_URL  → base64url ID 2
+apps-lair|prd|__shared__|DATABASE_URL  → base64url ID 3
+\`\`\`
+
+### 2. Shared Vars are Per-Environment
+
+If you set a shared var for \`dev\`:
+\`\`\`bash
+vaulter set LOG_LEVEL=debug -e dev --shared
+\`\`\`
+
+Only \`dev\` services see it. \`stg\` and \`prd\` services do NOT.
+
+### 3. Service Isolation
+
+Each service has its own namespace:
+\`\`\`
+apps-lair|dev|api|PORT        → api's PORT
+apps-lair|dev|web|PORT        → web's PORT (different!)
+apps-lair|dev|worker|PORT     → worker's PORT (different!)
+\`\`\`
+
+### 4. Export Gets Correct Vars
+
+When exporting for a service:
+\`\`\`bash
+vaulter export -e dev -s api
+\`\`\`
+
+Returns:
+- ✅ Shared vars from \`dev/__shared__\`
+- ✅ Service vars from \`dev/api\`
+- ❌ NOT vars from \`stg\`, \`prd\`, or other services
+
+---
+
+## 🚀 MCP Tools Workflow
+
+### Step 1: Set up shared vars for all envs
+
+\`\`\`json
+// vaulter_multi_set for dev shared
+{
+  "variables": [
+    { "key": "DATABASE_URL", "value": "postgres://dev...", "sensitive": true },
+    { "key": "REDIS_URL", "value": "redis://localhost", "sensitive": true },
+    { "key": "JWT_SECRET", "value": "dev-secret", "sensitive": true },
+    { "key": "LOG_LEVEL", "value": "debug", "sensitive": false },
+    { "key": "NODE_ENV", "value": "development", "sensitive": false },
+    { "key": "SENTRY_DSN", "value": "https://...", "sensitive": false }
+  ],
+  "environment": "dev",
+  "shared": true
+}
+\`\`\`
+
+### Step 2: Set service-specific vars
+
+\`\`\`json
+// vaulter_multi_set for api service
+{
+  "variables": [
+    { "key": "API_STRIPE_KEY", "value": "sk_test_...", "sensitive": true },
+    { "key": "API_SENDGRID_KEY", "value": "SG...", "sensitive": true },
+    { "key": "PORT", "value": "3000", "sensitive": false },
+    { "key": "API_RATE_LIMIT", "value": "100", "sensitive": false },
+    { "key": "CORS_ORIGIN", "value": "http://localhost:3001", "sensitive": false }
+  ],
+  "environment": "dev",
+  "service": "api"
+}
+\`\`\`
+
+### Step 3: Verify inheritance
+
+\`\`\`json
+// vaulter_inheritance_info
+{
+  "service": "api",
+  "environment": "dev"
+}
+\`\`\`
+
+**Expected output:**
+\`\`\`
+Service: api (dev)
+├── Inherited from shared: 6 vars (3 secrets, 3 configs)
+│   └── DATABASE_URL, REDIS_URL, JWT_SECRET, LOG_LEVEL, NODE_ENV, SENTRY_DSN
+├── Service-specific: 5 vars (2 secrets, 3 configs)
+│   └── API_STRIPE_KEY, API_SENDGRID_KEY, PORT, API_RATE_LIMIT, CORS_ORIGIN
+└── Total: 11 vars
+\`\`\`
+
+### Step 4: Clone to other environments
+
+\`\`\`json
+// vaulter_clone_env (preview first!)
+{
+  "source": "dev",
+  "target": "stg",
+  "dryRun": true
+}
+\`\`\`
+
+Then update environment-specific values:
+\`\`\`json
+// vaulter_multi_set to override stg values
+{
+  "variables": [
+    { "key": "DATABASE_URL", "value": "postgres://stg...", "sensitive": true },
+    { "key": "LOG_LEVEL", "value": "info", "sensitive": false }
+  ],
+  "environment": "stg",
+  "shared": true
+}
+\`\`\`
+
+### Step 5: Export for Kubernetes
+
+\`\`\`json
+// vaulter_k8s_secret - only sensitive=true vars
+{
+  "environment": "prd",
+  "service": "api",
+  "namespace": "apps-lair-api"
+}
+// Returns 5 secrets: DATABASE_URL, REDIS_URL, JWT_SECRET, API_STRIPE_KEY, API_SENDGRID_KEY
+
+// vaulter_k8s_configmap - only sensitive=false vars
+{
+  "environment": "prd",
+  "service": "api",
+  "namespace": "apps-lair-api"
+}
+// Returns 6 configs: LOG_LEVEL, NODE_ENV, SENTRY_DSN, PORT, API_RATE_LIMIT, CORS_ORIGIN
+\`\`\`
+
+---
+
+## ⚠️ Common Mistakes to Avoid
+
+### ❌ Setting shared var without --shared flag
+\`\`\`bash
+# WRONG: Creates var for default service, not shared
+vaulter set LOG_LEVEL=debug -e dev
+
+# CORRECT: Creates shared var
+vaulter set LOG_LEVEL=debug -e dev --shared
+\`\`\`
+
+### ❌ Expecting dev shared vars in prd
+\`\`\`bash
+# This only sets for dev environment
+vaulter set LOG_LEVEL=debug -e dev --shared
+
+# prd needs its own shared var
+vaulter set LOG_LEVEL=error -e prd --shared
+\`\`\`
+
+### ❌ Not using includeShared in export
+\`\`\`json
+// WRONG: Gets only service-specific vars
+{ "environment": "dev", "service": "api", "includeShared": false }
+
+// CORRECT: Gets shared + service vars (default)
+{ "environment": "dev", "service": "api" }
+// includeShared defaults to true
+\`\`\`
+
+---
+
+## 📋 Checklist for Monorepo Setup
+
+- [ ] Initialize project: \`vaulter init\`
+- [ ] Generate encryption keys for each env
+- [ ] Set shared vars for each environment (dev, stg, prd)
+- [ ] Set service-specific vars for each service
+- [ ] Verify with \`vaulter_inheritance_info\`
+- [ ] Test export with \`vaulter export -e dev -s api\`
+- [ ] Clone environments if needed: \`vaulter_clone_env\`
+- [ ] Generate K8s manifests: \`vaulter k8s:secret\`, \`vaulter k8s:configmap\`
+`
+
+  return {
+    contents: [{
+      uri,
+      mimeType: 'text/markdown',
+      text: example
     }]
   }
 }

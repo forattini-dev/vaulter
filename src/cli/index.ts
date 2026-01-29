@@ -15,6 +15,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { c, print, vaulterFormatter } from './lib/colors.js'
 import * as ui from './ui.js'
+import { isVaulterError, formatErrorForCli } from '../lib/errors.js'
 
 // Version is injected at build time or read from package.json
 const VERSION = process.env.VAULTER_VERSION || getPackageVersion() || '0.0.0'
@@ -310,6 +311,12 @@ const cliSchema: CLISchema = {
     // Hierarchical export command group
     export: {
       description: 'Export variables to various formats',
+      options: {
+        repo: {
+          type: 'string',
+          description: 'GitHub repository (owner/repo) for github-actions export'
+        }
+      },
       commands: {
         shell: {
           description: 'Export for shell eval (default)'
@@ -325,6 +332,9 @@ const cliSchema: CLISchema = {
         },
         terraform: {
           description: 'Terraform .tfvars'
+        },
+        'terraform-json': {
+          description: 'Terraform JSON variables file'
         },
         docker: {
           description: 'Docker --env-file format'
@@ -580,16 +590,27 @@ const cliSchema: CLISchema = {
       }
     },
 
-    tui: {
-      description: 'Launch interactive TUI (menu, dashboard, audit, keys)',
-      aliases: ['ui'],
+    shell: {
+      description: 'Launch interactive shell (menu, dashboard, audit, keys)',
+      aliases: ['tui', 'ui'],
       positional: [
         { name: 'screen', required: false, description: 'Screen to open: menu, dashboard, audit, keys' }
-      ]
+      ],
+      options: {
+        cwd: {
+          type: 'string',
+          description: 'Working directory (project root with .vaulter/config.yaml)'
+        }
+      }
     },
 
     config: {
-      description: 'Manage configuration'
+      description: 'Manage configuration',
+      commands: {
+        show: { description: 'Show config summary (default)' },
+        path: { description: 'Show config file path' },
+        validate: { description: 'Validate configuration' }
+      }
     },
 
     audit: {
@@ -807,7 +828,12 @@ function toCliArgs(result: CommandParseResult): CLIArgs {
     // Sync options
     prune: opts.prune as boolean | undefined,
     shared: opts.shared as boolean | undefined,
+    strategy: opts.strategy as 'local' | 'remote' | 'error' | undefined,
+    values: opts.values as boolean | undefined,
+    // Key command options
+    scope: opts.scope as string | undefined,
     // Export options
+    repo: opts.repo as string | undefined,
     'skip-shared': opts['skip-shared'] as boolean | undefined,
     // Nuke command
     confirm: opts.confirm as string | undefined
@@ -964,25 +990,29 @@ async function main(): Promise<void> {
         })
         break
 
+      case 'shell':
       case 'tui':
       case 'ui':
-        // TUI - dynamically loaded (not available in standalone binaries)
+        // Shell - dynamically loaded (not available in standalone binaries)
         if (IS_STANDALONE) {
-          print.error('TUI is not available in standalone binaries')
-          ui.log(`Install via npm/pnpm to use TUI: ${c.command('pnpm add -g vaulter')}`)
+          print.error('Shell is not available in standalone binaries')
+          ui.log(`Install via npm/pnpm to use shell: ${c.command('pnpm add -g vaulter')}`)
           process.exit(1)
         }
-        const tuiScreen = context.args._[1] || 'menu'
-        switch (tuiScreen) {
-          case 'dashboard':
-          case 'secrets':
-            const { startDashboard } = await import('./tui/index.js')
-            await startDashboard({
-              environment: context.environment,
-              service: context.service,
-              verbose: context.verbose
-            })
-            break
+
+        // Handle --cwd option: change to specified directory
+        const shellCwd = opts.cwd as string | undefined
+        if (shellCwd) {
+          const targetDir = path.resolve(shellCwd)
+          if (!fs.existsSync(targetDir)) {
+            print.error(`Directory not found: ${targetDir}`)
+            process.exit(1)
+          }
+          process.chdir(targetDir)
+        }
+
+        const shellScreen = context.args._[1] || ''
+        switch (shellScreen) {
           case 'audit':
           case 'logs':
             const { startAuditViewer } = await import('./tui/index.js')
@@ -1000,21 +1030,30 @@ async function main(): Promise<void> {
             })
             break
           case 'menu':
-          default:
             const { startLauncher } = await import('./tui/index.js')
             await startLauncher({
               environment: context.environment,
               service: context.service,
-              verbose: context.verbose,
-              screen: tuiScreen !== 'menu' ? tuiScreen : undefined
+              verbose: context.verbose
+            })
+            break
+          default:
+            // Default: open Secrets Explorer directly
+            // Note: Don't pass environment - let it default to 'local' in shell
+            const { startSecretsExplorer } = await import('./tui/index.js')
+            await startSecretsExplorer({
+              service: context.service,
+              verbose: context.verbose
             })
             break
         }
         break
 
-      case 'config':
-        ui.log('config command not yet implemented')
+      case 'config': {
+        const { runConfig } = await import('./commands/config.js')
+        await runConfig(context)
         break
+      }
 
       case 'audit':
         await runAudit(context)
@@ -1060,7 +1099,16 @@ async function main(): Promise<void> {
         process.exit(1)
     }
   } catch (err) {
-    if (context.verbose) {
+    // Use structured error formatting for VaulterErrors
+    if (isVaulterError(err)) {
+      print.error(err.message)
+      if (err.suggestion) {
+        ui.log(`  ${c.muted('Suggestion:')} ${err.suggestion}`)
+      }
+      if (context.verbose && err.context) {
+        ui.log(`  ${c.muted('Context:')} ${JSON.stringify(err.context)}`)
+      }
+    } else if (context.verbose) {
       ui.log(String(err))
     } else {
       print.error((err as Error).message)
@@ -1071,6 +1119,10 @@ async function main(): Promise<void> {
 
 // Run
 main().catch(err => {
-  print.error(`Fatal error: ${err.message}`)
+  // Handle uncaught errors at the top level
+  const errorMessage = isVaulterError(err)
+    ? formatErrorForCli(err)
+    : `Fatal error: ${err.message}`
+  print.error(errorMessage)
   process.exit(1)
 })

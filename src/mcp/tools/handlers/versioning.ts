@@ -7,6 +7,7 @@
 import type { VaulterClient } from '../../../client.js'
 import type { VaulterConfig } from '../../../types.js'
 import type { ToolResponse } from '../config.js'
+import { maskValue } from '../../../lib/masking.js'
 
 /**
  * List version history for a variable
@@ -229,11 +230,6 @@ Run vaulter_list_versions to see updated history`
 }
 
 // === HELPERS ===
-
-function maskValue(value: string): string {
-  if (value.length <= 8) return '***'
-  return `${value.slice(0, 4)}****${value.slice(-4)}`
-}
 
 function formatDate(timestamp: string): string {
   const date = new Date(timestamp)

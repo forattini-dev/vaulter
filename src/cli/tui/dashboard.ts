@@ -23,6 +23,7 @@ import {
   untrack,
 } from 'tuiuiu.js'
 import type { VaulterConfig, Environment, CLIArgs, EnvVar } from '../../types.js'
+import { maskValue as baseMaskValue } from '../../lib/masking.js'
 import { loadConfig, getProjectName, getValidEnvironments } from '../../lib/config-loader.js'
 import { createClientFromConfig } from '../lib/create-client.js'
 import { VaulterClient } from '../../client.js'
@@ -86,14 +87,13 @@ function getEnvColor(env: string): 'success' | 'warning' | 'error' | 'info' {
 }
 
 /**
- * Mask sensitive value for display
+ * Mask sensitive value for display (TUI style with bullets)
  */
 function maskValue(value: string, isSecret: boolean): string {
   if (!isSecret) {
     return value.length > 40 ? value.substring(0, 37) + '...' : value
   }
-  if (value.length <= 8) return '••••••••'
-  return value.substring(0, 3) + '••••' + value.substring(value.length - 3)
+  return baseMaskValue(value, { maskChar: '•', visibleStart: 3, visibleEnd: 3, maxLength: 40 })
 }
 
 /**
@@ -297,7 +297,7 @@ export async function startDashboard(options: {
   const environment = options.environment || config.default_environment || 'dev'
 
   // Render the dashboard
-  render(() =>
+  const { waitUntilExit } = render(() =>
     Dashboard({
       config,
       environment,
@@ -305,4 +305,6 @@ export async function startDashboard(options: {
       verbose: options.verbose
     })
   )
+
+  await waitUntilExit()
 }

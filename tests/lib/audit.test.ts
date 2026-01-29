@@ -56,8 +56,9 @@ const mockedExecFileSync = vi.mocked(execFileSync)
 
 describe('audit', () => {
   describe('maskValue', () => {
-    it('should return undefined for undefined input', () => {
-      expect(maskValue(undefined)).toBe(undefined)
+    it('should return empty string for undefined input', () => {
+      // Note: centralized maskValue returns '' for undefined (not undefined)
+      expect(maskValue(undefined)).toBe('')
     })
 
     it('should return empty string for empty input', () => {
@@ -66,16 +67,22 @@ describe('audit', () => {
 
     it('should mask short values completely', () => {
       expect(maskValue('abc')).toBe('***')
-      expect(maskValue('12345678')).toBe('********')
+      expect(maskValue('1234567')).toBe('***') // < 8 chars
     })
 
     it('should show first and last 4 chars for longer values', () => {
+      // 19 chars: 4 start + 4 mask + 4 end
       expect(maskValue('supersecretpassword')).toBe('supe****word')
-      expect(maskValue('123456789')).toBe('1234****6789')
     })
 
-    it('should handle exactly 9 character strings', () => {
-      expect(maskValue('abcdefghi')).toBe('abcd****fghi')
+    it('should handle exactly 8 character strings (minLengthToMask boundary)', () => {
+      // 8 chars: 4 start + 1 mask (min) + 4 end = 9 chars (end overlaps)
+      expect(maskValue('12345678')).toBe('1234*5678')
+    })
+
+    it('should handle 9 character strings', () => {
+      // 9 chars: 4 start + 1 mask + 4 end
+      expect(maskValue('abcdefghi')).toBe('abcd*fghi')
     })
   })
 

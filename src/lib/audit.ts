@@ -14,25 +14,13 @@ import type {
   AuditConfig
 } from '../types.js'
 
+// Import and re-export maskValue from centralized module for backwards compatibility
+import { maskValue } from './masking.js'
+export { maskValue }
+
 // Default configuration
 const DEFAULT_RETENTION_DAYS = 90
 const DEFAULT_USER_SOURCE = 'git'
-
-/**
- * Mask sensitive values for audit logs
- * Shows first and last 4 characters with asterisks in between
- *
- * @example
- * maskValue('supersecretpassword') // 'supe****word'
- * maskValue('abc') // '***' (too short)
- * maskValue('') // ''
- */
-export function maskValue(value: string | undefined): string | undefined {
-  if (value === undefined) return undefined
-  if (value === '') return ''
-  if (value.length <= 8) return '*'.repeat(value.length)
-  return `${value.slice(0, 4)}****${value.slice(-4)}`
-}
 
 /**
  * Detect the current user based on configuration

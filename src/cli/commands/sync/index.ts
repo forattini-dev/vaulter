@@ -10,6 +10,7 @@
 
 import type { CLIArgs, VaulterConfig, Environment } from '../../../types.js'
 import { c, symbols, box, colorEnv, print } from '../../lib/colors.js'
+import { maskValue } from '../../../lib/masking.js'
 import * as ui from '../../ui.js'
 
 export interface SyncContext {
@@ -95,16 +96,6 @@ export async function runSyncGroup(context: SyncContext): Promise<void> {
       ui.log(`Run "${c.command('vaulter sync --help')}" for usage`)
       process.exit(1)
   }
-}
-
-/**
- * Mask a value for display (show first/last few chars)
- */
-function maskValue(value: string, maxLen = 30): string {
-  if (value.length <= 8) return '***'
-  if (value.length <= 16) return value.slice(0, 3) + '***' + value.slice(-3)
-  const preview = value.slice(0, 6) + '***' + value.slice(-4)
-  return preview.length > maxLen ? preview.slice(0, maxLen) + '...' : preview
 }
 
 /**

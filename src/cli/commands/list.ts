@@ -6,6 +6,7 @@
 
 import type { CLIArgs, VaulterConfig, Environment, EnvVar } from '../../types.js'
 import { createClientFromConfig } from '../lib/create-client.js'
+import { maskValueToggle } from '../../lib/masking.js'
 import * as ui from '../ui.js'
 import { c, symbols, colorEnv, print } from '../lib/colors.js'
 import { SHARED_SERVICE, resolveVariables, formatSource, type ResolvedVar } from '../../lib/shared.js'
@@ -20,15 +21,6 @@ interface ListContext {
   jsonOutput: boolean
   /** Target shared variables scope */
   shared?: boolean
-}
-
-/**
- * Mask sensitive values for display
- */
-function maskValue(value: string, showFull: boolean = false): string {
-  if (showFull) return value
-  if (value.length <= 8) return '****'
-  return value.substring(0, 4) + '****' + value.substring(value.length - 4)
 }
 
 /**
@@ -239,7 +231,7 @@ export async function runList(context: ListContext): Promise<void> {
           source: colorSource(v.source),
           type: colorType(sensitiveMap.get(v.key) ?? false),
           key: c.key(v.key),
-          value: maskValue(v.value, showValues)
+          value: maskValueToggle(v.value, showValues)
         }))
 
         const table = ui.formatTable(
@@ -274,7 +266,7 @@ export async function runList(context: ListContext): Promise<void> {
             service: v.service ? c.service(v.service) : c.muted('shared'),
             type: colorType(v.sensitive ?? false),
             key: c.key(v.key),
-            value: maskValue(v.value, showValues)
+            value: maskValueToggle(v.value, showValues)
           }))
 
           const table = ui.formatTable(
@@ -295,7 +287,7 @@ export async function runList(context: ListContext): Promise<void> {
             env: colorEnv(v.environment),
             type: colorType(v.sensitive ?? false),
             key: c.key(v.key),
-            value: maskValue(v.value, showValues)
+            value: maskValueToggle(v.value, showValues)
           }))
 
           const table = ui.formatTable(

@@ -12,6 +12,12 @@ import { parse as parseYaml } from 'yaml'
 import type { VaulterConfig, GlobalVaulterConfig, McpConfig } from '../types.js'
 import { DEFAULT_ENVIRONMENTS, DEFAULT_ENVIRONMENT } from '../types.js'
 import { loadKeyFromS3 } from './s3-key-loader.js'
+import {
+  ConfigNotFoundError,
+  InvalidKeyNameError,
+  CircularExtendsError,
+  ExtendsDepthError
+} from './errors.js'
 
 const CONFIG_DIR = '.vaulter'
 const CONFIG_FILE = 'config.yaml'
@@ -100,7 +106,7 @@ export function loadMcpConfig(): McpConfig | null {
  */
 export function parseKeyName(keyName: string): { scope: 'project' | 'global'; name: string } {
   if (!keyName || typeof keyName !== 'string') {
-    throw new Error(`Invalid key name: expected string, got ${typeof keyName}`)
+    throw new InvalidKeyNameError(keyName)
   }
   if (keyName.startsWith('global:')) {
     return { scope: 'global', name: keyName.slice(7) }
@@ -301,7 +307,7 @@ export function findConfigDir(startDir: string = process.cwd()): string | null {
 function loadConfigFile(configPath: string, required: boolean = true): Partial<VaulterConfig> {
   if (!fs.existsSync(configPath)) {
     if (required) {
-      throw new Error(`Config file not found: ${configPath}`)
+      throw new ConfigNotFoundError(configPath)
     }
     return {}
   }
@@ -353,13 +359,13 @@ function loadConfigWithExtends(
   depth: number = 0
 ): VaulterConfig {
   if (depth > MAX_EXTENDS_DEPTH) {
-    throw new Error(`Config inheritance depth exceeded (max ${MAX_EXTENDS_DEPTH})`)
+    throw new ExtendsDepthError(MAX_EXTENDS_DEPTH)
   }
 
   const absolutePath = path.resolve(configPath)
 
   if (visited.has(absolutePath)) {
-    throw new Error(`Circular config inheritance detected: ${absolutePath}`)
+    throw new CircularExtendsError(absolutePath)
   }
 
   visited.add(absolutePath)

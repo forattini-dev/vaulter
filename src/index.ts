@@ -183,3 +183,50 @@ export type {
   EncodingType,
   EncodingDetectionResult
 } from './lib/encoding-detection.js'
+
+// Error hierarchy
+export {
+  // Base classes
+  VaulterError,
+  ConfigError,
+  BackendError,
+  EncryptionError,
+  ValidationError,
+  OperationError,
+  // Config errors
+  ConfigNotFoundError,
+  InvalidConfigError,
+  CircularExtendsError,
+  ExtendsDepthError,
+  // Backend errors
+  ConnectionError,
+  NotInitializedError,
+  NoBackendError,
+  // Encryption errors
+  KeyNotFoundError,
+  DecryptionError,
+  AsymmetricKeyError,
+  // Validation errors
+  InvalidEnvironmentError,
+  InvalidKeyNameError,
+  MissingInputError,
+  // Operation errors
+  FileNotFoundError,
+  VariableNotFoundError,
+  SyncConflictError,
+  MissingRequiredVarsError,
+  BatchOperationError,
+  VersionNotFoundError,
+  OutputNotFoundError,
+  // Type guards
+  isVaulterError,
+  isConfigError,
+  isBackendError,
+  isEncryptionError,
+  isValidationError,
+  isOperationError,
+  // Helpers
+  formatErrorForCli,
+  formatErrorForMcp,
+  wrapError
+} from './lib/errors.js'

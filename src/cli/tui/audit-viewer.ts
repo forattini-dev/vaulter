@@ -28,6 +28,7 @@ import type { VaulterConfig, Environment, AuditEntry, AuditOperation, AuditSourc
 import { loadConfig, getProjectName } from '../../lib/config-loader.js'
 import { AuditLogger } from '../../lib/audit.js'
 import { resolveBackendUrls, loadEncryptionKeyForEnv } from '../../index.js'
+import { maskValue as baseMaskValue } from '../../lib/masking.js'
 
 // Types for viewer state
 interface AuditRow {
@@ -165,11 +166,10 @@ function entryToRow(entry: AuditEntry): AuditRow {
 }
 
 /**
- * Mask sensitive value for display
+ * Mask sensitive value for display (TUI style with bullets)
  */
 function maskValue(value: string): string {
-  if (value.length <= 8) return '••••••••'
-  return value.substring(0, 3) + '••••' + value.substring(value.length - 3)
+  return baseMaskValue(value, { maskChar: '•', visibleStart: 3, visibleEnd: 3 })
 }
 
 /**
@@ -562,7 +562,7 @@ export async function startAuditViewer(options: {
   const environment = options.environment || config.default_environment || 'dev'
 
   // Render the viewer
-  render(() =>
+  const { waitUntilExit } = render(() =>
     AuditViewer({
       config,
       environment,
@@ -570,4 +570,6 @@ export async function startAuditViewer(options: {
       verbose: options.verbose
     })
   )
+
+  await waitUntilExit()
 }

@@ -6,6 +6,7 @@
 
 import type { VarContext } from './var/index.js'
 import { c, colorEnv, print } from '../lib/colors.js'
+import { maskValue } from '../../lib/masking.js'
 import * as ui from '../ui.js'
 import { createClient } from '../../index.js'
 import { loadKeyForEnv } from '../../lib/keys.js'
@@ -121,11 +122,6 @@ export async function runVersions(context: VarContext): Promise<void> {
     }
     process.exit(1)
   }
-}
-
-function maskValue(value: string): string {
-  if (value.length <= 8) return '***'
-  return `${value.slice(0, 4)}****${value.slice(-4)}`
 }
 
 function formatDate(timestamp: string): string {

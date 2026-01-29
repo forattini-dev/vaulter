@@ -170,7 +170,7 @@ export function registerTools(): Tool[] {
     // === SYNC TOOLS ===
     {
       name: 'vaulter_sync',
-      description: 'Bidirectional sync between local .env file and backend. Local values win on conflict.',
+      description: '[DEPRECATED: Use vaulter_push with dryRun=true] Push local .env file to backend. Same behavior as vaulter_push but with dryRun support.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -196,14 +196,15 @@ export function registerTools(): Tool[] {
     },
     {
       name: 'vaulter_push',
-      description: 'Upload local .env file to backend. Overwrites backend values.',
+      description: 'Upload local .env file to backend. Overwrites backend values. Use dryRun=true to preview changes first.',
       inputSchema: {
         type: 'object',
         properties: {
           environment: { type: 'string', description: 'Environment name', default: 'dev' },
           project: { type: 'string', description: 'Project name' },
           service: { type: 'string', description: 'Service name' },
-          file: { type: 'string', description: 'Input file path (default: auto-detected from config)' }
+          file: { type: 'string', description: 'Input file path (default: auto-detected from config)' },
+          dryRun: { type: 'boolean', description: 'Preview changes without applying', default: false }
         }
       }
     },

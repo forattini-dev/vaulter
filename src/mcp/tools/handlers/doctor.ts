@@ -8,6 +8,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import type { VaulterConfig, Environment } from '../../../types.js'
+import { maskValue } from '../../../lib/masking.js'
 import {
   findConfigDir,
   getBaseDir,
@@ -1016,16 +1017,6 @@ export async function handleCloneEnvCall(
   } finally {
     await sourceResult.disconnect()
   }
-}
-
-/**
- * Mask a value for display (show first/last few chars)
- */
-function maskValue(value: string, maxLen = 30): string {
-  if (value.length <= 8) return '***'
-  if (value.length <= 16) return value.slice(0, 3) + '***' + value.slice(-3)
-  const preview = value.slice(0, 6) + '***' + value.slice(-4)
-  return preview.length > maxLen ? preview.slice(0, maxLen) + '...' : preview
 }
 
 /**

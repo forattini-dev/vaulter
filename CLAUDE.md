@@ -558,7 +558,7 @@ await client.deleteManyByKeys(['OLD1', 'OLD2'], 'project', 'dev')
 
 ## MCP Server
 
-**50 Tools | 5 Resources | 10 Prompts**
+**50 Tools | 6 Resources | 11 Prompts**
 
 ### Tools (50)
 
@@ -567,7 +567,7 @@ await client.deleteManyByKeys(['OLD1', 'OLD2'], 'project', 'dev')
 | **🩺 Diagnostic (3)** | `vaulter_doctor` ⭐, `vaulter_diff`, `vaulter_clone_env` |
 | **Core (5)** | `vaulter_get`, `vaulter_set`, `vaulter_delete`, `vaulter_list`, `vaulter_export` |
 | **Batch (3)** | `vaulter_multi_get`, `vaulter_multi_set`, `vaulter_multi_delete` |
-| **Sync (3)** | `vaulter_sync`, `vaulter_pull`, `vaulter_push` |
+| **Sync (3)** | `vaulter_sync` ⚠️ deprecated, `vaulter_pull`, `vaulter_push` (supports dryRun) |
 | **Analysis (2)** | `vaulter_compare`, `vaulter_search` |
 | **Utility (4)** | `vaulter_copy`, `vaulter_rename`, `vaulter_promote_shared`, `vaulter_demote_shared` |
 | **Status (2)** | `vaulter_status`, `vaulter_audit_list` |
@@ -582,19 +582,20 @@ await client.deleteManyByKeys(['OLD1', 'OLD2'], 'project', 'dev')
 
 > ⭐ **AI Agents:** Sempre chame `vaulter_doctor` primeiro para entender o estado do setup!
 
-### Resources (5)
+### Resources (6)
 
 | URI | Description |
 |-----|-------------|
 | `vaulter://instructions` | **Read first!** s3db.js architecture |
 | `vaulter://tools-guide` | Which tool for each scenario |
+| `vaulter://monorepo-example` | **Complete monorepo isolation example** with var counts |
 | `vaulter://mcp-config` | MCP settings sources |
 | `vaulter://config` | Project YAML config |
 | `vaulter://services` | Monorepo services |
 
-### Prompts (10)
+### Prompts (11)
 
-`setup_project`, `migrate_dotenv`, `deploy_secrets`, `compare_environments`, `security_audit`, `rotation_workflow`, `shared_vars_workflow`, `batch_operations`, `copy_environment`, `sync_workflow`
+`setup_project`, `migrate_dotenv`, `deploy_secrets`, `compare_environments`, `security_audit`, `rotation_workflow`, `shared_vars_workflow`, `batch_operations`, `copy_environment`, `sync_workflow`, `monorepo_deploy`
 
 **Full reference:** See [docs/MCP.md](docs/MCP.md)
 
