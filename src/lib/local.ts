@@ -19,6 +19,7 @@ import type { VaulterConfig } from '../types.js'
 // ============================================================================
 
 const OVERRIDES_FILE = 'overrides.env'
+const SHARED_FILE = 'shared.env'
 
 // ============================================================================
 // Path Helpers
@@ -32,6 +33,14 @@ export function getLocalDir(configDir: string): string {
 }
 
 /**
+ * Get the shared.env file path
+ * Contains local variables shared across ALL services in monorepo
+ */
+export function getSharedPath(configDir: string): string {
+  return path.join(getLocalDir(configDir), SHARED_FILE)
+}
+
+/**
  * Get the overrides file path
  * - Single repo: .vaulter/local/overrides.env
  * - Monorepo: .vaulter/local/overrides.<service>.env
@@ -42,6 +51,58 @@ export function getOverridesPath(configDir: string, service?: string): string {
     return path.join(localDir, `overrides.${service}.env`)
   }
   return path.join(localDir, OVERRIDES_FILE)
+}
+
+// ============================================================================
+// Local Shared Vars Operations
+// ============================================================================
+
+/**
+ * Load local shared vars from .vaulter/local/shared.env
+ * These are LOCAL variables shared across all services (not from backend)
+ */
+export function loadLocalShared(configDir: string): Record<string, string> {
+  const filePath = getSharedPath(configDir)
+  if (!fs.existsSync(filePath)) {
+    return {}
+  }
+  const content = fs.readFileSync(filePath, 'utf-8')
+  return parseEnvString(content, { expand: false })
+}
+
+/**
+ * Save local shared vars to .vaulter/local/shared.env
+ */
+export function saveLocalShared(configDir: string, vars: Record<string, string>): void {
+  const filePath = getSharedPath(configDir)
+  const dir = path.dirname(filePath)
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true })
+  }
+  const content = formatEnvFile(vars)
+  fs.writeFileSync(filePath, content, 'utf-8')
+}
+
+/**
+ * Set a local shared var
+ */
+export function setLocalShared(configDir: string, key: string, value: string): void {
+  const vars = loadLocalShared(configDir)
+  vars[key] = value
+  saveLocalShared(configDir, vars)
+}
+
+/**
+ * Delete a local shared var
+ */
+export function deleteLocalShared(configDir: string, key: string): boolean {
+  const vars = loadLocalShared(configDir)
+  if (!(key in vars)) {
+    return false
+  }
+  delete vars[key]
+  saveLocalShared(configDir, vars)
+  return true
 }
 
 // ============================================================================
@@ -120,6 +181,22 @@ export function mergeWithOverrides(
   return { ...baseVars, ...overrides }
 }
 
+/**
+ * Full merge for local pull:
+ * 1. Backend vars (base)
+ * 2. Local shared vars (from .vaulter/local/shared.env)
+ * 3. Service-specific overrides (from .vaulter/local/overrides.<service>.env)
+ *
+ * Priority: overrides > localShared > backend
+ */
+export function mergeAllLocalVars(
+  backendVars: Record<string, string>,
+  localShared: Record<string, string>,
+  serviceOverrides: Record<string, string>
+): Record<string, string> {
+  return { ...backendVars, ...localShared, ...serviceOverrides }
+}
+
 // ============================================================================
 // Diff
 // ============================================================================
@@ -166,6 +243,11 @@ export function diffOverrides(
 // ============================================================================
 
 export interface LocalStatusResult {
+  /** Path to shared.env */
+  sharedPath: string
+  sharedExist: boolean
+  sharedCount: number
+  /** Path to overrides file */
   overridesPath: string
   overridesExist: boolean
   overridesCount: number
@@ -181,6 +263,10 @@ export function getLocalStatus(
   config: VaulterConfig,
   service?: string
 ): LocalStatusResult {
+  const sharedPath = getSharedPath(configDir)
+  const sharedExist = fs.existsSync(sharedPath)
+  const localShared = sharedExist ? loadLocalShared(configDir) : {}
+
   const overridesPath = getOverridesPath(configDir, service)
   const overridesExist = fs.existsSync(overridesPath)
   const overrides = overridesExist ? loadOverrides(configDir, service) : {}
@@ -188,6 +274,9 @@ export function getLocalStatus(
   const snapshotsCount = getSnapshotCount(configDir)
 
   return {
+    sharedPath,
+    sharedExist,
+    sharedCount: Object.keys(localShared).length,
     overridesPath,
     overridesExist,
     overridesCount: Object.keys(overrides).length,

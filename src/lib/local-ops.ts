@@ -11,7 +11,8 @@ import type { PullToOutputsResult } from './outputs.js'
 import { pullToOutputs, getSharedServiceVars } from './outputs.js'
 import {
   loadOverrides,
-  mergeWithOverrides,
+  loadLocalShared,
+  mergeAllLocalVars,
   diffOverrides,
   resolveBaseEnvironment,
   type LocalDiffResult
@@ -26,10 +27,16 @@ export interface LocalPullOptions {
   output?: string
   dryRun?: boolean
   verbose?: boolean
+  /** Overwrite mode - disable section-aware writing (default: false) */
+  overwrite?: boolean
 }
 
 export interface LocalPullResult {
   baseEnvironment: string
+  /** Local shared vars from .vaulter/local/shared.env */
+  localShared: Record<string, string>
+  localSharedCount: number
+  /** Service-specific overrides */
   overrides: Record<string, string>
   overridesCount: number
   result: PullToOutputsResult
@@ -44,7 +51,8 @@ export async function runLocalPull(options: LocalPullOptions): Promise<LocalPull
     all = false,
     output,
     dryRun,
-    verbose
+    verbose,
+    overwrite = false
   } = options
 
   if (!all && !output) {
@@ -56,11 +64,19 @@ export async function runLocalPull(options: LocalPullOptions): Promise<LocalPull
   }
 
   const baseEnvironment = resolveBaseEnvironment(config)
+
+  // Load local shared vars (shared across all services)
+  const localShared = loadLocalShared(configDir)
+
+  // Load service-specific overrides
   const overrides = loadOverrides(configDir, service)
 
+  // Fetch from backend
   const baseVars = await client.export(config.project, baseEnvironment, service)
-  const merged = mergeWithOverrides(baseVars, overrides)
   const sharedServiceVars = await getSharedServiceVars(client, config.project, baseEnvironment)
+
+  // Merge: backend + local shared + service overrides
+  const merged = mergeAllLocalVars(baseVars, localShared, overrides)
 
   const projectRoot = path.dirname(configDir)
   const result = await pullToOutputs({
@@ -73,11 +89,14 @@ export async function runLocalPull(options: LocalPullOptions): Promise<LocalPull
     dryRun,
     verbose,
     varsOverride: merged,
-    sharedVarsOverride: sharedServiceVars
+    sharedVarsOverride: sharedServiceVars,
+    sectionAware: !overwrite  // Default: section-aware; --overwrite disables it
   })
 
   return {
     baseEnvironment,
+    localShared,
+    localSharedCount: Object.keys(localShared).length,
     overrides,
     overridesCount: Object.keys(overrides).length,
     result

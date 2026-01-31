@@ -614,7 +614,7 @@ export function registerTools(): Tool[] {
     // === LOCAL OVERRIDES TOOLS ===
     {
       name: 'vaulter_local_pull',
-      description: 'Pull base environment + local overrides to output targets (.env files). Local overrides never touch the backend.',
+      description: 'Pull base environment + local shared vars + service overrides to output targets (.env files). Merge order: backend < local shared < service overrides. Local files never touch the backend.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -626,7 +626,7 @@ export function registerTools(): Tool[] {
     },
     {
       name: 'vaulter_local_set',
-      description: 'Set a local override. This only modifies the local overrides file and never touches the backend.',
+      description: 'Set a service-specific local override. This only modifies the local overrides file (.vaulter/local/overrides.<service>.env) and never touches the backend.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -639,7 +639,7 @@ export function registerTools(): Tool[] {
     },
     {
       name: 'vaulter_local_delete',
-      description: 'Remove a local override.',
+      description: 'Remove a service-specific local override.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -650,8 +650,39 @@ export function registerTools(): Tool[] {
       }
     },
     {
+      name: 'vaulter_local_shared_set',
+      description: 'Set a local shared variable. Shared vars are stored in .vaulter/local/shared.env and apply to ALL services in a monorepo. Use for vars like DEBUG, LOG_LEVEL that should be the same everywhere.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          key: { type: 'string', description: 'Variable name' },
+          value: { type: 'string', description: 'Value to set' }
+        },
+        required: ['key', 'value']
+      }
+    },
+    {
+      name: 'vaulter_local_shared_delete',
+      description: 'Remove a local shared variable from .vaulter/local/shared.env.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          key: { type: 'string', description: 'Variable name to remove' }
+        },
+        required: ['key']
+      }
+    },
+    {
+      name: 'vaulter_local_shared_list',
+      description: 'List all local shared variables from .vaulter/local/shared.env. These vars apply to ALL services in the monorepo.',
+      inputSchema: {
+        type: 'object',
+        properties: {}
+      }
+    },
+    {
       name: 'vaulter_local_diff',
-      description: 'Show local overrides vs base environment. Shows which variables are added or modified locally.',
+      description: 'Show local overrides vs base environment. Shows which variables are added or modified locally (both shared and service-specific).',
       inputSchema: {
         type: 'object',
         properties: {
@@ -661,7 +692,7 @@ export function registerTools(): Tool[] {
     },
     {
       name: 'vaulter_local_status',
-      description: 'Show local overrides status: base environment, overrides count, snapshots count.',
+      description: 'Show local status: base environment, shared vars count, service overrides count, snapshots count.',
       inputSchema: {
         type: 'object',
         properties: {

@@ -2,10 +2,11 @@
  * vaulter local set
  *
  * Add/update local overrides. Supports KEY=val and KEY::val syntax.
+ * Use --shared to set vars in .vaulter/local/shared.env (shared across all services)
  */
 
 import { findConfigDir } from '../../../lib/config-loader.js'
-import { setOverride, getOverridesPath } from '../../../lib/local.js'
+import { setOverride, setLocalShared, getOverridesPath, getSharedPath } from '../../../lib/local.js'
 import { c, print } from '../../lib/colors.js'
 import * as ui from '../../ui.js'
 import type { LocalContext } from './index.js'
@@ -23,6 +24,8 @@ export async function runLocalSet(context: LocalContext): Promise<void> {
     print.error('Could not find .vaulter/ directory')
     process.exit(1)
   }
+
+  const isShared = args.shared as boolean | undefined
 
   // Collect variables from separator buckets and positional args
   const vars: Array<{ key: string; value: string }> = []
@@ -46,15 +49,25 @@ export async function runLocalSet(context: LocalContext): Promise<void> {
   if (vars.length === 0) {
     print.error('No variables specified')
     ui.log(`Usage: ${c.command('vaulter local set KEY=value KEY2::value2')}`)
+    ui.log(`       ${c.command('vaulter local set --shared DEBUG=true')}  ${c.muted('# shared across all services')}`)
     process.exit(1)
   }
 
   for (const { key, value } of vars) {
-    setOverride(configDir, key, value, service)
-    ui.success(`Set override ${c.key(key)}`)
+    if (isShared) {
+      setLocalShared(configDir, key, value)
+      ui.success(`Set shared ${c.key(key)}`)
+    } else {
+      setOverride(configDir, key, value, service)
+      ui.success(`Set override ${c.key(key)}`)
+    }
   }
 
+  const targetFile = isShared
+    ? getSharedPath(configDir)
+    : getOverridesPath(configDir, service)
+
   if (vars.length > 1) {
-    ui.log(`${c.muted(`${vars.length} overrides saved to ${getOverridesPath(configDir, service)}`)}`)
+    ui.log(`${c.muted(`${vars.length} vars saved to ${targetFile}`)}`)
   }
 }

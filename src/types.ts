@@ -301,13 +301,6 @@ export interface IntegrationsConfig {
   helm?: HelmIntegrationConfig
 }
 
-export interface HooksConfig {
-  pre_sync?: string | null
-  post_sync?: string | null
-  pre_pull?: string | null
-  post_pull?: string | null
-}
-
 export interface SecurityConfig {
   paranoid?: boolean
   confirm_production?: boolean
@@ -465,6 +458,15 @@ export interface OutputTarget {
   filename?: string
 
   /**
+   * Service name for monorepo (optional)
+   * When set, this output will use vars from this specific service in the backend.
+   * If not set, uses the global service context or all vars.
+   *
+   * @example 'api' or 'web'
+   */
+  service?: string
+
+  /**
    * Glob patterns for vars to include.
    * If omitted, includes all vars.
    * Patterns use minimatch syntax: '*', '?', '**', etc.
@@ -523,6 +525,8 @@ export interface NormalizedOutputTarget {
   path: string
   /** Filename (with {env} placeholder resolved) */
   filename: string
+  /** Service name for monorepo (if specified) */
+  service?: string
   /** Include patterns */
   include: string[]
   /** Exclude patterns */
@@ -609,7 +613,6 @@ export interface VaulterConfig {
   extends?: string
   sync?: SyncConfig
   integrations?: IntegrationsConfig
-  hooks?: HooksConfig
   security?: SecurityConfig
   /** Directory structure configuration (unified or split mode) */
   directories?: DirectoriesConfig
@@ -729,6 +732,8 @@ export interface CLIArgs {
   shared?: boolean
   strategy?: 'local' | 'remote' | 'error'
   values?: boolean
+  // Local pull options
+  overwrite?: boolean
   // Export options (inheritance control)
   'skip-shared'?: boolean
   // Nuke command

@@ -35,15 +35,23 @@ export async function runLocalStatus(context: LocalContext): Promise<void> {
   ui.log(c.header('Local Status'))
   ui.log('')
   ui.log(`  Base environment:  ${colorEnv(status.baseEnvironment)}`)
-  ui.log(`  Overrides file:    ${status.overridesExist ? symbols.success : symbols.error} ${c.muted(status.overridesPath)}`)
-  ui.log(`  Overrides count:   ${c.highlight(String(status.overridesCount))}`)
+  ui.log('')
+  ui.log(c.label('  Shared vars (all services):'))
+  ui.log(`    File:   ${status.sharedExist ? symbols.success : c.muted('○')} ${c.muted(status.sharedPath)}`)
+  ui.log(`    Count:  ${c.highlight(String(status.sharedCount))}`)
+  ui.log('')
+  ui.log(c.label('  Overrides (service-specific):'))
+  ui.log(`    File:   ${status.overridesExist ? symbols.success : c.muted('○')} ${c.muted(status.overridesPath)}`)
+  ui.log(`    Count:  ${c.highlight(String(status.overridesCount))}`)
+  ui.log('')
   ui.log(`  Snapshots:         ${c.highlight(String(status.snapshotsCount))}`)
   ui.log('')
 
-  if (!status.overridesExist) {
-    ui.log(`Run ${c.command('vaulter local init')} to get started`)
-  } else if (status.overridesCount === 0) {
-    ui.log(`Run ${c.command('vaulter local set KEY=value')} to add overrides`)
+  if (status.sharedCount === 0 && status.overridesCount === 0) {
+    ui.log(c.header('Quick start:'))
+    ui.log(`  ${c.command('vaulter local set --shared DEBUG=true')}  ${c.muted('# shared across all services')}`)
+    ui.log(`  ${c.command('vaulter local set PORT=3001')}            ${c.muted('# service-specific override')}`)
+    ui.log(`  ${c.command('vaulter local pull --all')}               ${c.muted('# generate .env files')}`)
   } else {
     ui.log(`Run ${c.command('vaulter local diff')} to see overrides vs base`)
   }

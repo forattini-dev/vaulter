@@ -3,17 +3,19 @@
  *
  * Pre-configured prompt templates for common workflows
  *
- * Prompts (10):
- *   setup_project        → Initialize a new vaulter project
- *   migrate_dotenv       → Migrate existing .env files to vaulter
- *   deploy_secrets       → Deploy secrets to Kubernetes
- *   compare_environments → Compare variables between environments
- *   security_audit       → Audit secrets for security issues
- *   rotation_workflow    → Check and manage secret rotation (check/rotate/report)
- *   shared_vars_workflow → Manage monorepo shared variables (list/promote/override/audit)
- *   batch_operations     → Batch set/get/delete operations
- *   copy_environment     → Copy variables between environments
- *   sync_workflow        → Sync local files with remote backend (diff/push/pull/merge)
+ * Prompts (12):
+ *   setup_project           → Initialize a new vaulter project
+ *   migrate_dotenv          → Migrate existing .env files to vaulter
+ *   deploy_secrets          → Deploy secrets to Kubernetes
+ *   compare_environments    → Compare variables between environments
+ *   security_audit          → Audit secrets for security issues
+ *   rotation_workflow       → Check and manage secret rotation (check/rotate/report)
+ *   shared_vars_workflow    → Manage monorepo shared variables (list/promote/override/audit)
+ *   batch_operations        → Batch set/get/delete operations
+ *   copy_environment        → Copy variables between environments
+ *   sync_workflow           → Sync local files with remote backend (diff/push/pull/merge)
+ *   monorepo_deploy         → Complete monorepo setup with isolation guarantees
+ *   local_overrides_workflow → Manage local dev overrides (shared.env + service overrides)
  */
 
 import type { Prompt, GetPromptResult } from '@modelcontextprotocol/sdk/types.js'
@@ -242,6 +244,58 @@ export function registerPrompts(): Prompt[] {
           required: false
         }
       ]
+    },
+    {
+      name: 'monorepo_deploy',
+      description: 'Complete monorepo setup with environment isolation. Shows how shared vars, services, and environments work together with var count calculations.',
+      arguments: [
+        {
+          name: 'project',
+          description: 'Project name (e.g., apps-lair)',
+          required: true
+        },
+        {
+          name: 'services',
+          description: 'Comma-separated list of services (e.g., api,worker,web,scheduler)',
+          required: true
+        },
+        {
+          name: 'environments',
+          description: 'Comma-separated list of environments (default: dev,stg,prd)',
+          required: false
+        },
+        {
+          name: 'source_env',
+          description: 'Source environment to clone from (default: dev)',
+          required: false
+        }
+      ]
+    },
+    {
+      name: 'local_overrides_workflow',
+      description: 'Manage local development overrides without touching the backend. Uses local shared.env for cross-service vars and per-service overrides for customization.',
+      arguments: [
+        {
+          name: 'action',
+          description: 'Action: "status" (show current state), "set-shared" (set shared var), "set-override" (set service override), "pull" (generate .env files), "diff" (compare with base)',
+          required: true
+        },
+        {
+          name: 'service',
+          description: 'Service name for set-override action (monorepo)',
+          required: false
+        },
+        {
+          name: 'key',
+          description: 'Variable name for set actions',
+          required: false
+        },
+        {
+          name: 'value',
+          description: 'Value for set actions',
+          required: false
+        }
+      ]
     }
   ]
 }
@@ -271,6 +325,10 @@ export function getPrompt(name: string, args: Record<string, string>): GetPrompt
       return getCopyEnvironmentPrompt(args)
     case 'sync_workflow':
       return getSyncWorkflowPrompt(args)
+    case 'monorepo_deploy':
+      return getMonorepoDeployPrompt(args)
+    case 'local_overrides_workflow':
+      return getLocalOverridesWorkflowPrompt(args)
     default:
       throw new Error(`Unknown prompt: ${name}`)
   }
@@ -1194,6 +1252,361 @@ Please:
 - **For production:** Consider \`--strategy error\` to catch unexpected conflicts
 - **Backup:** \`vaulter export -e ${environment} > backup.env\` before major changes
 - **Audit:** Check \`vaulter_audit_list\` after operations`
+        }
+      }
+    ]
+  }
+}
+
+function getMonorepoDeployPrompt(args: Record<string, string>): GetPromptResult {
+  const project = args.project || 'my-monorepo'
+  const services = (args.services || 'api,worker,web').split(',').map(s => s.trim())
+  const environments = (args.environments || 'dev,stg,prd').split(',').map(e => e.trim())
+  const sourceEnv = args.source_env || 'dev'
+
+  return {
+    description: `Setup monorepo ${project} with ${services.length} services across ${environments.length} environments`,
+    messages: [
+      {
+        role: 'user',
+        content: {
+          type: 'text',
+          text: `Help me set up a complete monorepo with proper environment isolation.
+
+## 📋 Configuration
+
+**Project:** ${project}
+**Services:** ${services.join(', ')}
+**Environments:** ${environments.join(', ')}
+**Source environment:** ${sourceEnv}
+
+---
+
+## 🎯 Understanding the Isolation Model
+
+### Key Concepts
+
+1. **Environment Isolation**: Variables in \`dev\` never overlap with \`stg\` or \`prd\`
+2. **Shared Vars per Environment**: Shared vars in \`dev\` only apply to \`dev\` services
+3. **Service Inheritance**: Each service gets \`shared vars + service-specific vars\`
+4. **Deterministic IDs**: Each var has unique ID: \`project|environment|service|key\`
+
+### Var Count Formula
+
+\`\`\`
+Total vars for service = Shared vars + Service-specific vars
+
+Example: api in dev
+├── Shared secrets: 3 (DATABASE_URL, REDIS_URL, JWT_SECRET)
+├── Shared configs: 3 (LOG_LEVEL, NODE_ENV, SENTRY_DSN)
+├── Service secrets: 2 (API_STRIPE_KEY, API_SENDGRID_KEY)
+├── Service configs: 3 (PORT, API_RATE_LIMIT, CORS_ORIGIN)
+└── Total: 3+3+2+3 = 11 vars (5 secrets, 6 configs)
+\`\`\`
+
+---
+
+## 🚀 Step-by-Step Setup
+
+### Step 1: Set Shared Vars for \`${sourceEnv}\`
+
+First, set the shared variables that apply to ALL services in \`${sourceEnv}\`:
+
+\`\`\`json
+// vaulter_multi_set with shared=true
+{
+  "variables": [
+    { "key": "DATABASE_URL", "value": "postgres://${sourceEnv}:password@localhost/${sourceEnv}_db", "sensitive": true },
+    { "key": "REDIS_URL", "value": "redis://localhost:6379/0", "sensitive": true },
+    { "key": "JWT_SECRET", "value": "${sourceEnv}-jwt-secret-${Date.now()}", "sensitive": true },
+    { "key": "LOG_LEVEL", "value": "${sourceEnv === 'prd' ? 'error' : sourceEnv === 'stg' ? 'info' : 'debug'}", "sensitive": false },
+    { "key": "NODE_ENV", "value": "${sourceEnv === 'prd' ? 'production' : sourceEnv === 'stg' ? 'staging' : 'development'}", "sensitive": false },
+    { "key": "SENTRY_DSN", "value": "https://xxx@sentry.io/123", "sensitive": false }
+  ],
+  "environment": "${sourceEnv}",
+  "shared": true
+}
+\`\`\`
+
+### Step 2: Set Service-Specific Vars
+
+For each service, set their unique variables:
+
+${services.map((svc, i) => `
+#### ${svc} service
+
+\`\`\`json
+// vaulter_multi_set for ${svc}
+{
+  "variables": [
+    { "key": "${svc.toUpperCase()}_SECRET_KEY", "value": "${svc}-secret-xxx", "sensitive": true },
+    { "key": "PORT", "value": "${3000 + i}", "sensitive": false },
+    { "key": "${svc.toUpperCase()}_SPECIFIC_CONFIG", "value": "value-for-${svc}", "sensitive": false }
+  ],
+  "environment": "${sourceEnv}",
+  "service": "${svc}"
+}
+\`\`\`
+`).join('')}
+
+### Step 3: Verify Inheritance
+
+Check that each service correctly inherits shared vars:
+
+${services.map(svc => `
+\`\`\`json
+// vaulter_inheritance_info for ${svc}
+{ "service": "${svc}", "environment": "${sourceEnv}" }
+\`\`\`
+`).join('')}
+
+**Expected for each service:**
+- Inherited from shared: 6 vars (3 secrets + 3 configs)
+- Service-specific: 3 vars (1 secret + 2 configs)
+- Total: 9 vars
+
+### Step 4: Clone to Other Environments
+
+${environments.filter(e => e !== sourceEnv).map(env => `
+#### Clone ${sourceEnv} → ${env}
+
+\`\`\`json
+// vaulter_clone_env (preview first!)
+{
+  "source": "${sourceEnv}",
+  "target": "${env}",
+  "dryRun": true
+}
+\`\`\`
+
+Then update environment-specific values:
+
+\`\`\`json
+// vaulter_multi_set to override ${env} values
+{
+  "variables": [
+    { "key": "DATABASE_URL", "value": "postgres://${env}:password@${env}-db.internal/${env}_db", "sensitive": true },
+    { "key": "LOG_LEVEL", "value": "${env === 'prd' ? 'error' : env === 'stg' ? 'info' : 'debug'}", "sensitive": false },
+    { "key": "NODE_ENV", "value": "${env === 'prd' ? 'production' : env === 'stg' ? 'staging' : 'development'}", "sensitive": false }
+  ],
+  "environment": "${env}",
+  "shared": true
+}
+\`\`\`
+`).join('')}
+
+### Step 5: Export for Kubernetes
+
+For each service in production:
+
+\`\`\`json
+// vaulter_k8s_secret (only sensitive=true vars)
+{
+  "environment": "prd",
+  "service": "${services[0]}",
+  "namespace": "${project}-${services[0]}"
+}
+
+// vaulter_k8s_configmap (only sensitive=false vars)
+{
+  "environment": "prd",
+  "service": "${services[0]}",
+  "namespace": "${project}-${services[0]}"
+}
+\`\`\`
+
+---
+
+## 📊 Expected Var Counts
+
+| Service | Env | Shared | Service | Total |
+|---------|-----|--------|---------|-------|
+${services.map(svc => environments.map(env =>
+  `| ${svc} | ${env} | 6 | 3 | 9 |`
+).join('\n')).join('\n')}
+
+---
+
+## ✅ Verification Checklist
+
+- [ ] Shared vars set for each environment
+- [ ] Service-specific vars set for each service
+- [ ] Inheritance verified with \`vaulter_inheritance_info\`
+- [ ] Environment values properly differentiated (DATABASE_URL, LOG_LEVEL, etc.)
+- [ ] K8s Secret and ConfigMap generated and applied
+- [ ] No vars from dev appearing in prd (isolation check)
+
+---
+
+## ⚠️ Common Mistakes
+
+1. **Forgetting \`shared: true\`**: Creates var for default service, not shared
+2. **Not setting env-specific values after clone**: All envs have same DATABASE_URL
+3. **Missing service flag**: Creates var in shared instead of service
+
+---
+
+## 🔗 Related Resources
+
+- \`vaulter://monorepo-example\` - Complete isolation example with var counts
+- \`vaulter://instructions\` - How vaulter works
+- \`vaulter://tools-guide\` - Which tool for each scenario`
+        }
+      }
+    ]
+  }
+}
+
+function getLocalOverridesWorkflowPrompt(args: Record<string, string>): GetPromptResult {
+  const action = args.action || 'status'
+  const service = args.service || ''
+  const key = args.key || ''
+  const value = args.value || ''
+
+  return {
+    description: `Local overrides: ${action}`,
+    messages: [
+      {
+        role: 'user',
+        content: {
+          type: 'text',
+          text: `Help me manage local development overrides.
+
+## Understanding Local Overrides
+
+Local overrides are stored in \`.vaulter/local/\` and **never touch the backend**:
+
+\`\`\`
+.vaulter/local/
+├── shared.env            # Vars for ALL services (DEBUG, LOG_LEVEL)
+├── overrides.env         # Single repo overrides
+├── overrides.web.env     # Monorepo: web service overrides
+└── overrides.api.env     # Monorepo: api service overrides
+\`\`\`
+
+**Merge order (priority):** backend < local shared < service overrides
+
+---
+
+${action === 'status' ? `## Status: Current State
+
+Please use \`vaulter_local_status\`${service ? ` with service="${service}"` : ''} to show:
+
+1. **Base environment** (from config)
+2. **Shared vars:**
+   - File: \`.vaulter/local/shared.env\`
+   - Count: X vars
+3. **Service overrides:**
+   - File: \`.vaulter/local/overrides${service ? `.${service}` : ''}.env\`
+   - Count: X vars
+4. **Snapshots:** X available
+
+Then use \`vaulter_local_shared_list\` to show shared vars content.
+` : ''}
+
+${action === 'set-shared' ? `## Set Shared Var
+
+A shared var applies to ALL services. Useful for:
+- DEBUG=true
+- LOG_LEVEL=debug
+- VERBOSE=1
+
+Please use \`vaulter_local_shared_set\`:
+
+\`\`\`json
+{
+  "key": "${key || 'DEBUG'}",
+  "value": "${value || 'true'}"
+}
+\`\`\`
+
+This creates/updates \`.vaulter/local/shared.env\` and will be merged when running \`vaulter local pull\`.
+` : ''}
+
+${action === 'set-override' ? `## Set Service Override
+
+A service override applies to a specific service only:
+
+Please use \`vaulter_local_set\`:
+
+\`\`\`json
+{
+  "key": "${key || 'PORT'}",
+  "value": "${value || '3001'}",
+  "service": "${service || 'web'}"
+}
+\`\`\`
+
+This creates/updates \`.vaulter/local/overrides.${service || 'web'}.env\` and will be merged when running \`vaulter local pull\`.
+` : ''}
+
+${action === 'pull' ? `## Pull: Generate .env Files
+
+Pull combines: **backend + local shared + service overrides** into output .env files.
+
+Please use \`vaulter_local_pull\`:
+
+\`\`\`json
+{
+  "all": true${service ? `,\n  "service": "${service}"` : ''}
+}
+\`\`\`
+
+The output will show:
+- Number of output files generated
+- Vars count: base + shared + overrides
+- Any warnings
+
+**Section-aware mode** (default): Preserves user-defined vars above the \`--- VAULTER MANAGED ---\` marker.
+` : ''}
+
+${action === 'diff' ? `## Diff: Compare with Base
+
+Show what local overrides are changing:
+
+Please use \`vaulter_local_diff\`${service ? ` with service="${service}"` : ''}
+
+Expected output:
+- **Added:** vars that exist only locally
+- **Modified:** vars with different values from base
+- **Base-only:** vars from backend not overridden
+
+Example:
+\`\`\`
+Local overrides vs base (dev):
+
+  + DEBUG = true (new)
+  ~ PORT
+    base:     3000
+    override: 3001
+
+Summary: 1 new, 1 modified, 10 base-only
+\`\`\`
+` : ''}
+
+---
+
+## Quick Commands Summary
+
+| Action | Tool | Description |
+|--------|------|-------------|
+| Status | \`vaulter_local_status\` | Show current state |
+| Set shared | \`vaulter_local_shared_set\` | Set var for ALL services |
+| List shared | \`vaulter_local_shared_list\` | List shared vars |
+| Delete shared | \`vaulter_local_shared_delete\` | Remove shared var |
+| Set override | \`vaulter_local_set\` | Set service-specific var |
+| Delete override | \`vaulter_local_delete\` | Remove service override |
+| Pull | \`vaulter_local_pull\` | Generate .env files |
+| Diff | \`vaulter_local_diff\` | Compare with base |
+
+---
+
+## Tips
+
+- **Never commit** \`.vaulter/local/\` to git (should be in .gitignore)
+- **Use shared for** common dev settings (DEBUG, LOG_LEVEL)
+- **Use overrides for** per-service customization (PORT, specific URLs)
+- **Pull generates section-aware .env** - your custom vars are preserved`
         }
       }
     ]

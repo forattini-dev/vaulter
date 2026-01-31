@@ -14,6 +14,7 @@ import type {
   Environment
 } from '../types.js'
 import { compileGlobPatterns } from './pattern-matcher.js'
+import { syncVaulterSection, getUserVarsFromEnvFile } from './env-parser.js'
 import type { VaulterClient } from '../client.js'
 
 // ============================================================================
@@ -34,6 +35,7 @@ export function normalizeOutputTarget(
       name,
       path: input,
       filename: '.env',
+      service: undefined,
       include: [],
       exclude: [],
       inherit: true
@@ -50,6 +52,7 @@ export function normalizeOutputTarget(
     name,
     path: input.path,
     filename,
+    service: input.service,
     include: input.include || [],
     exclude: input.exclude || [],
     inherit: input.inherit !== false // Default true
@@ -214,6 +217,13 @@ export interface PullToOutputsOptions {
   varsOverride?: Record<string, string>
   /** Override shared vars instead of fetching from getSharedServiceVars() */
   sharedVarsOverride?: Record<string, string>
+  /**
+   * Section-aware mode (default: true)
+   * When enabled, preserves user-defined variables in a separate section
+   * and only updates the Vaulter-managed section.
+   * Set to false to overwrite the entire file.
+   */
+  sectionAware?: boolean
 }
 
 export interface PullToOutputsResult {
@@ -225,9 +235,15 @@ export interface PullToOutputsResult {
     fullPath: string
     varsCount: number
     vars: Record<string, string>
+    /** User-defined vars that were preserved (only in sectionAware mode) */
+    userVars?: Record<string, string>
+    /** Total vars including user-defined (only in sectionAware mode) */
+    totalVarsCount?: number
   }>
   /** Warnings (e.g., vars not included in any output) */
   warnings: string[]
+  /** Whether section-aware mode was used */
+  sectionAware?: boolean
 }
 
 /**
@@ -260,12 +276,14 @@ export async function pullToOutputs(options: PullToOutputsOptions): Promise<Pull
     dryRun = false,
     verbose = false,
     varsOverride,
-    sharedVarsOverride
+    sharedVarsOverride,
+    sectionAware = true // Default to section-aware mode
   } = options
 
   const result: PullToOutputsResult = {
     files: [],
-    warnings: []
+    warnings: [],
+    sectionAware
   }
 
   // Get all output targets
@@ -325,8 +343,24 @@ export async function pullToOutputs(options: PullToOutputsOptions): Promise<Pull
       }
     }
 
+    // Get vars for this target
+    // If target has a specific service, fetch vars for that service
+    // Otherwise, use the global allVars
+    let sourceVars = allVars
+    if (target.service && !varsOverride) {
+      // Fetch vars for this specific service
+      try {
+        const serviceVars = await client.export(config.project, environment, target.service)
+        // Merge shared + service-specific (service overrides shared)
+        sourceVars = { ...sharedServiceVars, ...serviceVars }
+      } catch {
+        // If service doesn't exist, fall back to allVars
+        sourceVars = allVars
+      }
+    }
+
     // Filter and merge target-specific vars
-    const filteredVars = filterVarsByPatterns(allVars, target.include, target.exclude)
+    const filteredVars = filterVarsByPatterns(sourceVars, target.include, target.exclude)
 
     // Merge: target-specific overrides shared
     targetVars = { ...targetVars, ...filteredVars }
@@ -336,8 +370,17 @@ export async function pullToOutputs(options: PullToOutputsOptions): Promise<Pull
     }
 
     // Generate file content
-    const content = formatEnvFile(targetVars)
     const fullPath = join(projectRoot, target.path, target.filename)
+
+    // Get user-defined vars if section-aware mode
+    let userVars: Record<string, string> = {}
+    if (sectionAware) {
+      try {
+        userVars = getUserVarsFromEnvFile(fullPath)
+      } catch {
+        // File doesn't exist yet, no user vars
+      }
+    }
 
     // Add to result
     result.files.push({
@@ -346,16 +389,31 @@ export async function pullToOutputs(options: PullToOutputsOptions): Promise<Pull
       filename: target.filename,
       fullPath,
       varsCount: Object.keys(targetVars).length,
-      vars: targetVars
+      vars: targetVars,
+      userVars: sectionAware ? userVars : undefined,
+      totalVarsCount: sectionAware ? Object.keys(targetVars).length + Object.keys(userVars).length : undefined
     })
 
     // Write file (unless dry-run)
     if (!dryRun) {
       await mkdir(dirname(fullPath), { recursive: true })
-      await writeFile(fullPath, content, 'utf-8')
 
-      if (verbose) {
-        console.log(`Wrote ${fullPath} (${Object.keys(targetVars).length} vars)`)
+      if (sectionAware) {
+        // Section-aware: preserve user-defined vars, only update Vaulter section
+        syncVaulterSection(fullPath, targetVars)
+
+        if (verbose) {
+          const userCount = Object.keys(userVars).length
+          console.log(`Synced ${fullPath} (${Object.keys(targetVars).length} vaulter vars${userCount > 0 ? `, ${userCount} user vars preserved` : ''})`)
+        }
+      } else {
+        // Legacy: overwrite entire file
+        const content = formatEnvFile(targetVars)
+        await writeFile(fullPath, content, 'utf-8')
+
+        if (verbose) {
+          console.log(`Wrote ${fullPath} (${Object.keys(targetVars).length} vars)`)
+        }
       }
     }
   }

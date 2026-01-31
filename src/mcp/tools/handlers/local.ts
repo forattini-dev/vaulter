@@ -6,7 +6,14 @@ import type { VaulterClient } from '../../../client.js'
 import type { VaulterConfig, Environment } from '../../../types.js'
 import type { ToolResponse } from '../config.js'
 import { findConfigDir } from '../../../lib/config-loader.js'
-import { setOverride, deleteOverride, getLocalStatus } from '../../../lib/local.js'
+import {
+  setOverride,
+  deleteOverride,
+  getLocalStatus,
+  loadLocalShared,
+  setLocalShared,
+  deleteLocalShared
+} from '../../../lib/local.js'
 import { runLocalPull, runLocalDiff } from '../../../lib/local-ops.js'
 import { snapshotCreate, snapshotList, snapshotRestore } from '../../../lib/snapshot-ops.js'
 
@@ -26,7 +33,7 @@ function getConfigDirOrError(): { configDir: string } | { error: ToolResponse } 
 }
 
 /**
- * vaulter_local_pull - Base env + overrides → output targets
+ * vaulter_local_pull - Base env + local shared + service overrides → output targets
  */
 export async function handleLocalPullCall(
   client: VaulterClient,
@@ -46,7 +53,7 @@ export async function handleLocalPullCall(
       output: args.output as string | undefined
     }
 
-    const { baseEnvironment, overridesCount, result: pullResult } = await runLocalPull({
+    const { baseEnvironment, localSharedCount, overridesCount, result: pullResult } = await runLocalPull({
       client,
       config,
       configDir,
@@ -55,7 +62,8 @@ export async function handleLocalPullCall(
       output
     })
 
-    const lines = [`✓ Pulled to ${pullResult.files.length} output(s) (base: ${baseEnvironment} + ${overridesCount} overrides)`]
+    const mergeSummary = `base: ${baseEnvironment} + ${localSharedCount} shared + ${overridesCount} overrides`
+    const lines = [`✓ Pulled to ${pullResult.files.length} output(s) (${mergeSummary})`]
     for (const file of pullResult.files) {
       lines.push(`  ${file.output}: ${file.fullPath} (${file.varsCount} vars)`)
     }
@@ -176,10 +184,96 @@ export async function handleLocalStatusCall(
   const lines = [
     'Local Status:',
     `  Base environment:  ${status.baseEnvironment}`,
-    `  Overrides file:    ${status.overridesExist ? '✓' : '✗'} ${status.overridesPath}`,
-    `  Overrides count:   ${status.overridesCount}`,
+    '',
+    '  Shared vars (all services):',
+    `    File:   ${status.sharedExist ? '✓' : '○'} ${status.sharedPath}`,
+    `    Count:  ${status.sharedCount}`,
+    '',
+    '  Overrides (service-specific):',
+    `    File:   ${status.overridesExist ? '✓' : '○'} ${status.overridesPath}`,
+    `    Count:  ${status.overridesCount}`,
+    '',
     `  Snapshots:         ${status.snapshotsCount}`
   ]
+
+  return { content: [{ type: 'text', text: lines.join('\n') }] }
+}
+
+/**
+ * vaulter_local_shared_set - Set a local shared var
+ */
+export async function handleLocalSharedSetCall(
+  _config: VaulterConfig,
+  args: Record<string, unknown>
+): Promise<ToolResponse> {
+  const result = getConfigDirOrError()
+  if ('error' in result) return result.error
+  const { configDir } = result
+
+  const key = args.key as string
+  const value = args.value as string
+
+  if (!key || value === undefined) {
+    return { content: [{ type: 'text', text: 'Error: key and value are required' }] }
+  }
+
+  setLocalShared(configDir, key, value)
+  return { content: [{ type: 'text', text: `✓ Set local shared: ${key}` }] }
+}
+
+/**
+ * vaulter_local_shared_delete - Remove a local shared var
+ */
+export async function handleLocalSharedDeleteCall(
+  _config: VaulterConfig,
+  args: Record<string, unknown>
+): Promise<ToolResponse> {
+  const result = getConfigDirOrError()
+  if ('error' in result) return result.error
+  const { configDir } = result
+
+  const key = args.key as string
+
+  if (!key) {
+    return { content: [{ type: 'text', text: 'Error: key is required' }] }
+  }
+
+  const deleted = deleteLocalShared(configDir, key)
+  if (deleted) {
+    return { content: [{ type: 'text', text: `✓ Removed local shared: ${key}` }] }
+  }
+  return { content: [{ type: 'text', text: `Shared var not found: ${key}` }] }
+}
+
+/**
+ * vaulter_local_shared_list - List all local shared vars
+ */
+export async function handleLocalSharedListCall(
+  _config: VaulterConfig,
+  _args: Record<string, unknown>
+): Promise<ToolResponse> {
+  const result = getConfigDirOrError()
+  if ('error' in result) return result.error
+  const { configDir } = result
+
+  const vars = loadLocalShared(configDir)
+  const keys = Object.keys(vars)
+
+  if (keys.length === 0) {
+    return {
+      content: [{
+        type: 'text',
+        text: 'No local shared vars. Use vaulter_local_shared_set to add some.\nShared vars apply to ALL services in the monorepo.'
+      }]
+    }
+  }
+
+  const lines = [`Local shared vars (${keys.length}):`, '']
+  for (const key of keys.sort()) {
+    lines.push(`  ${key}=${vars[key]}`)
+  }
+  lines.push('')
+  lines.push('These vars apply to ALL services in the monorepo.')
 
   return { content: [{ type: 'text', text: lines.join('\n') }] }
 }

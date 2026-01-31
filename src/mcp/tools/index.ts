@@ -106,6 +106,9 @@ import {
   handleLocalDeleteCall,
   handleLocalDiffCall,
   handleLocalStatusCall,
+  handleLocalSharedSetCall,
+  handleLocalSharedDeleteCall,
+  handleLocalSharedListCall,
   handleSnapshotCreateCall,
   handleSnapshotListCall,
   handleSnapshotRestoreCall
@@ -160,6 +163,16 @@ export async function handleToolCall(
   }
   if (name === 'vaulter_local_status' && config) {
     return handleLocalStatusCall(config, args)
+  }
+  // Local shared tools (don't need backend)
+  if (name === 'vaulter_local_shared_set' && config) {
+    return handleLocalSharedSetCall(config, args)
+  }
+  if (name === 'vaulter_local_shared_delete' && config) {
+    return handleLocalSharedDeleteCall(config, args)
+  }
+  if (name === 'vaulter_local_shared_list' && config) {
+    return handleLocalSharedListCall(config, args)
   }
   if (name === 'vaulter_snapshot_list' && config && config.snapshots?.driver !== 's3db') {
     return handleSnapshotListCall(config, args)

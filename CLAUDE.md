@@ -162,8 +162,11 @@ O `vaulter doctor` agora executa **15 checks** para diagnosticar problemas:
 | Ver versão específica | `vaulter_get_version` | `key="API_KEY" version=2 environment="dev"` |
 | Rollback para versão anterior | `vaulter_rollback` | `key="API_KEY" version=2 environment="dev" dryRun=true` |
 | **Local Overrides** | | |
-| Override local (dev) | `vaulter_local_set` | `key="PORT" value="3001"` |
-| Pull local + overrides | `vaulter_local_pull` | `all=true` |
+| Shared var (todos services) | `vaulter_local_shared_set` | `key="DEBUG" value="true"` |
+| Listar shared vars | `vaulter_local_shared_list` | — |
+| Deletar shared var | `vaulter_local_shared_delete` | `key="DEBUG"` |
+| Override por service | `vaulter_local_set` | `key="PORT" value="3001" service="web"` |
+| Pull local + overrides | `vaulter_local_pull` | `all=true` (backend + shared + overrides) |
 | Diff overrides vs base | `vaulter_local_diff` | — |
 | Status local | `vaulter_local_status` | — |
 | Snapshot backup | `vaulter_snapshot_create` | `environment="dev"` |
@@ -182,24 +185,54 @@ vaulter_clone_env source="dev" target="prd"
 
 ### Workflow: Local Overrides (Dev)
 
-```bash
-# 1. Inicializar overrides locais
-vaulter local init
+Local overrides são variáveis que sobrescrevem o backend **apenas localmente**. Útil para desenvolvimento.
 
-# 2. Adicionar overrides (nunca toca backend)
-vaulter local set PORT=3001 DEBUG::true
+**Estrutura de arquivos:**
+```
+.vaulter/local/
+├── shared.env            # Vars compartilhadas (todos os services)
+├── overrides.env         # Single repo
+├── overrides.web.env     # Monorepo: overrides para 'web'
+└── overrides.api.env     # Monorepo: overrides para 'api'
+```
+
+**Merge order (prioridade):** `backend < local shared < service overrides`
+
+```bash
+# 1. Setar var compartilhada (todos os services)
+vaulter local set --shared DEBUG=true
+vaulter local set --shared LOG_LEVEL=debug
+
+# 2. Setar override por service (monorepo)
+vaulter local set PORT=3001 -s web
+vaulter local set PORT=8080 -s api
 
 # 3. Ver o que está diferente do base env
 vaulter local diff
 
-# 4. Gerar .env files com base + overrides
+# 4. Gerar .env files com: backend + shared + overrides
 vaulter local pull --all
 
-# 5. Ver status
+# 5. Ver status (mostra shared + overrides count)
 vaulter local status
 
 # 6. Resetar overrides
 vaulter local reset
+```
+
+**MCP Tools:**
+```bash
+# Shared vars (todos os services)
+vaulter_local_shared_set key="DEBUG" value="true"
+vaulter_local_shared_delete key="DEBUG"
+vaulter_local_shared_list
+
+# Service-specific overrides
+vaulter_local_set key="PORT" value="3001" service="web"
+vaulter_local_delete key="PORT" service="web"
+
+# Pull (inclui shared + overrides automaticamente)
+vaulter_local_pull all=true
 ```
 
 ### Workflow: Snapshots
@@ -558,9 +591,9 @@ await client.deleteManyByKeys(['OLD1', 'OLD2'], 'project', 'dev')
 
 ## MCP Server
 
-**50 Tools | 6 Resources | 11 Prompts**
+**53 Tools | 6 Resources | 11 Prompts**
 
-### Tools (50)
+### Tools (53)
 
 | Category | Tools |
 |----------|-------|
@@ -575,7 +608,7 @@ await client.deleteManyByKeys(['OLD1', 'OLD2'], 'project', 'dev')
 | **IaC (2)** | `vaulter_helm_values`, `vaulter_tf_vars` |
 | **Keys (6)** | `vaulter_key_generate`, `vaulter_key_list`, `vaulter_key_show`, `vaulter_key_export`, `vaulter_key_import`, `vaulter_key_rotate` |
 | **Monorepo (5)** | `vaulter_init`, `vaulter_scan`, `vaulter_services`, `vaulter_shared_list`, `vaulter_inheritance_info` |
-| **Local (5)** | `vaulter_local_pull`, `vaulter_local_set`, `vaulter_local_delete`, `vaulter_local_diff`, `vaulter_local_status` |
+| **Local (8)** | `vaulter_local_pull`, `vaulter_local_set`, `vaulter_local_delete`, `vaulter_local_diff`, `vaulter_local_status`, `vaulter_local_shared_set` ✨, `vaulter_local_shared_delete` ✨, `vaulter_local_shared_list` ✨ |
 | **Snapshot (3)** | `vaulter_snapshot_create`, `vaulter_snapshot_list`, `vaulter_snapshot_restore` |
 | **Versioning (3)** | `vaulter_list_versions`, `vaulter_get_version`, `vaulter_rollback` |
 | **Other (2)** | `vaulter_categorize_vars`, `vaulter_nuke_preview` |
@@ -593,11 +626,101 @@ await client.deleteManyByKeys(['OLD1', 'OLD2'], 'project', 'dev')
 | `vaulter://config` | Project YAML config |
 | `vaulter://services` | Monorepo services |
 
-### Prompts (11)
+### Prompts (12)
 
-`setup_project`, `migrate_dotenv`, `deploy_secrets`, `compare_environments`, `security_audit`, `rotation_workflow`, `shared_vars_workflow`, `batch_operations`, `copy_environment`, `sync_workflow`, `monorepo_deploy`
+`setup_project`, `migrate_dotenv`, `deploy_secrets`, `compare_environments`, `security_audit`, `rotation_workflow`, `shared_vars_workflow`, `batch_operations`, `copy_environment`, `sync_workflow`, `monorepo_deploy`, `local_overrides_workflow` ✨
 
 **Full reference:** See [docs/MCP.md](docs/MCP.md)
+
+---
+
+## Interactive Shell (TUI)
+
+Vaulter inclui uma interface TUI interativa construída com `tuiuiu.js`.
+
+### Iniciar o Shell
+
+```bash
+# Abre o Secrets Explorer (padrão)
+vaulter shell
+
+# Alias alternativos
+vaulter tui
+vaulter ui
+
+# Com diretório específico
+vaulter shell --cwd /path/to/project
+
+# Abrir tela específica
+vaulter shell menu      # Menu principal
+vaulter shell audit     # Audit Log Viewer
+vaulter shell keys      # Key Manager
+```
+
+### Telas Disponíveis
+
+| Tela | Comando | Descrição |
+|------|---------|-----------|
+| **Secrets Explorer** | `vaulter shell` | Visualizar/gerenciar secrets por environment e service |
+| **Launcher (Menu)** | `vaulter shell menu` | Menu principal para escolher telas |
+| **Audit Viewer** | `vaulter shell audit` | Visualizar logs de auditoria |
+| **Key Manager** | `vaulter shell keys` | Gerenciar chaves de encriptação |
+
+### Secrets Explorer - Hotkeys
+
+**Navegação:**
+| Tecla | Ação |
+|-------|------|
+| `↑` / `↓` | Navegar entre services (monorepo) |
+| `j` / `k` | Navegar na lista de secrets (vim-style) |
+| `tab` / `shift+tab` | Alternar entre environments |
+| `1-5` | Selecionar environment por número |
+
+**Ações:**
+| Tecla | Ação |
+|-------|------|
+| `v` | Toggle mostrar/ocultar valores |
+| `r` | Refresh (força reload do backend) |
+| `d` | Deletar secret selecionado |
+| `c` | Copiar secret para outro environment |
+| `m` | Mover secret para outro environment |
+| `enter` | Confirmar ação no modal |
+| `escape` | Cancelar modal / sair |
+| `q` | Sair |
+
+**Modais (Copy/Move):**
+| Tecla | Ação |
+|-------|------|
+| `←` / `→` | Selecionar environment destino |
+| `enter` | Confirmar |
+| `escape` | Cancelar |
+
+### Features do Secrets Explorer
+
+- **Splash screen** com loading steps animado
+- **Detecção automática** de monorepo (nx, turbo, lerna, pnpm)
+- **Cache local** (30 min TTL) para performance
+- **Filtro por service** com herança de shared vars
+- **Source tracking** (`shared`, `service`, `override`, `local`)
+- **Sync status column** - mostra se local .env está sincronizado:
+  - `✓` synced - valor igual ao backend
+  - `≠` modified - valor diferente do backend
+  - `−` missing - existe no backend mas não local
+  - `+` local-only - existe apenas localmente
+- **Operações locais** em arquivos `.env` (não toca backend)
+- **Theme** Tokyo Night (via tuiuiu.js)
+
+### Arquitetura TUI
+
+```
+src/cli/tui/
+├── index.ts           # Exports
+├── secrets-explorer.ts # Tela principal (48KB)
+├── launcher.ts        # Menu principal
+├── dashboard.ts       # Dashboard de secrets
+├── audit-viewer.ts    # Visualizador de audit logs
+└── key-manager.ts     # Gerenciador de chaves
+```
 
 ---
 
@@ -763,6 +886,57 @@ const result = await pullToOutputs({
 
 // result.files: { output, path, fullPath, varsCount, vars }[]
 // result.warnings: string[]
+```
+
+### Section-Aware .env Management
+
+O Vaulter usa um sistema de **seções** para preservar variáveis definidas pelo usuário:
+
+```env
+# Variáveis definidas pelo usuário (nunca tocadas pelo vaulter)
+MY_LOCAL_VAR=something
+CUSTOM_DEBUG=true
+
+# --- VAULTER MANAGED (do not edit below) ---
+DATABASE_URL=postgres://...
+API_KEY=sk-xxx
+NODE_ENV=production
+# --- END VAULTER ---
+```
+
+**Comportamento:**
+- ✅ Variáveis acima do marcador são **preservadas**
+- ✅ Vaulter só edita a seção entre os marcadores
+- ✅ Funciona com Next.js, NestJS, Express, Vite, etc.
+- ✅ Compatível com qualquer biblioteca dotenv
+
+**CLI:**
+```bash
+# Pull section-aware (default)
+vaulter local pull --all
+
+# Sobrescrever arquivo inteiro (ignora seções)
+vaulter local pull --all --overwrite
+```
+
+**Programático:**
+```typescript
+import {
+  parseEnvFileSections,
+  syncVaulterSection,
+  setInEnvFile,
+  deleteFromEnvFile,
+  getUserVarsFromEnvFile
+} from 'vaulter'
+
+// Sync apenas a seção do vaulter (preserva user vars)
+syncVaulterSection('/path/.env', { DATABASE_URL: 'xxx', API_KEY: 'yyy' })
+
+// Adicionar var na seção do usuário
+setInEnvFile('/path/.env', 'MY_VAR', 'value', true)  // inUserSection=true
+
+// Ler apenas vars do usuário
+const userVars = getUserVarsFromEnvFile('/path/.env')
 ```
 
 ---
