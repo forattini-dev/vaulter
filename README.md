@@ -180,8 +180,8 @@ See [docs/DOCTOR.md](docs/DOCTOR.md) for complete guide.
 
 | Command | Description |
 |:--------|:------------|
-| `service list` | List discovered services |
-| `service init` | Add service to config |
+| `services list` | List discovered services |
+| `services` | Same as `services list` |
 
 ### Audit & Rotation
 
@@ -779,6 +779,57 @@ outputs:
 
 ---
 
+## Local Overrides (Dev Environment)
+
+Override backend variables **locally** without touching the remote. Perfect for development.
+
+### File Structure
+
+```
+.vaulter/local/
+├── shared.env            # Vars for ALL services (DEBUG, LOG_LEVEL)
+├── overrides.env         # Single repo overrides
+├── overrides.web.env     # Monorepo: web service overrides
+└── overrides.api.env     # Monorepo: api service overrides
+```
+
+### Merge Order
+
+**Priority:** `backend < local shared < service overrides`
+
+```bash
+# Set shared var (all services)
+vaulter local set --shared DEBUG=true
+
+# Set service-specific override
+vaulter local set PORT=3001 -s web
+
+# Generate .env files (backend + shared + overrides)
+vaulter local pull --all
+
+# See what's different from base
+vaulter local diff
+
+# Check status
+vaulter local status
+```
+
+### Section-Aware .env
+
+Vaulter preserves user-defined vars in `.env` files:
+
+```env
+# Your vars (never touched by vaulter)
+MY_LOCAL_VAR=something
+
+# --- VAULTER MANAGED (do not edit below) ---
+DATABASE_URL=postgres://...
+API_KEY=sk-xxx
+# --- END VAULTER ---
+```
+
+---
+
 ## API Usage
 
 ```typescript
@@ -959,7 +1010,7 @@ const result = await loadRuntime({
 
 ## MCP Server
 
-Claude AI integration via Model Context Protocol. **47 tools, 5 resources, 10 prompts.**
+Claude AI integration via Model Context Protocol. **53 tools, 6 resources, 12 prompts.**
 
 ```bash
 vaulter mcp
@@ -978,7 +1029,7 @@ vaulter mcp
 }
 ```
 
-### Tools (47)
+### Tools (53)
 
 | Category | Tools |
 |:---------|:------|
@@ -994,11 +1045,12 @@ vaulter mcp
 | **Categorization (1)** | `vaulter_categorize_vars` |
 | **Dangerous (1)** | `vaulter_nuke_preview` |
 | **Utility (4)** | `vaulter_copy`, `vaulter_rename`, `vaulter_promote_shared`, `vaulter_demote_shared` |
-| **Local Overrides (5)** | `vaulter_local_pull`, `vaulter_local_set`, `vaulter_local_delete`, `vaulter_local_diff`, `vaulter_local_status` |
+| **Local Overrides (8)** | `vaulter_local_pull`, `vaulter_local_set`, `vaulter_local_delete`, `vaulter_local_diff`, `vaulter_local_status`, `vaulter_local_shared_set`, `vaulter_local_shared_delete`, `vaulter_local_shared_list` |
 | **Snapshot (3)** | `vaulter_snapshot_create`, `vaulter_snapshot_list`, `vaulter_snapshot_restore` |
+| **Versioning (3)** | `vaulter_list_versions`, `vaulter_get_version`, `vaulter_rollback` |
 | **Diagnostic (3)** | `vaulter_doctor`, `vaulter_clone_env`, `vaulter_diff` |
 
-### Resources (5)
+### Resources (6)
 
 Static data views (no input required). For actions with parameters, use tools.
 
@@ -1006,11 +1058,12 @@ Static data views (no input required). For actions with parameters, use tools.
 |:----|:------------|
 | `vaulter://instructions` | **Read first!** How vaulter stores data (s3db.js architecture) |
 | `vaulter://tools-guide` | Which tool to use for each scenario |
+| `vaulter://monorepo-example` | Complete monorepo isolation example with var counts |
 | `vaulter://mcp-config` | MCP settings sources (priority chain) |
 | `vaulter://config` | Project configuration (YAML) |
 | `vaulter://services` | Monorepo services list |
 
-### Prompts (10)
+### Prompts (12)
 
 Pre-configured workflows for common tasks.
 
@@ -1026,19 +1079,32 @@ Pre-configured workflows for common tasks.
 | `batch_operations` | Multi-set/get/delete operations |
 | `copy_environment` | Copy variables between environments |
 | `sync_workflow` | Sync local files with remote backend |
+| `monorepo_deploy` | Complete monorepo setup with isolation |
+| `local_overrides_workflow` | Manage local dev overrides (shared + service) |
 
 > **Full MCP documentation:** See [docs/MCP.md](docs/MCP.md) for complete tool reference with parameters.
 
 ---
 
-## TUI (Terminal Interface)
+## Shell (Interactive Terminal)
 
 ```bash
-vaulter tui              # Menu
-vaulter tui dashboard    # Secrets dashboard
-vaulter tui audit        # Audit log viewer
-vaulter tui keys         # Key manager
+vaulter shell              # Secrets Explorer (default)
+vaulter shell menu         # Menu
+vaulter shell audit        # Audit log viewer
+vaulter shell keys         # Key manager
 ```
+
+### SYNC Column (Secrets Explorer)
+
+Shows local `.env` sync status vs backend:
+
+| Icon | Status | Meaning |
+|:----:|:-------|:--------|
+| `✓` | synced | Local value = backend value |
+| `≠` | modified | Local value differs from backend |
+| `−` | missing | Exists in backend, not in local .env |
+| `+` | local-only | Exists only in local .env |
 
 ### Shortcuts
 
@@ -1047,7 +1113,7 @@ vaulter tui keys         # Key manager
 | Screen | Shortcuts |
 |:-------|:----------|
 | Menu | `1` `2` `3` quick access to screens |
-| Dashboard | `r` refresh · `v` toggle values · `e` cycle env |
+| Explorer | `r` refresh · `v` toggle values · `Tab` cycle env · `j/k` vim nav |
 | Audit | `o` filter op · `s` filter source · `/` search · `c` clear |
 | Keys | `r` refresh · `c` toggle config |
 

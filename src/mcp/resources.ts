@@ -781,34 +781,72 @@ mode: "split"  # or "unified"
 
 ---
 
-## 💻 Local Overrides (5 tools)
+## 💻 Local Overrides (8 tools)
 
 Local overrides layer on top of a base environment. Plaintext, gitignored, never touch the backend.
 
+**File structure:**
+\`\`\`
+.vaulter/local/
+├── shared.env            # Vars for ALL services
+├── overrides.web.env     # Service-specific overrides
+└── overrides.api.env
+\`\`\`
+
+**Merge order:** backend < local shared < service overrides
+
+### \`vaulter_local_shared_set\`
+**Use for:** Set a var shared across ALL services
+\`\`\`
+key: "DEBUG"
+value: "true"
+\`\`\`
+
+### \`vaulter_local_shared_delete\`
+**Use for:** Remove a shared var
+\`\`\`
+key: "DEBUG"
+\`\`\`
+
+### \`vaulter_local_shared_list\`
+**Use for:** List all local shared vars
+
 ### \`vaulter_local_set\`
-**Use for:** Setting a local override (never touches backend)
+**Use for:** Set a service-specific override
 \`\`\`
 key: "PORT"
 value: "3001"
+service: "web"
 \`\`\`
 
 ### \`vaulter_local_delete\`
-**Use for:** Removing a local override
+**Use for:** Remove a service override
 \`\`\`
 key: "PORT"
+service: "web"
 \`\`\`
 
 ### \`vaulter_local_pull\`
-**Use for:** Generating .env files from base env + local overrides
+**Use for:** Generate .env files (backend + shared + overrides)
 \`\`\`
 all: true  # or output: "web"
 \`\`\`
 
 ### \`vaulter_local_diff\`
-**Use for:** Seeing what's overridden locally vs base env
+**Use for:** See what's overridden locally vs base env
 
 ### \`vaulter_local_status\`
-**Use for:** Checking local state (overrides count, snapshots, base env)
+**Use for:** Check local state (shared count, overrides count, snapshots)
+
+### TUI SYNC Column
+
+When viewing in TUI, SYNC column shows:
+| Icon | Status | Meaning |
+|------|--------|---------|
+| ✓ | synced | Local = backend |
+| ≠ | modified | Local differs |
+| − | missing | Not in local .env |
+| + | local-only | Only in local |
 
 ---
 
