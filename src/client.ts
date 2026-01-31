@@ -280,7 +280,7 @@ export class VaulterClient {
               owner: 'string|optional',
               rotateAfter: 'date|optional',
               rotatedAt: 'string|optional',
-              source: { type: 'string', enum: ['manual', 'sync', 'import', 'rotation', 'copy', 'rename', 'promote', 'demote'], optional: true },
+              source: { type: 'string', enum: ['manual', 'sync', 'import', 'rotation', 'copy', 'rename', 'promote', 'demote', 'cli', 'mcp', 'api', 'loader', 'rollback'], optional: true },
               copiedFrom: 'string|optional',
               renamedFrom: 'string|optional',
               promotedFrom: 'string|optional',
@@ -1620,7 +1620,7 @@ export class VaulterClient {
       sensitive: current.sensitive,
       metadata: {
         ...current.metadata,
-        source: 'manual',
+        source,
         _operation: 'rollback' // Internal hint for version tracking
       } as any
     })

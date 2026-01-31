@@ -2,6 +2,7 @@
  * Vaulter TUI Launcher
  *
  * Main menu interface for accessing all TUI screens
+ * Based on tuiuiu-defence pattern - manual menu, no Select component
  */
 
 import {
@@ -12,8 +13,8 @@ import {
   AppShell,
   StatusBar,
   Badge,
-  Select,
-  useState,
+  Panel,
+  createSignal,
   useHotkeys,
   useApp,
   setTheme,
@@ -21,66 +22,29 @@ import {
 } from 'tuiuiu.js'
 import type { VaulterConfig, Environment } from '../../types.js'
 import { loadConfig, getProjectName } from '../../lib/config-loader.js'
-import { Dashboard } from './dashboard.js'
-import { AuditViewer } from './audit-viewer.js'
-import { KeyManager } from './key-manager.js'
 
 // Screen types
 type Screen = 'menu' | 'dashboard' | 'audit' | 'keys'
+
+// Menu items
+const MENU_OPTIONS = [
+  { value: 'dashboard' as Screen, label: '📊 Secrets Dashboard', description: 'View and manage environment variables' },
+  { value: 'audit' as Screen, label: '📋 Audit Log Viewer', description: 'View audit history and filter logs' },
+  { value: 'keys' as Screen, label: '🔐 Key Manager', description: 'Manage encryption keys' },
+] as const
 
 interface LauncherProps {
   config: VaulterConfig
   environment: Environment
   service?: string
   verbose?: boolean
-  initialScreen?: Screen
 }
 
-// Menu items
-const MENU_ITEMS = [
-  {
-    value: 'dashboard' as Screen,
-    label: '📊 Secrets Dashboard',
-    description: 'View and manage environment variables'
-  },
-  {
-    value: 'audit' as Screen,
-    label: '📋 Audit Log Viewer',
-    description: 'View audit history and filter logs'
-  },
-  {
-    value: 'keys' as Screen,
-    label: '🔐 Key Manager',
-    description: 'Manage encryption keys'
-  }
-]
+// Module-level signals (like tuiuiu-defence pattern)
+const [menuSelection, setMenuSelection] = createSignal(0)
 
-/**
- * Header component
- */
-function LauncherHeader(props: {
-  project: string
-  environment: string
-  currentScreen: Screen
-}) {
-  const screenNames: Record<Screen, string> = {
-    menu: 'Main Menu',
-    dashboard: 'Secrets Dashboard',
-    audit: 'Audit Log',
-    keys: 'Key Manager'
-  }
-
-  return Box(
-    { flexDirection: 'row', paddingX: 1, alignItems: 'center' },
-    Text({ color: 'primary', bold: true }, '◆ VAULTER'),
-    Text({ color: 'muted' }, '  │  '),
-    Text({ bold: true }, props.project),
-    Spacer({}),
-    Badge({ label: screenNames[props.currentScreen], color: 'info' }),
-    Text({ color: 'muted' }, '  '),
-    Badge({ label: props.environment.toUpperCase(), color: getEnvColor(props.environment) })
-  )
-}
+// Track selected screen for return value
+let selectedScreen: Screen | null = null
 
 /**
  * Get color for environment badge
@@ -103,6 +67,29 @@ function getEnvColor(env: string): 'success' | 'warning' | 'error' | 'info' {
 }
 
 /**
+ * Header component
+ */
+function LauncherHeader(props: { project: string; environment: string; currentScreen: Screen }) {
+  const screenNames: Record<Screen, string> = {
+    menu: 'Main Menu',
+    dashboard: 'Secrets Dashboard',
+    audit: 'Audit Log',
+    keys: 'Key Manager',
+  }
+
+  return Box(
+    { flexDirection: 'row', paddingX: 1, alignItems: 'center' },
+    Text({ color: 'primary', bold: true }, '◆ VAULTER'),
+    Text({ color: 'muted' }, '  │  '),
+    Text({ bold: true }, props.project),
+    Spacer({}),
+    Badge({ label: screenNames[props.currentScreen], color: 'info' }),
+    Text({ color: 'muted' }, '  '),
+    Badge({ label: props.environment.toUpperCase(), color: getEnvColor(props.environment) })
+  )
+}
+
+/**
  * ASCII Art Logo
  */
 function Logo() {
@@ -116,119 +103,94 @@ function Logo() {
 }
 
 /**
- * Main Menu component
- */
-function MainMenu(props: {
-  onSelect: (screen: Screen) => void
-}) {
-  return Box(
-    { flexDirection: 'column', gap: 2, alignItems: 'center', justifyContent: 'center', height: '100%' },
-    Logo(),
-    Box(
-      { width: 50 },
-      Select({
-        items: MENU_ITEMS,
-        maxVisible: 5,
-        onChange: (val) => props.onSelect(val as Screen),
-        cursorIndicator: '▸',
-        colorActive: 'primary'
-      })
-    ),
-    Box(
-      { flexDirection: 'column', alignItems: 'center', gap: 0 },
-      Text({ color: 'muted', dim: true }, 'Use ↑↓ to navigate, Enter to select'),
-      Text({ color: 'muted', dim: true }, 'Press q to quit')
-    )
-  )
-}
-
-/**
  * Main Launcher component
  */
 function Launcher(props: LauncherProps) {
-  const app = useApp()
-  const [currentScreen, setCurrentScreen] = useState<Screen>(props.initialScreen || 'menu')
-  const [isNavigating, setIsNavigating] = useState(false)
-
+  const { exit } = useApp()
   const project = getProjectName(props.config)
 
-  // Register hotkeys
-  useHotkeys('q', () => {
-    if (currentScreen() === 'menu') {
-      app.exit()
-    } else {
-      setCurrentScreen('menu')
-    }
-  }, { description: 'Quit/Back' })
-
-  // Quick access keys
-  useHotkeys('1', () => setCurrentScreen('dashboard'), { description: 'Dashboard' })
-  useHotkeys('2', () => setCurrentScreen('audit'), { description: 'Audit' })
-  useHotkeys('3', () => setCurrentScreen('keys'), { description: 'Keys' })
-
-  // Handle screen navigation
-  async function handleScreenSelect(screen: Screen) {
-    if (isNavigating()) return
-    setIsNavigating(true)
-
-    try {
-      // For now, we'll render inline components
-      // In future, could spawn separate processes
-      setCurrentScreen(screen)
-    } finally {
-      setIsNavigating(false)
-    }
+  // Menu navigation helpers
+  function moveMenuSelection(delta: number): void {
+    const count = MENU_OPTIONS.length
+    setMenuSelection((index) => (index + delta + count) % count)
   }
 
-  // Status bar content
-  const statusBar = StatusBar({
-    left: Text({ color: 'muted' }, currentScreen() === 'menu' ? 'Select an option' : 'q to return'),
-    center: undefined,
-    right: Text({ color: 'muted', dim: true }, 'q:back  1:dashboard  2:audit  3:keys')
+  function selectScreen(screen: Screen): void {
+    selectedScreen = screen
+    exit()
+  }
+
+  function activateMenuSelection(): void {
+    const selected = MENU_OPTIONS[menuSelection()]
+    selectScreen(selected.value)
+  }
+
+  // Keyboard handlers (like tuiuiu-defence pattern)
+  useHotkeys('q', () => {
+    selectedScreen = null
+    exit()
+  })
+  useHotkeys('escape', () => {
+    selectedScreen = null
+    exit()
   })
 
-  // Render current screen
-  let content: any
+  // Navigation
+  useHotkeys('up', () => moveMenuSelection(-1))
+  useHotkeys('k', () => moveMenuSelection(-1))
+  useHotkeys('down', () => moveMenuSelection(1))
+  useHotkeys('j', () => moveMenuSelection(1))
 
-  switch (currentScreen()) {
-    case 'menu':
-      content = MainMenu({ onSelect: handleScreenSelect })
-      break
+  // Select with Enter
+  useHotkeys('enter', () => activateMenuSelection())
 
-    case 'dashboard':
-      content = Dashboard({
-        config: props.config,
-        environment: props.environment,
-        service: props.service,
-        verbose: props.verbose,
-        embedded: true
-      })
-      break
+  // Quick access keys
+  useHotkeys('1', () => selectScreen('dashboard'))
+  useHotkeys('2', () => selectScreen('audit'))
+  useHotkeys('3', () => selectScreen('keys'))
 
-    case 'audit':
-      content = AuditViewer({
-        config: props.config,
-        environment: props.environment,
-        service: props.service,
-        verbose: props.verbose,
-        embedded: true
-      })
-      break
+  // Menu view (manual implementation like tuiuiu-defence)
+  const menuView = () => {
+    const items = MENU_OPTIONS.map((item, index) => {
+      const selected = menuSelection() === index
+      return Box(
+        { flexDirection: 'row', gap: 1, paddingX: 1 },
+        Text({ color: selected ? 'primary' : 'muted', bold: selected }, selected ? '▸' : ' '),
+        Text({ color: selected ? 'primary' : 'foreground', bold: selected }, item.label),
+        Text({ color: 'muted', dim: true }, ` - ${item.description}`)
+      )
+    })
 
-    case 'keys':
-      content = KeyManager({
-        config: props.config,
-        verbose: props.verbose,
-        embedded: true
-      })
-      break
+    return Box(
+      { flexDirection: 'column', gap: 2, alignItems: 'center', justifyContent: 'center', height: '100%' },
+      Logo(),
+      Panel(
+        { title: 'Main Menu', padding: 1, width: 60 },
+        Box({ flexDirection: 'column', gap: 0 }, ...items)
+      ),
+      Box(
+        { flexDirection: 'column', alignItems: 'center', gap: 0 },
+        Text({ color: 'muted', dim: true }, 'Use ↑↓ to navigate, Enter to select'),
+        Text({ color: 'muted', dim: true }, 'Press q to quit, or 1/2/3 for quick access')
+      )
+    )
   }
+
+  // Status bar
+  const statusBar = StatusBar({
+    left: Text({ color: 'muted' }, 'Select an option'),
+    center: undefined,
+    right: Text({ color: 'muted', dim: true }, 'q:quit  1:dashboard  2:audit  3:keys'),
+  })
+
+  // Only render menu - sub-screens are handled by exiting and re-rendering
+  const content = menuView()
 
   return AppShell({
     header: LauncherHeader({
       project,
       environment: props.environment,
-      currentScreen: currentScreen()
+      currentScreen: 'menu',
     }),
     headerHeight: 1,
     footer: statusBar,
@@ -237,7 +199,7 @@ function Launcher(props: LauncherProps) {
     dividerStyle: 'line',
     dividerColor: 'border',
     padding: 0,
-    children: Box({ padding: 1 }, content)
+    children: Box({ padding: 1 }, content),
   })
 }
 
@@ -256,29 +218,72 @@ export async function startLauncher(options: {
     throw new Error('No .vaulter/config.yaml found. Run "vaulter init" first.')
   }
 
-  // Set theme
+  // Set theme BEFORE render
   setTheme(tokyoNightTheme)
 
   // Determine environment
   const environment = options.environment || config.default_environment || 'dev'
 
-  // Determine initial screen
-  let initialScreen: Screen = 'menu'
+  // Handle direct screen access
   if (options.screen) {
     const screen = options.screen.toLowerCase()
-    if (screen === 'dashboard' || screen === 'secrets') initialScreen = 'dashboard'
-    else if (screen === 'audit' || screen === 'logs') initialScreen = 'audit'
-    else if (screen === 'keys' || screen === 'key') initialScreen = 'keys'
+    if (screen === 'dashboard' || screen === 'secrets') {
+      const { startDashboard } = await import('./dashboard.js')
+      await startDashboard({ environment, service: options.service, verbose: options.verbose })
+      return
+    }
+    if (screen === 'audit' || screen === 'logs') {
+      const { startAuditViewer } = await import('./audit-viewer.js')
+      await startAuditViewer({ environment, service: options.service, verbose: options.verbose })
+      return
+    }
+    if (screen === 'keys' || screen === 'key') {
+      const { startKeyManager } = await import('./key-manager.js')
+      await startKeyManager({ verbose: options.verbose })
+      return
+    }
   }
 
-  // Render the launcher
-  render(() =>
-    Launcher({
-      config,
-      environment,
-      service: options.service,
-      verbose: options.verbose,
-      initialScreen
-    })
-  )
+  // Main loop - show menu, launch selected screen, return to menu
+  while (true) {
+    // Reset state
+    selectedScreen = null
+    setMenuSelection(0)
+
+    // Show menu
+    const { waitUntilExit } = render(() =>
+      Launcher({
+        config,
+        environment,
+        service: options.service,
+        verbose: options.verbose,
+      })
+    )
+
+    await waitUntilExit()
+
+    // Check what was selected
+    if (!selectedScreen) {
+      // User quit (q or escape)
+      break
+    }
+
+    // Small delay to let tuiuiu cleanup between renders
+    await new Promise(resolve => setTimeout(resolve, 50))
+
+    // Launch selected screen
+    if (selectedScreen === 'dashboard') {
+      const { startDashboard } = await import('./dashboard.js')
+      await startDashboard({ environment, service: options.service, verbose: options.verbose })
+    } else if (selectedScreen === 'audit') {
+      const { startAuditViewer } = await import('./audit-viewer.js')
+      await startAuditViewer({ environment, service: options.service, verbose: options.verbose })
+    } else if (selectedScreen === 'keys') {
+      const { startKeyManager } = await import('./key-manager.js')
+      await startKeyManager({ verbose: options.verbose })
+    }
+
+    // Small delay before returning to menu
+    await new Promise(resolve => setTimeout(resolve, 50))
+  }
 }

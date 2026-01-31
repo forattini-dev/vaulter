@@ -148,13 +148,29 @@ export function findMonorepoRoot(startDir: string = process.cwd()): string | nul
   let currentDir = path.resolve(startDir)
   let rootConfigDir: string | null = null
 
-  // Walk up to find the topmost .vaulter directory
+  // Get home directory to exclude global config
+  const homeDir = process.env.HOME || process.env.USERPROFILE || ''
+
+  // Walk up to find the topmost .vaulter directory (but not in home dir)
   while (true) {
+    // Skip home directory - it contains global config, not project config
+    if (currentDir === homeDir) {
+      break
+    }
+
     const configDir = path.join(currentDir, CONFIG_DIR)
     const configFile = path.join(configDir, CONFIG_FILE)
 
     if (fs.existsSync(configFile)) {
-      rootConfigDir = currentDir
+      // Verify it's a project config (has project field), not just global config
+      try {
+        const config = loadConfig(currentDir)
+        if (config && config.project) {
+          rootConfigDir = currentDir
+        }
+      } catch {
+        // Invalid config, skip
+      }
     }
 
     const parentDir = path.dirname(currentDir)

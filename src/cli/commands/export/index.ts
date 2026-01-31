@@ -40,6 +40,7 @@ export const EXPORT_FORMATS = [
   'k8s-configmap',
   'helm',
   'terraform',
+  'terraform-json',
   'docker',
   'vercel',
   'railway',
@@ -111,6 +112,16 @@ export async function runExportGroup(context: ExportContext): Promise<void> {
         _: ['tf:vars', ...args._.slice(2)]
       }
       await runTfVars({ ...context, args: shiftedArgs })
+      break
+    }
+
+    case 'terraform-json': {
+      const { runTfJson } = await import('../integrations/terraform.js')
+      const shiftedArgs = {
+        ...args,
+        _: ['tf:json', ...args._.slice(2)]
+      }
+      await runTfJson({ ...context, args: shiftedArgs })
       break
     }
 
@@ -353,6 +364,7 @@ export function printExportHelp(): void {
   ui.log('  k8s-configmap    Kubernetes ConfigMap YAML')
   ui.log('  helm             Helm values.yaml')
   ui.log('  terraform        Terraform .tfvars')
+  ui.log('  terraform-json   Terraform JSON variables file')
   ui.log('  docker           Docker --env-file format')
   ui.log('  vercel           Vercel environment JSON')
   ui.log('  railway          Railway CLI format')

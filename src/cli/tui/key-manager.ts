@@ -470,10 +470,12 @@ export async function startKeyManager(options: {
   setTheme(tokyoNightTheme)
 
   // Render the manager
-  render(() =>
+  const { waitUntilExit } = render(() =>
     KeyManager({
       config,
       verbose: options.verbose
     })
   )
+
+  await waitUntilExit()
 }

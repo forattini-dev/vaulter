@@ -1014,7 +1014,7 @@ async function main(): Promise<void> {
         const shellScreen = context.args._[1] || ''
         switch (shellScreen) {
           case 'audit':
-          case 'logs':
+          case 'logs': {
             const { startAuditViewer } = await import('./tui/index.js')
             await startAuditViewer({
               environment: context.environment,
@@ -1022,14 +1022,16 @@ async function main(): Promise<void> {
               verbose: context.verbose
             })
             break
+          }
           case 'keys':
-          case 'key':
+          case 'key': {
             const { startKeyManager } = await import('./tui/index.js')
             await startKeyManager({
               verbose: context.verbose
             })
             break
-          case 'menu':
+          }
+          case 'menu': {
             const { startLauncher } = await import('./tui/index.js')
             await startLauncher({
               environment: context.environment,
@@ -1037,15 +1039,26 @@ async function main(): Promise<void> {
               verbose: context.verbose
             })
             break
-          default:
-            // Default: open Secrets Explorer directly
-            // Note: Don't pass environment - let it default to 'local' in shell
+          }
+          case 'tabs': {
+            // New tabbed shell (experimental) - F1-F4 to switch tabs
+            const { startShell } = await import('./tui/index.js')
+            await startShell({
+              environment: context.environment,
+              service: context.service,
+              verbose: context.verbose
+            })
+            break
+          }
+          default: {
+            // Default: open Secrets Explorer directly (original with full splash)
             const { startSecretsExplorer } = await import('./tui/index.js')
             await startSecretsExplorer({
               service: context.service,
               verbose: context.verbose
             })
             break
+          }
         }
         break
 

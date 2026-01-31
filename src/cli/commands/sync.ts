@@ -10,7 +10,6 @@ import fs from 'node:fs'
 import path from 'node:path'
 import type { CLIArgs, VaulterConfig, Environment, SyncResult } from '../../types.js'
 import { createClientFromConfig } from '../lib/create-client.js'
-import { runHook } from '../lib/hooks.js'
 import { findConfigDir, getEnvFilePathForConfig } from '../../lib/config-loader.js'
 import { parseEnvFile, hasStdinData, parseEnvFromStdin, serializeEnv } from '../../lib/env-parser.js'
 import { compileGlobPatterns } from '../../lib/pattern-matcher.js'
@@ -103,10 +102,6 @@ async function syncSingleService(
   }
 
   ui.verbose(`Found ${Object.keys(localVars).length} local variables`, verbose)
-
-  if (!dryRun) {
-    runHook(effectiveConfig?.hooks?.pre_sync, 'pre_sync', verbose)
-  }
 
   const client = await createClientFromConfig({ args, config: effectiveConfig, project: effectiveProject, verbose })
   const auditLogger = await createConnectedAuditLogger(effectiveConfig, effectiveProject, environment, verbose)
@@ -222,8 +217,6 @@ async function syncSingleService(
           }
         })
       }
-
-      runHook(effectiveConfig?.hooks?.post_sync, 'post_sync', verbose)
 
       // Log to audit trail
       await logSyncOperation(auditLogger, {

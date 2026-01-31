@@ -29,12 +29,16 @@ export async function runLocalPull(context: LocalContext): Promise<void> {
 
   const all = args.all as boolean | undefined
   const target = args.output as string | undefined
+  const overwrite = args.overwrite as boolean | undefined
 
   if (!all && !target) {
     print.error('Requires --all or --output <name>')
     ui.log('Examples:')
     ui.log(`  ${c.command('vaulter local pull --all')}`)
     ui.log(`  ${c.command('vaulter local pull --output web')}`)
+    ui.log('')
+    ui.log('Options:')
+    ui.log(`  ${c.muted('--overwrite')}  Overwrite entire .env file (default: preserve user vars)`)
     process.exit(1)
   }
 
@@ -72,6 +76,7 @@ export async function runLocalPull(context: LocalContext): Promise<void> {
 
     const {
       baseEnvironment,
+      localSharedCount,
       overridesCount,
       result
     } = await runLocalPullCore({
@@ -82,11 +87,15 @@ export async function runLocalPull(context: LocalContext): Promise<void> {
       all,
       output: target,
       dryRun,
-      verbose
+      verbose,
+      overwrite
     })
 
     if (verbose) {
-      ui.verbose(`Base env: ${colorEnv(baseEnvironment)}, overrides: ${overridesCount}`, true)
+      const parts = [`Base env: ${colorEnv(baseEnvironment)}`]
+      if (localSharedCount > 0) parts.push(`shared: ${localSharedCount}`)
+      if (overridesCount > 0) parts.push(`overrides: ${overridesCount}`)
+      ui.verbose(parts.join(', '), true)
     }
 
     if (jsonOutput) {
@@ -95,11 +104,15 @@ export async function runLocalPull(context: LocalContext): Promise<void> {
         dryRun,
         project,
         baseEnvironment,
+        localSharedCount,
         overridesCount,
+        sectionAware: result.sectionAware,
         files: result.files.map(f => ({
           output: f.output,
           path: f.fullPath,
-          varsCount: f.varsCount
+          varsCount: f.varsCount,
+          userVarsCount: f.userVars ? Object.keys(f.userVars).length : 0,
+          totalVarsCount: f.totalVarsCount
         })),
         warnings: result.warnings
       }, null, 2))
@@ -107,11 +120,20 @@ export async function runLocalPull(context: LocalContext): Promise<void> {
       if (dryRun) {
         ui.log('Dry run - would write:')
       } else {
-        ui.success(`Pulled to ${result.files.length} output(s) (base: ${baseEnvironment} + ${overridesCount} overrides):`)
+        const mode = result.sectionAware ? 'section-aware' : 'overwrite'
+        const extras: string[] = []
+        if (localSharedCount > 0) extras.push(`${localSharedCount} shared`)
+        if (overridesCount > 0) extras.push(`${overridesCount} overrides`)
+        const extrasStr = extras.length > 0 ? ` + ${extras.join(' + ')}` : ''
+        ui.success(`Pulled to ${result.files.length} output(s) [${mode}] (base: ${baseEnvironment}${extrasStr}):`)
       }
 
       for (const file of result.files) {
-        ui.log(`  ${c.highlight(file.output)}: ${c.muted(file.fullPath)} (${file.varsCount} vars)`)
+        const userCount = file.userVars ? Object.keys(file.userVars).length : 0
+        const varsInfo = result.sectionAware && userCount > 0
+          ? `${file.varsCount} vaulter + ${userCount} user vars`
+          : `${file.varsCount} vars`
+        ui.log(`  ${c.highlight(file.output)}: ${c.muted(file.fullPath)} (${varsInfo})`)
       }
 
       for (const warning of result.warnings) {

@@ -11,7 +11,6 @@
 import path from 'node:path'
 import type { CLIArgs, VaulterConfig, Environment } from '../../types.js'
 import { createClientFromConfig } from '../lib/create-client.js'
-import { runHook } from '../lib/hooks.js'
 import { findConfigDir } from '../../lib/config-loader.js'
 import { c, colorEnv, print } from '../lib/colors.js'
 import { pullToOutputs, validateOutputsConfig } from '../../lib/outputs.js'
@@ -107,10 +106,6 @@ async function runPullOutputs(context: PullContext): Promise<void> {
     ui.verbose(`Project root: ${c.muted(projectRoot)}`, true)
   }
 
-  if (!dryRun) {
-    runHook(config?.hooks?.pre_pull, 'pre_pull', verbose)
-  }
-
   const client = await createClientFromConfig({ args, config, project, verbose })
 
   try {
@@ -163,9 +158,6 @@ async function runPullOutputs(context: PullContext): Promise<void> {
       }
     }
 
-    if (!dryRun) {
-      runHook(config?.hooks?.post_pull, 'post_pull', verbose)
-    }
   } finally {
     await client.disconnect()
   }
