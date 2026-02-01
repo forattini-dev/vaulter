@@ -81,8 +81,19 @@ export {
   parseEnvString,
   serializeEnv,
   hasStdinData,
-  parseEnvFromStdin
+  parseEnvFromStdin,
+  // Section-aware .env management
+  parseEnvFileSections,
+  syncVaulterSection,
+  getUserVarsFromEnvFile,
+  getAllVarsFromEnvFile,
+  setInEnvFile,
+  deleteFromEnvFile,
+  writeEnvFileSections,
+  VAULTER_SECTION_MARKER,
+  VAULTER_SECTION_END
 } from './lib/env-parser.js'
+export type { EnvFileSections } from './lib/env-parser.js'
 
 // Loader (dotenv integration)
 export { loader, parse } from './loader.js'

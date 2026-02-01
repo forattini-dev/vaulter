@@ -322,6 +322,75 @@ Never bypass the CLI. The CLI handles encryption, metadata formatting, and s3db.
 
 ---
 
+## 📁 Section-Aware .env Management
+
+When pulling variables to local .env files, Vaulter uses **section-aware mode** by default.
+This preserves user-defined variables while managing backend variables separately.
+
+### How It Works
+
+\`\`\`env
+# Your variables (NEVER touched by vaulter)
+MY_LOCAL_VAR=something
+CUSTOM_DEBUG=true
+MY_PORT_OVERRIDE=3001
+
+# --- VAULTER MANAGED (do not edit below) ---
+DATABASE_URL=postgres://...
+API_KEY=sk-xxx
+NODE_ENV=production
+# --- END VAULTER ---
+\`\`\`
+
+**Rules:**
+- Everything ABOVE the \`--- VAULTER MANAGED ---\` marker is **preserved**
+- Everything BETWEEN the markers is **managed by vaulter**
+- You can freely add/edit/remove your own variables above the marker
+- Vaulter only touches the managed section
+
+### CLI Commands
+
+\`\`\`bash
+# Section-aware pull (default)
+vaulter local pull --all
+
+# Overwrite entire file (ignores sections)
+vaulter local pull --all --overwrite
+\`\`\`
+
+### MCP Tools
+
+- \`vaulter_local_pull\` - Always uses section-aware mode
+- \`vaulter_local_set\` - Adds to managed section
+- \`vaulter_local_shared_set\` - Sets shared var (applied to all services)
+
+### Programmatic API
+
+\`\`\`typescript
+import {
+  parseEnvFileSections,
+  syncVaulterSection,
+  setInEnvFile,
+  deleteFromEnvFile,
+  getUserVarsFromEnvFile
+} from 'vaulter'
+
+// Sync only the vaulter section (preserves user vars)
+syncVaulterSection('/path/.env', {
+  DATABASE_URL: 'postgres://...',
+  API_KEY: 'sk-xxx'
+})
+
+// Read only user-defined vars
+const userVars = getUserVarsFromEnvFile('/path/.env')
+// { MY_LOCAL_VAR: 'something', CUSTOM_DEBUG: 'true' }
+
+// Add var to user section
+setInEnvFile('/path/.env', 'MY_VAR', 'value', true)  // inUserSection=true
+\`\`\`
+
+---
+
 ## 🔧 MCP Server Configuration
 
 ### Option 1: Use Project Config (Recommended)
@@ -837,6 +906,32 @@ all: true  # or output: "web"
 
 ### \`vaulter_local_status\`
 **Use for:** Check local state (shared count, overrides count, snapshots)
+
+### Section-Aware .env Management
+
+When pulling to local files, vaulter preserves your custom variables:
+
+\`\`\`env
+# Your vars (preserved by vaulter)
+MY_DEBUG=true
+CUSTOM_PORT=3001
+
+# --- VAULTER MANAGED (do not edit below) ---
+DATABASE_URL=postgres://...
+API_KEY=sk-xxx
+# --- END VAULTER ---
+\`\`\`
+
+**How it works:**
+- Everything ABOVE \`--- VAULTER MANAGED ---\` is **never touched**
+- Vaulter only modifies the section between markers
+- Your local customizations are always preserved
+
+**CLI:**
+\`\`\`bash
+vaulter local pull --all           # Section-aware (default)
+vaulter local pull --all --overwrite  # Overwrite entire file
+\`\`\`
 
 ### TUI SYNC Column
 

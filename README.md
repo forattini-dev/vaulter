@@ -812,21 +812,75 @@ vaulter local diff
 
 # Check status
 vaulter local status
+
+# Reset all local overrides
+vaulter local reset
 ```
 
-### Section-Aware .env
+### Section-Aware .env Management
 
-Vaulter preserves user-defined vars in `.env` files:
+Vaulter uses **section-aware mode** by default when writing `.env` files. This preserves your custom variables while managing backend variables separately.
 
 ```env
-# Your vars (never touched by vaulter)
+# Your variables (NEVER touched by vaulter)
 MY_LOCAL_VAR=something
+CUSTOM_DEBUG=true
+MY_PORT_OVERRIDE=3001
 
 # --- VAULTER MANAGED (do not edit below) ---
 DATABASE_URL=postgres://...
 API_KEY=sk-xxx
+NODE_ENV=production
 # --- END VAULTER ---
 ```
+
+**How it works:**
+
+| Location | Behavior |
+|:---------|:---------|
+| Above marker | **Preserved** - your custom vars, never modified |
+| Between markers | **Managed** - vaulter controls this section |
+| Below end marker | **Preserved** - any trailing content |
+
+**CLI options:**
+
+```bash
+# Section-aware pull (default)
+vaulter local pull --all
+
+# Overwrite entire file (ignores sections)
+vaulter local pull --all --overwrite
+```
+
+**Programmatic API:**
+
+```typescript
+import {
+  syncVaulterSection,
+  getUserVarsFromEnvFile,
+  setInEnvFile
+} from 'vaulter'
+
+// Sync only the managed section (preserves user vars)
+syncVaulterSection('/app/.env', {
+  DATABASE_URL: 'postgres://...',
+  API_KEY: 'sk-xxx'
+})
+
+// Read only user-defined vars (above the marker)
+const userVars = getUserVarsFromEnvFile('/app/.env')
+// { MY_LOCAL_VAR: 'something', CUSTOM_DEBUG: 'true' }
+
+// Add var to user section (above marker)
+setInEnvFile('/app/.env', 'MY_VAR', 'value', true)
+```
+
+**Use cases:**
+
+- **Local debugging:** Add `DEBUG=true` above the marker, it stays after `vaulter local pull`
+- **Port conflicts:** Override `PORT=3001` locally without affecting teammates
+- **Feature flags:** Test with `FEATURE_X_ENABLED=true` without touching backend
+- **Framework vars:** Keep `.env.local` compatible with Next.js/Vite expectations
 
 ---
 
