@@ -232,9 +232,8 @@ export function getEnvFilePathForAction(
   if (environment !== 'local') return null
 
   if (!service || service === '[SHARED]') {
-    return config.local?.shared
-      ? path.join(process.cwd(), config.local.shared)
-      : path.join(process.cwd(), '.vaulter', 'local', 'shared.env')
+    // Unified structure: shared files at .vaulter/local/configs.env
+    return path.join(process.cwd(), '.vaulter', 'local', 'configs.env')
   }
 
   // Try to find existing file first
@@ -313,7 +312,6 @@ export function varsToDisplayVars(
   source: DisplayVar['source'] = 'local'
 ): DisplayVar[] {
   const now = new Date()
-  const secretPatterns = ['KEY', 'SECRET', 'TOKEN', 'PASSWORD', 'CREDENTIAL', 'PRIVATE']
 
   return Object.entries(vars).map(([key, value]) => ({
     id: `local:${key}`,
@@ -321,7 +319,7 @@ export function varsToDisplayVars(
     value,
     project: 'local',
     environment: 'local',
-    sensitive: secretPatterns.some(p => key.toUpperCase().includes(p)),
+    sensitive: false, // No inference - user must explicitly mark as sensitive
     createdAt: now,
     updatedAt: now,
     source,

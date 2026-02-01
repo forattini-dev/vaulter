@@ -634,15 +634,7 @@ format: "json"
 
 ---
 
-## 🔄 Sync Operations (3 tools)
-
-### \`vaulter_sync\` ⚠️ DEPRECATED
-**Status:** Deprecated - Use \`vaulter_push\` with \`dryRun=true\` instead
-**Use for:** Bidirectional sync between local .env and backend
-\`\`\`
-environment: "dev"
-dryRun: true  # preview changes first
-\`\`\`
+## 🔄 Sync Operations (2 tools)
 
 ### \`vaulter_pull\`
 **Use for:** Download from backend to local .env
@@ -654,7 +646,7 @@ environment: "dev"
 **Use for:** Upload local .env to backend
 \`\`\`
 environment: "dev"
-dryRun: true  # preview changes without applying (replaces vaulter_sync)
+dryRun: true  # preview changes without applying
 \`\`\`
 
 ---
@@ -855,30 +847,49 @@ mode: "split"  # or "unified"
 Local overrides layer on top of a base environment. Plaintext, gitignored, never touch the backend.
 
 **File structure:**
+
+Single repo:
 \`\`\`
 .vaulter/local/
-├── shared.env            # Vars for ALL services
-├── overrides.web.env     # Service-specific overrides
-└── overrides.api.env
+├── configs.env                 # sensitive=false
+└── secrets.env                 # sensitive=true
+\`\`\`
+
+Monorepo:
+\`\`\`
+.vaulter/local/
+├── shared/                     # Vars for ALL services
+│   ├── configs.env
+│   └── secrets.env
+└── services/
+    ├── web/
+    │   ├── configs.env
+    │   └── secrets.env
+    └── api/
+        ├── configs.env
+        └── secrets.env
 \`\`\`
 
 **Merge order:** backend < local shared < service overrides
 
 ### \`vaulter_local_shared_set\`
-**Use for:** Set a var shared across ALL services
+**Use for:** Set a var shared across ALL services (monorepo only)
 \`\`\`
 key: "DEBUG"
 value: "true"
+sensitive: false  # → shared/configs.env (default)
+# or
+sensitive: true   # → shared/secrets.env
 \`\`\`
 
 ### \`vaulter_local_shared_delete\`
-**Use for:** Remove a shared var
+**Use for:** Remove a shared var (from both configs.env and secrets.env)
 \`\`\`
 key: "DEBUG"
 \`\`\`
 
 ### \`vaulter_local_shared_list\`
-**Use for:** List all local shared vars
+**Use for:** List all local shared vars (from both configs.env and secrets.env)
 
 ### \`vaulter_local_set\`
 **Use for:** Set a service-specific override
@@ -886,10 +897,13 @@ key: "DEBUG"
 key: "PORT"
 value: "3001"
 service: "web"
+sensitive: false  # → services/web/configs.env (default)
+# or
+sensitive: true   # → services/web/secrets.env
 \`\`\`
 
 ### \`vaulter_local_delete\`
-**Use for:** Remove a service override
+**Use for:** Remove a service override (from both configs.env and secrets.env)
 \`\`\`
 key: "PORT"
 service: "web"
@@ -905,7 +919,7 @@ all: true  # or output: "web"
 **Use for:** See what's overridden locally vs base env
 
 ### \`vaulter_local_status\`
-**Use for:** Check local state (shared count, overrides count, snapshots)
+**Use for:** Check local state (shows config/secrets counts separately)
 
 ### Section-Aware .env Management
 
@@ -1001,7 +1015,7 @@ Use the official GitHub Action for automated deployments:
 
 ### 4. Compare before deploy
 1. \`vaulter_compare\` - Compare dev vs prd
-2. \`vaulter_sync\` with dry_run - Preview changes
+2. \`vaulter_push\` with dryRun=true - Preview changes
 
 ### 5. Check system status
 1. \`vaulter_status\` - Get encryption, rotation & audit overview

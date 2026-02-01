@@ -27,6 +27,12 @@ export async function runLocalPull(context: LocalContext): Promise<void> {
     process.exit(1)
   }
 
+  const configDir = findConfigDir()
+  if (!configDir) {
+    print.error('Could not find .vaulter/ directory')
+    process.exit(1)
+  }
+
   const all = args.all as boolean | undefined
   const target = args.output as string | undefined
   const overwrite = args.overwrite as boolean | undefined
@@ -51,12 +57,6 @@ export async function runLocalPull(context: LocalContext): Promise<void> {
   if (errors.length > 0) {
     print.error('Invalid outputs config:')
     for (const err of errors) ui.log(`  ${c.removed(err)}`)
-    process.exit(1)
-  }
-
-  const configDir = findConfigDir()
-  if (!configDir) {
-    print.error('Could not find .vaulter/ directory')
     process.exit(1)
   }
 

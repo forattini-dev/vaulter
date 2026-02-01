@@ -16,68 +16,6 @@ import { parseEnvFile, serializeEnv } from '../../../lib/env-parser.js'
 import type { VaulterConfig, Environment } from '../../../types.js'
 import type { ToolResponse } from '../config.js'
 
-export async function handleSyncCall(
-  client: VaulterClient,
-  config: VaulterConfig | null,
-  project: string,
-  environment: Environment,
-  service: string | undefined,
-  args: Record<string, unknown>
-): Promise<ToolResponse> {
-  const dryRun = args.dryRun as boolean || false
-
-  const configDir = findConfigDir()
-  if (!configDir) {
-    return { content: [{ type: 'text', text: 'Error: No .vaulter directory found' }] }
-  }
-
-  const envFilePath = config
-    ? getEnvFilePathForConfig(config, configDir, environment)
-    : getEnvFilePath(configDir, environment)
-
-  if (!fs.existsSync(envFilePath)) {
-    return { content: [{ type: 'text', text: `Error: Environment file not found: ${envFilePath}` }] }
-  }
-
-  const localVars = parseEnvFile(envFilePath)
-
-  // Deprecation warning
-  const deprecationWarning = '⚠️ DEPRECATED: vaulter_sync is deprecated. Use vaulter_push with dryRun=true instead.\n\n'
-
-  if (dryRun) {
-    const remoteVars = await client.export(project, environment, service)
-    const toAdd: string[] = []
-    const toUpdate: string[] = []
-
-    for (const [key, value] of Object.entries(localVars)) {
-      if (!(key in remoteVars)) {
-        toAdd.push(key)
-      } else if (remoteVars[key] !== value) {
-        toUpdate.push(key)
-      }
-    }
-
-    const lines = ['Dry run - changes that would be made:']
-    if (toAdd.length > 0) lines.push(`  Add: ${toAdd.join(', ')}`)
-    if (toUpdate.length > 0) lines.push(`  Update: ${toUpdate.join(', ')}`)
-    if (toAdd.length === 0 && toUpdate.length === 0) {
-      lines.push('  No changes needed')
-    }
-
-    return { content: [{ type: 'text', text: deprecationWarning + lines.join('\n') }] }
-  }
-
-  const result = await client.sync(localVars, project, environment, service, { source: 'sync' })
-
-  const lines = [`✓ Synced ${project}/${environment}`]
-  if (result.added.length > 0) lines.push(`  Added: ${result.added.length}`)
-  if (result.updated.length > 0) lines.push(`  Updated: ${result.updated.length}`)
-  if (result.deleted.length > 0) lines.push(`  Deleted: ${result.deleted.length}`)
-  if (result.unchanged.length > 0) lines.push(`  Unchanged: ${result.unchanged.length}`)
-
-  return { content: [{ type: 'text', text: deprecationWarning + lines.join('\n') }] }
-}
-
 export async function handlePullCall(
   client: VaulterClient,
   config: VaulterConfig | null,

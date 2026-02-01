@@ -158,12 +158,12 @@ export async function runDoctor(context: DoctorContext): Promise<void> {
 
   // Monorepo service hints
   if (config) {
-    const legacyServices = config.services || []
-    const serviceNames = legacyServices.map(s => (typeof s === 'string' ? s : s.name))
+    const configServices = config.services || []
+    const serviceNames = configServices.map(s => (typeof s === 'string' ? s : s.name))
     const hasMonorepoConfig = Boolean(config.monorepo?.services_pattern || config.monorepo?.root)
     const hasDeployServices = Boolean(config.deploy?.services?.configs || config.deploy?.services?.secrets)
     const hasMultipleOutputs = Boolean(config.outputs && Object.keys(config.outputs).length > 1)
-    const isMonorepo = legacyServices.length > 0 || hasMonorepoConfig || hasDeployServices || hasMultipleOutputs
+    const isMonorepo = configServices.length > 0 || hasMonorepoConfig || hasDeployServices || hasMultipleOutputs
 
     if (isMonorepo) {
       if (!service) {

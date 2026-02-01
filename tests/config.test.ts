@@ -303,12 +303,12 @@ environments:
 `
       )
 
-      // Local shared.env
+      // Local configs.env (new structure)
       if (opts?.localEnv) {
         const content = Object.entries(opts.localEnv)
           .map(([k, v]) => `${k}=${v}`)
           .join('\n')
-        fs.writeFileSync(path.join(localDir, 'shared.env'), content)
+        fs.writeFileSync(path.join(localDir, 'configs.env'), content)
       }
 
       // Deploy configs

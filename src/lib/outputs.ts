@@ -407,7 +407,7 @@ export async function pullToOutputs(options: PullToOutputsOptions): Promise<Pull
           console.log(`Synced ${fullPath} (${Object.keys(targetVars).length} vaulter vars${userCount > 0 ? `, ${userCount} user vars preserved` : ''})`)
         }
       } else {
-        // Legacy: overwrite entire file
+        // Overwrite mode: replace entire file
         const content = formatEnvFile(targetVars)
         await writeFile(fullPath, content, 'utf-8')
 

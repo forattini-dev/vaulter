@@ -9,7 +9,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import type { CLIArgs, VaulterConfig, Environment, SyncResult } from '../../types.js'
-import { createClientFromConfig } from '../lib/create-client.js'
+import { withClient } from '../lib/create-client.js'
 import { findConfigDir, getEnvFilePathForConfig } from '../../lib/config-loader.js'
 import { parseEnvFile, hasStdinData, parseEnvFromStdin, serializeEnv } from '../../lib/env-parser.js'
 import { compileGlobPatterns } from '../../lib/pattern-matcher.js'
@@ -103,144 +103,142 @@ async function syncSingleService(
 
   ui.verbose(`Found ${Object.keys(localVars).length} local variables`, verbose)
 
-  const client = await createClientFromConfig({ args, config: effectiveConfig, project: effectiveProject, verbose })
   const auditLogger = await createConnectedAuditLogger(effectiveConfig, effectiveProject, environment, verbose)
 
   try {
-    await client.connect()
+    return await withClient({ args, config: effectiveConfig, project: effectiveProject, verbose }, async (client) => {
+      const remoteVars = await client.export(effectiveProject, environment, effectiveService)
 
-    const remoteVars = await client.export(effectiveProject, environment, effectiveService)
+      const mergedVars = { ...localVars }
+      const syncVars: Record<string, string> = {}
+      const added: string[] = []
+      const updated: string[] = []
+      const unchanged: string[] = []
+      const localAdded: string[] = []
+      const localUpdated: string[] = []
+      const conflicts: SyncResult['conflicts'] = []
+      const canUpdateLocal = !!envFilePath
 
-    const mergedVars = { ...localVars }
-    const syncVars: Record<string, string> = {}
-    const added: string[] = []
-    const updated: string[] = []
-    const unchanged: string[] = []
-    const localAdded: string[] = []
-    const localUpdated: string[] = []
-    const conflicts: SyncResult['conflicts'] = []
-    const canUpdateLocal = !!envFilePath
+      const allKeys = new Set<string>([
+        ...Object.keys(localVars),
+        ...Object.keys(remoteVars)
+      ])
 
-    const allKeys = new Set<string>([
-      ...Object.keys(localVars),
-      ...Object.keys(remoteVars)
-    ])
-
-    for (const key of allKeys) {
-      if (isIgnored(key)) {
-        continue
-      }
-
-      const localValue = localVars[key]
-      const remoteValue = remoteVars[key]
-
-      if (localValue !== undefined && remoteValue !== undefined) {
-        if (localValue === remoteValue) {
-          syncVars[key] = localValue
-          unchanged.push(key)
+      for (const key of allKeys) {
+        if (isIgnored(key)) {
           continue
         }
 
-        if (conflictMode === 'local') {
-          syncVars[key] = localValue
-          updated.push(key)
+        const localValue = localVars[key]
+        const remoteValue = remoteVars[key]
+
+        if (localValue !== undefined && remoteValue !== undefined) {
+          if (localValue === remoteValue) {
+            syncVars[key] = localValue
+            unchanged.push(key)
+            continue
+          }
+
+          if (conflictMode === 'local') {
+            syncVars[key] = localValue
+            updated.push(key)
+            continue
+          }
+
+          if (conflictMode === 'remote') {
+            if (!canUpdateLocal) {
+              conflicts.push({ key, localValue, remoteValue })
+              continue
+            }
+            mergedVars[key] = remoteValue
+            localUpdated.push(key)
+            syncVars[key] = remoteValue
+            continue
+          }
+
+          conflicts.push({ key, localValue, remoteValue })
           continue
         }
 
-        if (conflictMode === 'remote') {
+        if (localValue !== undefined) {
+          syncVars[key] = localValue
+          added.push(key)
+          continue
+        }
+
+        if (remoteValue !== undefined) {
           if (!canUpdateLocal) {
-            conflicts.push({ key, localValue, remoteValue })
+            syncVars[key] = remoteValue
             continue
           }
           mergedVars[key] = remoteValue
-          localUpdated.push(key)
+          localAdded.push(key)
           syncVars[key] = remoteValue
-          continue
+        }
+      }
+
+      // Check for blocking conflicts first (before required check)
+      // This prevents "missing required" errors for keys that are actually in conflict
+      const isBlockingConflict = conflictMode === 'error' && conflicts.length > 0
+
+      if (isBlockingConflict && !dryRun) {
+        const conflictKeyNames = conflicts.map(c => c.key).join(', ')
+        throw new Error(`Sync conflicts detected: ${conflictKeyNames}`)
+      }
+
+      // Now check for missing required keys
+      // Exclude keys that are in conflicts (they exist but have value mismatches)
+      const conflictKeySet = new Set(conflicts.map(c => c.key))
+      const missingRequired = requiredKeys
+        .filter(key => !isIgnored(key))
+        .filter(key => !(key in syncVars) && !conflictKeySet.has(key))
+
+      if (missingRequired.length > 0) {
+        throw new Error(`Missing required keys for ${environment}: ${missingRequired.join(', ')}`)
+      }
+
+      if (!dryRun) {
+        if (canUpdateLocal && envFilePath && (localAdded.length > 0 || localUpdated.length > 0)) {
+          const envContent = serializeEnv(mergedVars)
+          fs.writeFileSync(envFilePath, envContent + '\n')
         }
 
-        conflicts.push({ key, localValue, remoteValue })
-        continue
-      }
-
-      if (localValue !== undefined) {
-        syncVars[key] = localValue
-        added.push(key)
-        continue
-      }
-
-      if (remoteValue !== undefined) {
-        if (!canUpdateLocal) {
-          syncVars[key] = remoteValue
-          continue
+        for (const key of [...added, ...updated]) {
+          await client.set({
+            key,
+            value: syncVars[key],
+            project: effectiveProject,
+            environment,
+            service: effectiveService,
+            metadata: {
+              source: 'sync'
+            }
+          })
         }
-        mergedVars[key] = remoteValue
-        localAdded.push(key)
-        syncVars[key] = remoteValue
-      }
-    }
 
-    // Check for blocking conflicts first (before required check)
-    // This prevents "missing required" errors for keys that are actually in conflict
-    const isBlockingConflict = conflictMode === 'error' && conflicts.length > 0
-
-    if (isBlockingConflict && !dryRun) {
-      const conflictKeyNames = conflicts.map(c => c.key).join(', ')
-      throw new Error(`Sync conflicts detected: ${conflictKeyNames}`)
-    }
-
-    // Now check for missing required keys
-    // Exclude keys that are in conflicts (they exist but have value mismatches)
-    const conflictKeySet = new Set(conflicts.map(c => c.key))
-    const missingRequired = requiredKeys
-      .filter(key => !isIgnored(key))
-      .filter(key => !(key in syncVars) && !conflictKeySet.has(key))
-
-    if (missingRequired.length > 0) {
-      throw new Error(`Missing required keys for ${environment}: ${missingRequired.join(', ')}`)
-    }
-
-    if (!dryRun) {
-      if (canUpdateLocal && envFilePath && (localAdded.length > 0 || localUpdated.length > 0)) {
-        const envContent = serializeEnv(mergedVars)
-        fs.writeFileSync(envFilePath, envContent + '\n')
-      }
-
-      for (const key of [...added, ...updated]) {
-        await client.set({
-          key,
-          value: syncVars[key],
+        // Log to audit trail
+        await logSyncOperation(auditLogger, {
           project: effectiveProject,
           environment,
           service: effectiveService,
-          metadata: {
-            source: 'sync'
-          }
+          added,
+          updated,
+          deleted: [],
+          source: 'cli'
         })
       }
 
-      // Log to audit trail
-      await logSyncOperation(auditLogger, {
-        project: effectiveProject,
-        environment,
-        service: effectiveService,
+      return {
         added,
         updated,
         deleted: [],
-        source: 'cli'
-      })
-    }
-
-    return {
-      added,
-      updated,
-      deleted: [],
-      unchanged,
-      conflicts,
-      localAdded,
-      localUpdated
-    }
+        unchanged,
+        conflicts,
+        localAdded,
+        localUpdated
+      }
+    })
   } finally {
-    await client.disconnect()
     await disconnectAuditLogger(auditLogger)
   }
 }

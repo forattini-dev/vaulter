@@ -4,27 +4,21 @@
  * Shared module for generating vaulter project structure.
  * Used by both CLI and MCP init commands.
  *
- * Generates the recommended structure:
+ * Generates the recommended structure (unified for single repo and monorepo):
  *
- * Single repo:
  * .vaulter/
  * ├── config.yaml
  * ├── local/
- * │   ├── .env              # Local dev vars (gitignored)
- * │   └── .env.example      # Template (committed)
+ * │   ├── configs.env         # Shared configs (sensitive=false, gitignored)
+ * │   ├── secrets.env         # Shared secrets (sensitive=true, gitignored)
+ * │   └── services/           # Per-service overrides (monorepo only)
+ * │       └── <service>/
+ * │           ├── configs.env
+ * │           └── secrets.env
  * └── deploy/
- *     ├── configs/{env}.env # Non-secrets (committed)
- *     └── secrets/          # Pulled from backend in CI/CD
- *
- * Monorepo:
- * .vaulter/
- * ├── config.yaml
- * ├── local/
- * │   ├── shared.env           # Shared local vars
- * │   ├── shared.env.example   # Template
- * │   └── services/            # Per-service overrides
- * └── deploy/
- *     └── shared/
+ *     ├── configs/{env}.env   # Non-secrets (committed) - single repo
+ *     ├── secrets/            # Pulled from backend in CI/CD
+ *     └── shared/             # Monorepo only
  *         ├── configs/{env}.env
  *         └── secrets/{env}.env
  */
@@ -153,102 +147,34 @@ function writeFile(filePath: string, content: string, dryRun: boolean, force: bo
 // Content Generators
 // ─────────────────────────────────────────────────────────────────────────────
 
-function generateLocalSharedEnv(): string {
+function generateLocalConfigs(): string {
   return `# =============================================================================
-# SHARED ENVIRONMENT VARIABLES - LOCAL DEVELOPMENT
+# LOCAL CONFIGS (sensitive=false)
 # =============================================================================
-# This file is NOT committed - contains real secrets!
-# Copy from shared.env.example and fill in your values.
+# Non-sensitive configuration for local development.
+# This file is gitignored but NOT encrypted.
 # =============================================================================
 
-# ============================================
-# GENERAL
-# ============================================
 NODE_ENV=development
 LOG_LEVEL=debug
-
-# ============================================
-# DATABASE
-# ============================================
-# DATABASE_URL=postgres://user:pass@localhost:5432/mydb
-
-# ============================================
-# AUTH & JWT
-# ============================================
-# JWT_SECRET=your-dev-secret-key
-
-# ============================================
-# EXTERNAL SERVICES
-# ============================================
-# Add your API keys here
+# API_URL=http://localhost:3000
 `
 }
 
-function generateLocalSharedEnvExample(): string {
+function generateLocalSecrets(): string {
   return `# =============================================================================
-# SHARED ENVIRONMENT VARIABLES - TEMPLATE
+# LOCAL SECRETS (sensitive=true)
 # =============================================================================
-# Copy this file to shared.env and fill in your values:
-#   cp shared.env.example shared.env
+# Sensitive values for local development.
+# This file is gitignored and values would be encrypted if pushed.
 # =============================================================================
-
-# ============================================
-# GENERAL
-# ============================================
-NODE_ENV=development
-LOG_LEVEL=debug
-
-# ============================================
-# DATABASE
-# ============================================
-DATABASE_URL=postgres://user:password@localhost:5432/dbname
-
-# ============================================
-# AUTH & JWT
-# ============================================
-JWT_SECRET=replace-with-your-secret
-JWT_ACCESS_TOKEN_EXPIRES_IN=15m
-JWT_REFRESH_TOKEN_EXPIRES_IN=7d
-
-# ============================================
-# EXTERNAL SERVICES
-# ============================================
-# STRIPE_SECRET_KEY=sk_test_xxx
-# GITHUB_TOKEN=ghp_xxx
-`
-}
-
-function generateLocalEnv(): string {
-  return `# =============================================================================
-# LOCAL DEVELOPMENT ENVIRONMENT
-# =============================================================================
-# This file is NOT committed - contains your local secrets!
-# Copy from .env.example and fill in your values.
-# =============================================================================
-
-NODE_ENV=development
-LOG_LEVEL=debug
 
 # DATABASE_URL=postgres://user:pass@localhost:5432/mydb
 # JWT_SECRET=your-dev-secret-key
+# API_KEY=your-api-key
 `
 }
 
-function generateLocalEnvExample(): string {
-  return `# =============================================================================
-# LOCAL DEVELOPMENT - TEMPLATE
-# =============================================================================
-# Copy this file to .env and fill in your values:
-#   cp .env.example .env
-# =============================================================================
-
-NODE_ENV=development
-LOG_LEVEL=debug
-
-DATABASE_URL=postgres://user:password@localhost:5432/dbname
-JWT_SECRET=replace-with-your-secret
-`
-}
 
 function generateDeployConfigEnv(env: string, isMonorepo: boolean): string {
   const envUpper = env.toUpperCase()
@@ -288,42 +214,36 @@ function generateSecretsGitignore(): string {
 }
 
 function generateVaulterGitignore(isMonorepo: boolean): string {
-  if (isMonorepo) {
-    return `# Vaulter - Gitignore
+  // Same structure for both - shared files at local/ root
+  const base = `# Vaulter - Gitignore
 # =============================================================================
 
-# Local development secrets (never commit!)
-local/shared.env
-local/services/*.env
-!local/*.env.example
+# Local development (never commit!)
+local/configs.env
+local/secrets.env`
 
+  const monorepoExtra = `
+local/services/*/configs.env
+local/services/*/secrets.env`
+
+  const deploySecrets = isMonorepo
+    ? `
 # Deploy secrets (pulled from backend in CI/CD)
 deploy/shared/secrets/*.env
-deploy/services/*/secrets/*.env
-
-# Encryption keys
-*.key
-*.pem
-.key
-`
-  }
-
-  return `# Vaulter - Gitignore
-# =============================================================================
-
-# Local development secrets (never commit!)
-local/.env
-local/*.env
-!local/.env.example
-
+deploy/services/*/secrets/*.env`
+    : `
 # Deploy secrets (pulled from backend in CI/CD)
-deploy/secrets/*.env
+deploy/secrets/*.env`
+
+  const keys = `
 
 # Encryption keys
 *.key
 *.pem
 .key
 `
+
+  return base + (isMonorepo ? monorepoExtra : '') + deploySecrets + keys
 }
 
 function generateConfigYaml(options: InitOptions): string {
@@ -340,26 +260,17 @@ monorepo:
   services_pattern: "${servicesPattern || 'apps/*'}"
 ` : ''
 
-  const localSection = isMonorepo ? `
+  const localSection = `
 # =============================================================================
 # LOCAL DEVELOPMENT
 # =============================================================================
-# Files for running services locally on developer machine
-local:
-  # Shared vars for all local services
-  shared: .vaulter/local/shared.env           # Secrets+configs (NOT committed)
-  shared_example: .vaulter/local/shared.env.example  # Template (committed)
-
-  # Per-service overrides (optional)
-  # Pattern: .vaulter/local/services/{service}.env
+# Structure:
+#   .vaulter/local/configs.env  - Shared non-sensitive (sensitive=false)
+#   .vaulter/local/secrets.env  - Shared sensitive (sensitive=true)` + (isMonorepo ? `
+#   .vaulter/local/services/<svc>/configs.env  - Service-specific non-sensitive
+#   .vaulter/local/services/<svc>/secrets.env  - Service-specific sensitive
 ` : `
-# =============================================================================
-# LOCAL DEVELOPMENT
-# =============================================================================
-local:
-  file: .vaulter/local/.env           # Secrets+configs (NOT committed)
-  example: .vaulter/local/.env.example # Template (committed)
-`
+`)
 
   const deploySection = isMonorepo ? `
 # =============================================================================
@@ -461,7 +372,7 @@ export function generateVaulterStructure(baseDir: string, options: InitOptions):
   ensureDir(deployDir, dryRun)
 
   if (isMonorepo) {
-    // Monorepo structure
+    // Monorepo structure - shared files at local/ root, services in local/services/
     const servicesDir = path.join(localDir, 'services')
     const sharedConfigsDir = path.join(deployDir, 'shared', 'configs')
     const sharedSecretsDir = path.join(deployDir, 'shared', 'secrets')
@@ -470,14 +381,14 @@ export function generateVaulterStructure(baseDir: string, options: InitOptions):
     ensureDir(sharedConfigsDir, dryRun)
     ensureDir(sharedSecretsDir, dryRun)
 
-    // local/shared.env
-    if (writeFile(path.join(localDir, 'shared.env'), generateLocalSharedEnv(), dryRun, force)) {
-      createdFiles.push('.vaulter/local/shared.env')
+    // local/configs.env (shared)
+    if (writeFile(path.join(localDir, 'configs.env'), generateLocalConfigs(), dryRun, force)) {
+      createdFiles.push('.vaulter/local/configs.env')
     }
 
-    // local/shared.env.example
-    if (writeFile(path.join(localDir, 'shared.env.example'), generateLocalSharedEnvExample(), dryRun, force)) {
-      createdFiles.push('.vaulter/local/shared.env.example')
+    // local/secrets.env (shared)
+    if (writeFile(path.join(localDir, 'secrets.env'), generateLocalSecrets(), dryRun, force)) {
+      createdFiles.push('.vaulter/local/secrets.env')
     }
 
     // local/services/.gitkeep
@@ -504,14 +415,14 @@ export function generateVaulterStructure(baseDir: string, options: InitOptions):
     ensureDir(configsDir, dryRun)
     ensureDir(secretsDir, dryRun)
 
-    // local/.env
-    if (writeFile(path.join(localDir, '.env'), generateLocalEnv(), dryRun, force)) {
-      createdFiles.push('.vaulter/local/.env')
+    // local/configs.env
+    if (writeFile(path.join(localDir, 'configs.env'), generateLocalConfigs(), dryRun, force)) {
+      createdFiles.push('.vaulter/local/configs.env')
     }
 
-    // local/.env.example
-    if (writeFile(path.join(localDir, '.env.example'), generateLocalEnvExample(), dryRun, force)) {
-      createdFiles.push('.vaulter/local/.env.example')
+    // local/secrets.env
+    if (writeFile(path.join(localDir, 'secrets.env'), generateLocalSecrets(), dryRun, force)) {
+      createdFiles.push('.vaulter/local/secrets.env')
     }
 
     // deploy/configs/{env}.env

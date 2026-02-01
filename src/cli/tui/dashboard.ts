@@ -27,8 +27,6 @@ import { maskValue as baseMaskValue } from '../../lib/masking.js'
 import { loadConfig, getProjectName, getValidEnvironments } from '../../lib/config-loader.js'
 import { createClientFromConfig } from '../lib/create-client.js'
 import { VaulterClient } from '../../client.js'
-import { getSecretPatterns } from '../../lib/secret-patterns.js'
-import { compileGlobPatterns } from '../../lib/pattern-matcher.js'
 
 // Types for dashboard state
 interface SecretRow {
@@ -111,7 +109,6 @@ export function Dashboard(props: DashboardProps) {
 
   const project = getProjectName(props.config)
   const environments = getValidEnvironments(props.config)
-  const isSecret = compileGlobPatterns(getSecretPatterns(props.config))
 
   // Cleanup on unmount - disconnect client
   useEffect(() => {
@@ -187,7 +184,8 @@ export function Dashboard(props: DashboardProps) {
 
   const rows: SecretRow[] = vars()
     .map((v: EnvVar) => {
-      const secret = isSecret(v.key)
+      // Use the sensitive flag from the var (no pattern inference)
+      const secret = v.sensitive ?? false
       return {
         key: v.key,
         value: showValues() ? v.value : maskValue(v.value, secret),

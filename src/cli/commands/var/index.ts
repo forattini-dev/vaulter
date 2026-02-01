@@ -10,7 +10,6 @@ import { c, colorEnv, print } from '../../lib/colors.js'
 import * as ui from '../../ui.js'
 
 // Re-export individual commands from parent directory
-// This allows gradual migration without moving files
 export { runGet } from '../get.js'
 export { runSet } from '../set.js'
 export { runDelete } from '../delete.js'

@@ -15,7 +15,7 @@
  *   copy_environment        → Copy variables between environments
  *   sync_workflow           → Sync local files with remote backend (diff/push/pull/merge)
  *   monorepo_deploy         → Complete monorepo setup with isolation guarantees
- *   local_overrides_workflow → Manage local dev overrides (shared.env + service overrides)
+ *   local_overrides_workflow → Manage local dev overrides (configs.env + secrets.env)
  */
 
 import type { Prompt, GetPromptResult } from '@modelcontextprotocol/sdk/types.js'
@@ -273,7 +273,7 @@ export function registerPrompts(): Prompt[] {
     },
     {
       name: 'local_overrides_workflow',
-      description: 'Manage local development overrides without touching the backend. Uses local shared.env for cross-service vars and per-service overrides for customization.',
+      description: 'Manage local development overrides without touching the backend. Uses configs.env/secrets.env for cross-service vars and per-service overrides for customization.',
       arguments: [
         {
           name: 'action',
@@ -409,7 +409,7 @@ Please:
    - Show what already exists
    - Highlight potential conflicts
 
-3. **Preview the migration** using \`vaulter_sync\` with dry_run=${dryRun}
+3. **Preview the migration** using \`vaulter_push\` with dryRun=${dryRun}
    - Variables that will be added
    - Variables that will be updated
    - Variables that will remain unchanged
@@ -1478,10 +1478,12 @@ Local overrides are stored in \`.vaulter/local/\` and **never touch the backend*
 
 \`\`\`
 .vaulter/local/
-├── shared.env            # Vars for ALL services (DEBUG, LOG_LEVEL)
-├── overrides.env         # Single repo overrides
-├── overrides.web.env     # Monorepo: web service overrides
-└── overrides.api.env     # Monorepo: api service overrides
+├── configs.env           # Shared configs (sensitive=false)
+├── secrets.env           # Shared secrets (sensitive=true)
+└── services/             # Monorepo only
+    └── <service>/
+        ├── configs.env   # Service-specific configs
+        └── secrets.env   # Service-specific secrets
 \`\`\`
 
 **Merge order (priority):** backend < local shared < service overrides
@@ -1493,13 +1495,10 @@ ${action === 'status' ? `## Status: Current State
 Please use \`vaulter_local_status\`${service ? ` with service="${service}"` : ''} to show:
 
 1. **Base environment** (from config)
-2. **Shared vars:**
-   - File: \`.vaulter/local/shared.env\`
-   - Count: X vars
-3. **Service overrides:**
-   - File: \`.vaulter/local/overrides${service ? `.${service}` : ''}.env\`
-   - Count: X vars
-4. **Snapshots:** X available
+2. **Shared/default configs:** \`.vaulter/local/[shared/]configs.env\`
+3. **Shared/default secrets:** \`.vaulter/local/[shared/]secrets.env\`
+4. **Service-specific** (monorepo): \`.vaulter/local/services/<svc>/{configs,secrets}.env\`
+5. **Snapshots:** X available
 
 Then use \`vaulter_local_shared_list\` to show shared vars content.
 ` : ''}
@@ -1520,7 +1519,7 @@ Please use \`vaulter_local_shared_set\`:
 }
 \`\`\`
 
-This creates/updates \`.vaulter/local/shared.env\` and will be merged when running \`vaulter local pull\`.
+This creates/updates \`.vaulter/local/[shared/]configs.env\` or \`.vaulter/local/[shared/]secrets.env\` (based on sensitive flag) and will be merged when running \`vaulter local pull\`.
 ` : ''}
 
 ${action === 'set-override' ? `## Set Service Override
@@ -1537,7 +1536,7 @@ Please use \`vaulter_local_set\`:
 }
 \`\`\`
 
-This creates/updates \`.vaulter/local/overrides.${service || 'web'}.env\` and will be merged when running \`vaulter local pull\`.
+This creates/updates \`.vaulter/local/services/${service || 'web'}/{configs,secrets}.env\` (based on sensitive flag) and will be merged when running \`vaulter local pull\`.
 ` : ''}
 
 ${action === 'pull' ? `## Pull: Generate .env Files

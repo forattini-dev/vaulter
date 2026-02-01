@@ -1,7 +1,7 @@
 /**
  * Vaulter Secrets Explorer
  *
- * Re-exports from modular structure for backwards compatibility.
+ * Re-exports from modular structure.
  * See ./secrets-explorer/ for implementation.
  */
 

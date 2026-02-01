@@ -153,3 +153,28 @@ export async function createClientFromConfig(options: CreateClientOptions): Prom
 function isLocalBackend(url: string): boolean {
   return url.startsWith('file://') || url.startsWith('memory://')
 }
+
+/**
+ * Execute a function with a connected VaulterClient
+ *
+ * Handles connect/disconnect automatically, ensuring proper cleanup.
+ *
+ * @example
+ * ```typescript
+ * const result = await withClient({ args, config, project }, async (client) => {
+ *   return await client.get(key, project, environment)
+ * })
+ * ```
+ */
+export async function withClient<T>(
+  options: CreateClientOptions,
+  fn: (client: VaulterClient) => Promise<T>
+): Promise<T> {
+  const client = await createClientFromConfig(options)
+  try {
+    await client.connect()
+    return await fn(client)
+  } finally {
+    await client.disconnect()
+  }
+}

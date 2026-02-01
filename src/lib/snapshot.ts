@@ -294,13 +294,13 @@ export function createSnapshotDriver(
 }
 
 // ============================================================================
-// Path Helpers (kept for backward compat)
+// Path Helpers
 // ============================================================================
 
 // (getSnapshotsDir is declared above)
 
 // ============================================================================
-// Core Operations (filesystem — kept as standalone functions for backward compat)
+// Core Operations (filesystem)
 // ============================================================================
 
 /**

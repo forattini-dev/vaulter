@@ -5,7 +5,7 @@
  */
 
 import type { CLIArgs, VaulterConfig, Environment, EnvVar } from '../../types.js'
-import { createClientFromConfig } from '../lib/create-client.js'
+import { withClient } from '../lib/create-client.js'
 import { maskValueToggle } from '../../lib/masking.js'
 import * as ui from '../ui.js'
 import { c, symbols, colorEnv, print } from '../lib/colors.js'
@@ -117,13 +117,7 @@ export async function runList(context: ListContext): Promise<void> {
     })
   }
 
-  const client = await createClientFromConfig({ args, config, project, verbose })
-
-  try {
-    await ui.withSpinner('Connecting...', () => client.connect(), {
-      successText: 'Connected'
-    })
-
+  await withClient({ args, config, project, verbose }, async (client) => {
     // --all-envs lists across all environments (different from --all which is for monorepo services)
     const allEnvs = args['all-envs']
 
@@ -308,7 +302,5 @@ export async function runList(context: ListContext): Promise<void> {
         ui.log(`\n${c.muted(`(use ${c.highlight('-v')} to show full values)`)}`)
       }
     }
-  } finally {
-    await client.disconnect()
-  }
+  })
 }

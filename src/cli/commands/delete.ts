@@ -6,7 +6,7 @@
  */
 
 import type { CLIArgs, VaulterConfig, Environment } from '../../types.js'
-import { createClientFromConfig } from '../lib/create-client.js'
+import { withClient } from '../lib/create-client.js'
 import { createConnectedAuditLogger, logDeleteOperation, disconnectAuditLogger } from '../lib/audit-helper.js'
 import { c, symbols, colorEnv, print } from '../lib/colors.js'
 import { SHARED_SERVICE } from '../../lib/shared.js'
@@ -96,52 +96,50 @@ export async function runDelete(context: DeleteContext): Promise<void> {
     return
   }
 
-  const client = await createClientFromConfig({ args, config, project, verbose })
   const auditLogger = await createConnectedAuditLogger(config, project, environment, verbose)
 
   try {
-    await client.connect()
+    await withClient({ args, config, project, verbose }, async (client) => {
+      // Get existing value for audit log
+      const existing = await client.get(key, project, environment, effectiveService)
+      const previousValue = existing?.value
 
-    // Get existing value for audit log
-    const existing = await client.get(key, project, environment, effectiveService)
-    const previousValue = existing?.value
+      const deleted = await client.delete(key, project, environment, effectiveService)
 
-    const deleted = await client.delete(key, project, environment, effectiveService)
-
-    if (!deleted) {
-      if (jsonOutput) {
-        ui.output(JSON.stringify({ error: 'not_found', key, project, environment }))
-      } else {
-        print.error(`Variable ${c.key(key)} not found`)
+      if (!deleted) {
+        if (jsonOutput) {
+          ui.output(JSON.stringify({ error: 'not_found', key, project, environment }))
+        } else {
+          print.error(`Variable ${c.key(key)} not found`)
+        }
+        process.exit(1)
       }
-      process.exit(1)
-    }
 
-    // Log to audit trail
-    await logDeleteOperation(auditLogger, {
-      key,
-      previousValue,
-      project,
-      environment,
-      service: effectiveService,
-      source: 'cli'
-    })
-
-    if (jsonOutput) {
-      ui.output(JSON.stringify({
-        success: true,
-        deleted: key,
+      // Log to audit trail
+      await logDeleteOperation(auditLogger, {
+        key,
+        previousValue,
         project,
-        service: effectiveService,
         environment,
-        shared: isShared
-      }))
-    } else {
-      const successScope = isShared ? c.env('shared') : colorEnv(environment)
-      ui.success(`Deleted ${c.key(key)} from ${c.project(project)}/${successScope}`)
-    }
+        service: effectiveService,
+        source: 'cli'
+      })
+
+      if (jsonOutput) {
+        ui.output(JSON.stringify({
+          success: true,
+          deleted: key,
+          project,
+          service: effectiveService,
+          environment,
+          shared: isShared
+        }))
+      } else {
+        const successScope = isShared ? c.env('shared') : colorEnv(environment)
+        ui.success(`Deleted ${c.key(key)} from ${c.project(project)}/${successScope}`)
+      }
+    })
   } finally {
-    await client.disconnect()
     await disconnectAuditLogger(auditLogger)
   }
 }

@@ -5,8 +5,7 @@
  */
 
 import type { CLIArgs, VaulterConfig, Environment } from '../../../types.js'
-import { createClientFromConfig } from '../../lib/create-client.js'
-import { getSecretPatterns, splitVarsBySecret } from '../../../lib/secret-patterns.js'
+import { withClient } from '../../lib/create-client.js'
 import { print } from '../../lib/colors.js'
 import * as ui from '../../ui.js'
 
@@ -33,14 +32,11 @@ export async function runHelmValues(context: HelmContext): Promise<void> {
 
   ui.verbose(`Generating Helm values for ${project}/${environment}`, verbose)
 
-  const client = await createClientFromConfig({ args, config, project, verbose })
+  await withClient({ args, config, project, verbose }, async (client) => {
+    // Use list() to get sensitive flag for each var
+    const allVars = await client.list({ project, environment, service })
 
-  try {
-    await client.connect()
-
-    const vars = await client.export(project, environment, service)
-
-    if (Object.keys(vars).length === 0) {
+    if (allVars.length === 0) {
       print.warning('No variables found')
       return
     }
@@ -50,11 +46,20 @@ export async function runHelmValues(context: HelmContext): Promise<void> {
         format: 'helm-values',
         project,
         environment,
-        variableCount: Object.keys(vars).length
+        variableCount: allVars.length
       }))
     } else {
-      const patterns = getSecretPatterns(config)
-      const { plain, secrets } = splitVarsBySecret(vars, patterns)
+      // Split by sensitive flag (no pattern inference)
+      const plain: Record<string, string> = {}
+      const secrets: Record<string, string> = {}
+
+      for (const v of allVars) {
+        if (v.sensitive) {
+          secrets[v.key] = v.value
+        } else {
+          plain[v.key] = v.value
+        }
+      }
 
       // Generate Helm values YAML
       const yaml = generateHelmValuesYaml(plain, secrets, {
@@ -64,9 +69,7 @@ export async function runHelmValues(context: HelmContext): Promise<void> {
       })
       ui.output(yaml)
     }
-  } finally {
-    await client.disconnect()
-  }
+  })
 }
 
 /**

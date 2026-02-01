@@ -8,7 +8,7 @@
 import { findConfigDir } from '../../../lib/config-loader.js'
 import { getSnapshotDriver, snapshotDryRun, snapshotFind, snapshotList, snapshotRestore } from '../../../lib/snapshot-ops.js'
 import type { SnapshotInfo } from '../../../lib/snapshot.js'
-import { createClientFromConfig } from '../../lib/create-client.js'
+import { withClient } from '../../lib/create-client.js'
 import { c, colorEnv, print } from '../../lib/colors.js'
 import * as ui from '../../ui.js'
 import type { SnapshotContext } from './index.js'
@@ -81,19 +81,9 @@ export async function runSnapshotRestore(context: SnapshotContext): Promise<void
     process.exit(1)
   }
 
-  const client = await createClientFromConfig({
-    args,
-    config,
-    project,
-    environment,
-    verbose
-  })
+  await withClient({ args, config, project, environment, verbose }, async (client) => {
+    const driver = getSnapshotDriver({ configDir, config, client })
 
-  await client.connect()
-
-  const driver = getSnapshotDriver({ configDir, config, client })
-
-  try {
     let snapshot: SnapshotInfo | null = null
     const id = args._[2]
 
@@ -174,7 +164,5 @@ export async function runSnapshotRestore(context: SnapshotContext): Promise<void
     } else {
       ui.success(`Restored ${restoreResult.restoredCount} vars from ${c.highlight(restoreResult.snapshot.id)} to ${colorEnv(environment)}`)
     }
-  } finally {
-    await client.disconnect()
-  }
+  })
 }

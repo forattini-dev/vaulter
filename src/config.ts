@@ -4,7 +4,7 @@
  * Auto-detects environment and loads appropriate env vars:
  * - K8s: Skip (vars already injected via ConfigMap/Secret)
  * - CI/CD: Load deploy configs + secrets
- * - Local: Load .vaulter/local/shared.env
+ * - Local: Load .vaulter/local/configs.env + secrets.env (or shared/ for monorepo)
  *
  * @example
  * import { config } from 'vaulter'
@@ -175,8 +175,12 @@ function mapNodeEnvToVaulterEnv(nodeEnv?: string): string | undefined {
 
 interface ResolvedPaths {
   local: {
-    shared: string
-    service?: string
+    shared: string  // kept for backward compat
+    sharedConfigs: string
+    sharedSecrets: string
+    service?: string  // kept for backward compat
+    serviceConfigs?: string
+    serviceSecrets?: string
   }
   deploy: {
     sharedConfigs: string
@@ -196,24 +200,23 @@ function resolvePaths(
   service?: string
 ): ResolvedPaths {
   const baseDir = getBaseDir(configDir)
-  const localConfig = vaulterConfig.local || {}
   const deployConfig = vaulterConfig.deploy || {}
 
-  // Local paths
-  const defaultLocalFile = path.join(configDir, 'local', '.env')
-  const defaultLocalShared = path.join(configDir, 'local', 'shared.env')
+  // Local paths - unified structure for single repo and monorepo
+  // Shared files are always at .vaulter/local/{configs,secrets}.env
+  // Service-specific files at .vaulter/local/services/<svc>/{configs,secrets}.env
+  const localSharedConfigs = path.join(configDir, 'local', 'configs.env')
+  const localSharedSecrets = path.join(configDir, 'local', 'secrets.env')
+  const localShared = localSharedConfigs // For backward compat in return type
 
-  const localShared = localConfig.shared
-    ? path.join(baseDir, localConfig.shared)
-    : localConfig.file
-      ? path.join(baseDir, localConfig.file)
-      : fs.existsSync(defaultLocalFile)
-        ? defaultLocalFile
-        : defaultLocalShared
-
-  const localService = service && localConfig.service
-    ? path.join(baseDir, localConfig.service.replace('{service}', service))
+  // Service-specific overrides (monorepo)
+  const localServiceConfigs = service
+    ? path.join(configDir, 'local', 'services', service, 'configs.env')
     : undefined
+  const localServiceSecrets = service
+    ? path.join(configDir, 'local', 'services', service, 'secrets.env')
+    : undefined
+  const localService = localServiceConfigs
 
   // Deploy paths
   const sharedConfigs = deployConfig.shared?.configs
@@ -249,7 +252,11 @@ function resolvePaths(
   return {
     local: {
       shared: localShared,
-      service: localService
+      sharedConfigs: localSharedConfigs,
+      sharedSecrets: localSharedSecrets,
+      service: localService,
+      serviceConfigs: localServiceConfigs,
+      serviceSecrets: localServiceSecrets
     },
     deploy: {
       sharedConfigs,
@@ -397,25 +404,48 @@ export function config(options: ConfigOptions = {}): ConfigResult {
 
   // Load files based on mode
   if (effectiveMode === 'local') {
-    // LOCAL MODE: Load .vaulter/local/shared.env + optional service override
-    const sharedResult = loadEnvFile(paths.local.shared, override, verbose)
-    if (sharedResult.loaded) {
-      loadedFiles.push(paths.local.shared)
-      varsLoaded += sharedResult.vars
+    // LOCAL MODE: Load configs.env + secrets.env (shared, then service)
+
+    // 1. Shared/default configs (non-sensitive)
+    const sharedConfigsResult = loadEnvFile(paths.local.sharedConfigs, override, verbose)
+    if (sharedConfigsResult.loaded) {
+      loadedFiles.push(paths.local.sharedConfigs)
+      varsLoaded += sharedConfigsResult.vars
     } else {
-      skippedFiles.push(paths.local.shared)
+      skippedFiles.push(paths.local.sharedConfigs)
     }
 
-    // Service override (optional)
-    if (paths.local.service) {
-      const serviceResult = loadEnvFile(paths.local.service, true, verbose)
-      if (serviceResult.loaded) {
-        loadedFiles.push(paths.local.service)
-        varsLoaded += serviceResult.vars
+    // 2. Shared/default secrets (sensitive)
+    const sharedSecretsResult = loadEnvFile(paths.local.sharedSecrets, true, verbose)
+    if (sharedSecretsResult.loaded) {
+      loadedFiles.push(paths.local.sharedSecrets)
+      varsLoaded += sharedSecretsResult.vars
+    } else {
+      skippedFiles.push(paths.local.sharedSecrets)
+    }
+
+    // 3. Service-specific configs (optional, monorepo)
+    if (paths.local.serviceConfigs) {
+      const svcConfigsResult = loadEnvFile(paths.local.serviceConfigs, true, verbose)
+      if (svcConfigsResult.loaded) {
+        loadedFiles.push(paths.local.serviceConfigs)
+        varsLoaded += svcConfigsResult.vars
       } else {
-        skippedFiles.push(paths.local.service)
+        skippedFiles.push(paths.local.serviceConfigs)
       }
     }
+
+    // 4. Service-specific secrets (optional, monorepo)
+    if (paths.local.serviceSecrets) {
+      const svcSecretsResult = loadEnvFile(paths.local.serviceSecrets, true, verbose)
+      if (svcSecretsResult.loaded) {
+        loadedFiles.push(paths.local.serviceSecrets)
+        varsLoaded += svcSecretsResult.vars
+      } else {
+        skippedFiles.push(paths.local.serviceSecrets)
+      }
+    }
+
   } else if (effectiveMode === 'deploy') {
     // DEPLOY MODE: Load configs (git) + secrets (CI-generated) + service overrides
 

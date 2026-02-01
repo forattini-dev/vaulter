@@ -68,15 +68,15 @@ pnpm add vaulter
 // app.ts
 import { config } from 'vaulter'
 
-config() // Loads .vaulter/local/shared.env (default: local mode)
+config() // Loads from .vaulter/local/ (configs.env + secrets.env)
 ```
 
 ```bash
-# Copy the example and fill in your values
-cp .vaulter/local/shared.env.example .vaulter/local/shared.env
-
-# Or run commands with env vars loaded
+# Run commands with env vars loaded
 npx vaulter run -- pnpm dev
+
+# Or pull from backend first
+vaulter local pull --all
 ```
 
 That's it! For most local development, vaulter is just a structured dotenv.
@@ -380,10 +380,10 @@ audit:
   enabled: true
   retention_days: 90
 
-# Local vs Deploy separation (recommended)
+# Local development files
 local:
-  shared: .vaulter/local/shared.env
-  shared_example: .vaulter/local/shared.env.example
+  configs: .vaulter/local/configs.env      # sensitive=false
+  secrets: .vaulter/local/secrets.env      # sensitive=true
 
 deploy:
   shared:
@@ -412,25 +412,28 @@ Vaulter separates **local development** from **deployment** configurations:
 .vaulter/
 ├── config.yaml
 ├── local/                     # Developer machine (gitignored)
-│   ├── shared.env             # Your local secrets
-│   └── shared.env.example     # Template (committed)
+│   ├── configs.env            # Non-sensitive (sensitive=false)
+│   ├── secrets.env            # Sensitive (sensitive=true)
+│   └── services/              # Monorepo only
+│       └── <service>/
+│           ├── configs.env
+│           └── secrets.env
 └── deploy/                    # CI/CD pipelines
-    └── shared/
-        ├── configs/           # Committed to git
-        │   ├── dev.env
-        │   ├── stg.env
-        │   └── prd.env
-        └── secrets/           # Gitignored, pulled from backend
-            ├── dev.env
-            └── prd.env
+    ├── configs/               # Committed to git
+    │   ├── dev.env
+    │   ├── stg.env
+    │   └── prd.env
+    └── secrets/               # Gitignored, pulled from backend
+        ├── dev.env
+        └── prd.env
 ```
 
 **Why this structure:**
 
 | Location | Purpose | Git | Contains |
 |:---------|:--------|:----|:---------|
-| `local/shared.env` | Developer's machine | Ignored | Personal secrets (API keys, DB creds) |
-| `local/shared.env.example` | Template for devs | Committed | Placeholder values |
+| `local/configs.env` | Developer's machine | Ignored | Non-sensitive local vars |
+| `local/secrets.env` | Developer's machine | Ignored | Sensitive local secrets |
 | `deploy/configs/*.env` | CI/CD configs | Committed | Non-sensitive (PORT, HOST, LOG_LEVEL) |
 | `deploy/secrets/*.env` | CI/CD secrets | Ignored | Pulled via `vaulter sync pull` |
 
@@ -438,13 +441,12 @@ Vaulter separates **local development** from **deployment** configurations:
 
 ```gitignore
 # Local development
-.vaulter/local/shared.env
-.vaulter/local/*.env
-!.vaulter/local/*.env.example
+.vaulter/local/configs.env
+.vaulter/local/secrets.env
+.vaulter/local/services/
 
 # Deploy secrets (pulled in CI)
-.vaulter/deploy/shared/secrets/
-.vaulter/deploy/services/*/secrets/
+.vaulter/deploy/secrets/
 ```
 
 ---
@@ -787,10 +789,15 @@ Override backend variables **locally** without touching the remote. Perfect for 
 
 ```
 .vaulter/local/
-├── shared.env            # Vars for ALL services (DEBUG, LOG_LEVEL)
-├── overrides.env         # Single repo overrides
-├── overrides.web.env     # Monorepo: web service overrides
-└── overrides.api.env     # Monorepo: api service overrides
+├── configs.env           # Shared configs (sensitive=false)
+├── secrets.env           # Shared secrets (sensitive=true)
+└── services/             # Monorepo only
+    ├── web/
+    │   ├── configs.env
+    │   └── secrets.env
+    └── api/
+        ├── configs.env
+        └── secrets.env
 ```
 
 ### Merge Order
@@ -799,10 +806,12 @@ Override backend variables **locally** without touching the remote. Perfect for 
 
 ```bash
 # Set shared var (all services)
-vaulter local set --shared DEBUG=true
+vaulter local set --shared DEBUG::true     # config (sensitive=false)
+vaulter local set --shared API_KEY=xxx     # secret (sensitive=true)
 
 # Set service-specific override
-vaulter local set PORT=3001 -s web
+vaulter local set PORT::3001 -s web        # config
+vaulter local set DB_URL=xxx -s api        # secret
 
 # Generate .env files (backend + shared + overrides)
 vaulter local pull --all
@@ -924,7 +933,7 @@ config({
 |:------------|:----------|:---------|
 | **Kubernetes** | `KUBERNETES_SERVICE_HOST` set | Skip loading (vars injected via ConfigMap/Secret) |
 | **CI/CD** | `CI=true`, `GITHUB_ACTIONS`, etc. | Load from `.vaulter/deploy/` |
-| **Local** | Default | Load from `.vaulter/local/shared.env` |
+| **Local** | Default | Load from `.vaulter/local/` (configs.env + secrets.env) |
 
 **Why this matters:**
 - **K8s**: Env vars are already injected, no file loading needed

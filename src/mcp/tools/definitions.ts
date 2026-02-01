@@ -169,19 +169,6 @@ export function registerTools(): Tool[] {
 
     // === SYNC TOOLS ===
     {
-      name: 'vaulter_sync',
-      description: '[DEPRECATED: Use vaulter_push with dryRun=true] Push local .env file to backend. Same behavior as vaulter_push but with dryRun support.',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          environment: { type: 'string', description: 'Environment name', default: 'dev' },
-          project: { type: 'string', description: 'Project name' },
-          service: { type: 'string', description: 'Service name' },
-          dryRun: { type: 'boolean', description: 'Preview changes without applying', default: false }
-        }
-      }
-    },
-    {
       name: 'vaulter_pull',
       description: 'Download variables from backend to local .env file. Overwrites local file.',
       inputSchema: {
@@ -441,7 +428,7 @@ export function registerTools(): Tool[] {
     // === CATEGORIZATION TOOLS ===
     {
       name: 'vaulter_categorize_vars',
-      description: 'Categorize variables by secret patterns. Shows which variables would be treated as secrets vs configs based on naming patterns.',
+      description: 'Categorize variables by their sensitive flag. Shows which variables are secrets (sensitive=true, encrypted) vs configs (sensitive=false, plain).',
       inputSchema: {
         type: 'object',
         properties: {
@@ -614,7 +601,7 @@ export function registerTools(): Tool[] {
     // === LOCAL OVERRIDES TOOLS ===
     {
       name: 'vaulter_local_pull',
-      description: 'Pull base environment + local shared vars + service overrides to output targets (.env files). Merge order: backend < local shared < service overrides. Local files never touch the backend.',
+      description: 'Pull base environment + local shared vars + service overrides to output targets (.env files). Merge order: backend < local shared < service overrides. Local files never touch the backend. Single repo: configs.env/secrets.env at root. Monorepo: shared/ and services/<name>/ with configs.env/secrets.env.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -625,21 +612,35 @@ export function registerTools(): Tool[] {
       }
     },
     {
+      name: 'vaulter_local_push',
+      description: 'Push local overrides to remote backend. This allows sharing local development configs with the team. Compares local vars with remote and pushes only changed values.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          shared: { type: 'boolean', description: 'Push shared vars instead of service-specific', default: false },
+          service: { type: 'string', description: 'Service name (for monorepos)' },
+          targetEnvironment: { type: 'string', description: 'Target environment (defaults to base env from config)' },
+          dryRun: { type: 'boolean', description: 'Preview changes without applying', default: false }
+        }
+      }
+    },
+    {
       name: 'vaulter_local_set',
-      description: 'Set a service-specific local override. This only modifies the local overrides file (.vaulter/local/overrides.<service>.env) and never touches the backend.',
+      description: 'Set a service-specific local override. Routes to configs.env (sensitive=false) or secrets.env (sensitive=true). Local files never touch the backend. Single repo: .vaulter/local/[configs|secrets].env. Monorepo: .vaulter/local/services/<svc>/[configs|secrets].env',
       inputSchema: {
         type: 'object',
         properties: {
           key: { type: 'string', description: 'Variable name' },
           value: { type: 'string', description: 'Value to set' },
-          service: { type: 'string', description: 'Service name (for monorepos)' }
+          service: { type: 'string', description: 'Service name (for monorepos)' },
+          sensitive: { type: 'boolean', description: 'If true, writes to secrets.env. If false (default), writes to configs.env', default: false }
         },
         required: ['key', 'value']
       }
     },
     {
       name: 'vaulter_local_delete',
-      description: 'Remove a service-specific local override.',
+      description: 'Remove a service-specific local override (removes from both configs.env and secrets.env).',
       inputSchema: {
         type: 'object',
         properties: {
@@ -651,19 +652,20 @@ export function registerTools(): Tool[] {
     },
     {
       name: 'vaulter_local_shared_set',
-      description: 'Set a local shared variable. Shared vars are stored in .vaulter/local/shared.env and apply to ALL services in a monorepo. Use for vars like DEBUG, LOG_LEVEL that should be the same everywhere.',
+      description: 'Set a local shared variable. Routes to shared/configs.env (sensitive=false) or shared/secrets.env (sensitive=true). Shared vars apply to ALL services in a monorepo. Use for vars like DEBUG, LOG_LEVEL that should be the same everywhere.',
       inputSchema: {
         type: 'object',
         properties: {
           key: { type: 'string', description: 'Variable name' },
-          value: { type: 'string', description: 'Value to set' }
+          value: { type: 'string', description: 'Value to set' },
+          sensitive: { type: 'boolean', description: 'If true, writes to secrets.env. If false (default), writes to configs.env', default: false }
         },
         required: ['key', 'value']
       }
     },
     {
       name: 'vaulter_local_shared_delete',
-      description: 'Remove a local shared variable from .vaulter/local/shared.env.',
+      description: 'Remove a local shared variable (removes from both shared/configs.env and shared/secrets.env).',
       inputSchema: {
         type: 'object',
         properties: {
@@ -674,7 +676,7 @@ export function registerTools(): Tool[] {
     },
     {
       name: 'vaulter_local_shared_list',
-      description: 'List all local shared variables from .vaulter/local/shared.env. These vars apply to ALL services in the monorepo.',
+      description: 'List all local shared variables (from both shared/configs.env and shared/secrets.env). These vars apply to ALL services in the monorepo.',
       inputSchema: {
         type: 'object',
         properties: {}
@@ -704,13 +706,14 @@ export function registerTools(): Tool[] {
     // === SNAPSHOT TOOLS ===
     {
       name: 'vaulter_snapshot_create',
-      description: 'Create a timestamped snapshot of an environment. Useful for backup before making changes.',
+      description: 'Create a timestamped snapshot. Sources: cloud (remote backend, default), local (local overrides only), merged (cloud + local). Useful for backup before making changes or sharing configurations.',
       inputSchema: {
         type: 'object',
         properties: {
           environment: { type: 'string', description: 'Environment to snapshot', default: 'dev' },
           name: { type: 'string', description: 'Optional name suffix for the snapshot' },
-          service: { type: 'string', description: 'Service name (for monorepos)' }
+          service: { type: 'string', description: 'Service name (for monorepos)' },
+          source: { type: 'string', enum: ['cloud', 'local', 'merged'], description: 'Source for snapshot data: cloud (remote backend), local (local overrides), merged (cloud + local)', default: 'cloud' }
         },
         required: ['environment']
       }

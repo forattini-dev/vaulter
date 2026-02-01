@@ -520,6 +520,9 @@ const cliSchema: CLISchema = {
         pull: {
           description: 'Base + overrides → .env outputs'
         },
+        push: {
+          description: 'Push local overrides to remote backend (share with team)'
+        },
         set: {
           description: 'Add local override (KEY=val KEY2::val2)'
         },
@@ -551,6 +554,10 @@ const cliSchema: CLISchema = {
             name: {
               type: 'string',
               description: 'Optional name suffix for the snapshot'
+            },
+            source: {
+              type: 'string',
+              description: 'Source: cloud (default), local, merged'
             }
           }
         },

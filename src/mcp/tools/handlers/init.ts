@@ -77,8 +77,8 @@ export async function handleInitCall(
   lines.push('')
 
   if (isMonorepo) {
-    lines.push('  1. Copy and fill local secrets:')
-    lines.push('     cp .vaulter/local/shared.env.example .vaulter/local/shared.env')
+    lines.push('  1. Edit local secrets in:')
+    lines.push('     .vaulter/local/shared/secrets.env')
     lines.push('')
     lines.push('  2. Configure backend in .vaulter/config.yaml')
     lines.push('')
@@ -88,8 +88,8 @@ export async function handleInitCall(
     lines.push('  4. Run with env vars loaded:')
     lines.push('     vaulter run -s api -- pnpm dev')
   } else {
-    lines.push('  1. Copy and fill local secrets:')
-    lines.push('     cp .vaulter/local/.env.example .vaulter/local/.env')
+    lines.push('  1. Edit local secrets in:')
+    lines.push('     .vaulter/local/secrets.env')
     lines.push('')
     lines.push('  2. Configure backend in .vaulter/config.yaml')
     lines.push('')

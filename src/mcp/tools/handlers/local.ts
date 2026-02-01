@@ -12,10 +12,15 @@ import {
   getLocalStatus,
   loadLocalShared,
   setLocalShared,
-  deleteLocalShared
+  deleteLocalShared,
+  getSharedConfigPath,
+  getSharedSecretsPath,
+  getServiceConfigPath,
+  getServiceSecretsPath
 } from '../../../lib/local.js'
-import { runLocalPull, runLocalDiff } from '../../../lib/local-ops.js'
-import { snapshotCreate, snapshotList, snapshotRestore } from '../../../lib/snapshot-ops.js'
+import { runLocalPull, runLocalDiff, runLocalPush } from '../../../lib/local-ops.js'
+import { maskValue } from '../../../lib/masking.js'
+import { snapshotCreate, snapshotList, snapshotRestore, type SnapshotSource } from '../../../lib/snapshot-ops.js'
 
 /**
  * Get configDir or return error response
@@ -78,7 +83,86 @@ export async function handleLocalPullCall(
 }
 
 /**
+ * vaulter_local_push - Push local overrides to remote backend
+ *
+ * This allows sharing local development configs with the team.
+ */
+export async function handleLocalPushCall(
+  client: VaulterClient,
+  config: VaulterConfig,
+  _project: string,
+  _environment: Environment,
+  service: string | undefined,
+  args: Record<string, unknown>
+): Promise<ToolResponse> {
+  const result = getConfigDirOrError()
+  if ('error' in result) return result.error
+  const { configDir } = result
+
+  try {
+    const shared = args.shared === true
+    const dryRun = args.dryRun === true || args.dry_run === true
+    const targetEnv = args.targetEnvironment as string | undefined
+
+    const pushResult = await runLocalPush({
+      client,
+      config,
+      configDir,
+      service,
+      shared,
+      dryRun,
+      targetEnvironment: targetEnv
+    })
+
+    if (pushResult.pushedCount === 0) {
+      const source = shared ? 'shared' : service ? `service: ${service}` : 'local'
+      return {
+        content: [{
+          type: 'text',
+          text: `No changes to push (${source})${pushResult.unchanged.length > 0 ? `\n${pushResult.unchanged.length} vars already in sync` : ''}`
+        }]
+      }
+    }
+
+    const lines: string[] = []
+    const prefix = dryRun ? '[DRY RUN] Would push' : '✓ Pushed'
+    lines.push(`${prefix} ${pushResult.pushedCount} var(s) to ${pushResult.targetEnvironment}`)
+    lines.push('')
+
+    if (pushResult.added.length > 0) {
+      lines.push(`Added (${pushResult.added.length}):`)
+      for (const v of pushResult.added) {
+        const type = v.sensitive ? 'secret' : 'config'
+        const value = v.sensitive ? maskValue(v.value) : v.value
+        lines.push(`  + ${v.key} = ${value} (${type})`)
+      }
+    }
+
+    if (pushResult.updated.length > 0) {
+      lines.push(`Updated (${pushResult.updated.length}):`)
+      for (const v of pushResult.updated) {
+        const type = v.sensitive ? 'secret' : 'config'
+        lines.push(`  ~ ${v.key} (${type})`)
+      }
+    }
+
+    if (pushResult.unchanged.length > 0) {
+      lines.push('')
+      lines.push(`${pushResult.unchanged.length} var(s) unchanged`)
+    }
+
+    return { content: [{ type: 'text', text: lines.join('\n') }] }
+  } catch (err) {
+    return { content: [{ type: 'text', text: `Error: ${(err as Error).message}` }] }
+  }
+}
+
+/**
  * vaulter_local_set - Set a local override
+ *
+ * Routes to configs.env or secrets.env based on sensitive flag:
+ * - sensitive=true  → secrets.env
+ * - sensitive=false → configs.env (default)
  */
 export async function handleLocalSetCall(
   _config: VaulterConfig,
@@ -91,13 +175,20 @@ export async function handleLocalSetCall(
   const key = args.key as string
   const value = args.value as string
   const service = args.service as string | undefined
+  const sensitive = args.sensitive === true
 
   if (!key || value === undefined) {
     return { content: [{ type: 'text', text: 'Error: key and value are required' }] }
   }
 
-  setOverride(configDir, key, value, service)
-  return { content: [{ type: 'text', text: `✓ Set local override: ${key}` }] }
+  setOverride(configDir, key, value, service, sensitive)
+
+  const targetFile = sensitive
+    ? getServiceSecretsPath(configDir, service)
+    : getServiceConfigPath(configDir, service)
+  const type = sensitive ? 'secret' : 'config'
+
+  return { content: [{ type: 'text', text: `✓ Set local ${type}: ${key}\n  → ${targetFile}` }] }
 }
 
 /**
@@ -151,8 +242,7 @@ export async function handleLocalDiffCall(
     return { content: [{ type: 'text', text: 'No local overrides. Use vaulter_local_set to add some.' }] }
   }
 
-  const lines = [`Local overrides vs base (${baseEnvironment}):`]
-  lines.push('')
+  const lines = [`Local overrides vs base (${baseEnvironment}):`, '']
   for (const key of diff.added) {
     lines.push(`  + ${key} = ${overrides[key]} (new)`)
   }
@@ -181,26 +271,30 @@ export async function handleLocalStatusCall(
   const service = _args.service as string | undefined
   const status = getLocalStatus(configDir, config, service)
 
-  const lines = [
-    'Local Status:',
-    `  Base environment:  ${status.baseEnvironment}`,
-    '',
-    '  Shared vars (all services):',
-    `    File:   ${status.sharedExist ? '✓' : '○'} ${status.sharedPath}`,
-    `    Count:  ${status.sharedCount}`,
-    '',
-    '  Overrides (service-specific):',
-    `    File:   ${status.overridesExist ? '✓' : '○'} ${status.overridesPath}`,
-    `    Count:  ${status.overridesCount}`,
-    '',
-    `  Snapshots:         ${status.snapshotsCount}`
-  ]
+  const lines = ['Local Status:']
+  lines.push(`  Base environment:  ${status.baseEnvironment}`)
+  lines.push('')
+  lines.push('  Shared vars (all services):')
+  lines.push(`    Path:    ${status.sharedExist ? '✓' : '○'} ${status.sharedPath}`)
+  lines.push(`    Config:  ${status.sharedConfigCount} vars`)
+  lines.push(`    Secrets: ${status.sharedSecretsCount} vars`)
+  lines.push('')
+  lines.push(`  Overrides${service ? ` (service: ${service})` : ' (default)'}:`)
+  lines.push(`    Path:    ${status.overridesExist ? '✓' : '○'} ${status.overridesPath}`)
+  lines.push(`    Config:  ${status.overridesConfigCount} vars`)
+  lines.push(`    Secrets: ${status.overridesSecretsCount} vars`)
+  lines.push('')
+  lines.push(`  Snapshots:         ${status.snapshotsCount}`)
 
   return { content: [{ type: 'text', text: lines.join('\n') }] }
 }
 
 /**
  * vaulter_local_shared_set - Set a local shared var
+ *
+ * Routes to configs.env or secrets.env based on sensitive flag:
+ * - sensitive=true  → shared/secrets.env
+ * - sensitive=false → shared/configs.env (default)
  */
 export async function handleLocalSharedSetCall(
   _config: VaulterConfig,
@@ -212,13 +306,20 @@ export async function handleLocalSharedSetCall(
 
   const key = args.key as string
   const value = args.value as string
+  const sensitive = args.sensitive === true
 
   if (!key || value === undefined) {
     return { content: [{ type: 'text', text: 'Error: key and value are required' }] }
   }
 
-  setLocalShared(configDir, key, value)
-  return { content: [{ type: 'text', text: `✓ Set local shared: ${key}` }] }
+  setLocalShared(configDir, key, value, sensitive)
+
+  const targetFile = sensitive
+    ? getSharedSecretsPath(configDir)
+    : getSharedConfigPath(configDir)
+  const type = sensitive ? 'secret' : 'config'
+
+  return { content: [{ type: 'text', text: `✓ Set local shared ${type}: ${key}\n  → ${targetFile}` }] }
 }
 
 /**
@@ -280,6 +381,11 @@ export async function handleLocalSharedListCall(
 
 /**
  * vaulter_snapshot_create - Create a snapshot
+ *
+ * Sources:
+ * - cloud: Backup from remote backend (default)
+ * - local: Backup from local overrides only
+ * - merged: Backup of merged state (cloud + local)
  */
 export async function handleSnapshotCreateCall(
   client: VaulterClient,
@@ -294,19 +400,34 @@ export async function handleSnapshotCreateCall(
   const { configDir } = result
 
   const name = args.name as string | undefined
+  const sourceArg = (args.source as string | undefined) || 'cloud'
+
+  const validSources: SnapshotSource[] = ['cloud', 'local', 'merged']
+  if (!validSources.includes(sourceArg as SnapshotSource)) {
+    return {
+      content: [{
+        type: 'text',
+        text: `Error: Invalid source '${sourceArg}'. Valid sources: ${validSources.join(', ')}`
+      }]
+    }
+  }
+
+  const source = sourceArg as SnapshotSource
+
   const snapshot = await snapshotCreate({
     client,
     config,
     configDir,
     environment,
     service,
-    name
+    name,
+    source
   })
 
   return {
     content: [{
       type: 'text',
-      text: `✓ Snapshot created: ${snapshot.id}\n  Environment: ${environment}\n  Variables: ${snapshot.varsCount}\n  Checksum: ${snapshot.checksum}\n  Path: ${snapshot.dirPath}`
+      text: `✓ Snapshot created: ${snapshot.id}\n  Source: ${source}\n  Environment: ${environment}\n  Variables: ${snapshot.varsCount}\n  Checksum: ${snapshot.checksum}\n  Path: ${snapshot.dirPath}`
     }]
   }
 }

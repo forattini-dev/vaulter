@@ -14,7 +14,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import type { CLIArgs, VaulterConfig, Environment } from '../../types.js'
-import { createClientFromConfig } from '../lib/create-client.js'
+import { withClient } from '../lib/create-client.js'
 import { findConfigDir, getSecretsFilePath, getConfigsFilePath, getEnvFilePath, getEnvFilePathForConfig } from '../../lib/config-loader.js'
 import { parseEnvFile, serializeEnv } from '../../lib/env-parser.js'
 import { createConnectedAuditLogger, logSetOperation, disconnectAuditLogger } from '../lib/audit-helper.js'
@@ -298,73 +298,71 @@ export async function runSet(context: SetContext): Promise<void> {
     }
 
     // Sync secrets to backend
-    const client = await createClientFromConfig({ args, config, project, verbose })
     const auditLogger = await createConnectedAuditLogger(config, project, environment, verbose)
 
     try {
-      await client.connect()
+      await withClient({ args, config, project, verbose }, async (client) => {
+        for (const [key, value] of secrets) {
+          try {
+            // Get existing value for audit log
+            const existing = await client.get(key, project, environment, effectiveService)
+            const previousValue = existing?.value
 
-      for (const [key, value] of secrets) {
-        try {
-          // Get existing value for audit log
-          const existing = await client.get(key, project, environment, effectiveService)
-          const previousValue = existing?.value
+            // Update rotatedAt if value changed (secret rotation tracking)
+            const isValueChanged = previousValue !== undefined && previousValue !== value
+            const rotatedAt = isValueChanged ? new Date().toISOString() : existing?.metadata?.rotatedAt
 
-          // Update rotatedAt if value changed (secret rotation tracking)
-          const isValueChanged = previousValue !== undefined && previousValue !== value
-          const rotatedAt = isValueChanged ? new Date().toISOString() : existing?.metadata?.rotatedAt
+            await client.set({
+              key,
+              value,
+              project,
+              service: effectiveService,
+              environment,
+              tags: tags.length > 0 ? tags : undefined,
+              sensitive: true, // Secrets are sensitive
+              metadata: {
+                source: 'manual',
+                ...(owner && { owner }),
+                ...(description && { description }),
+                // Preserve rotation policy (rotateAfter) if it exists
+                ...(existing?.metadata?.rotateAfter && { rotateAfter: existing.metadata.rotateAfter }),
+                // Update rotatedAt when value changes
+                ...(rotatedAt && { rotatedAt })
+              }
+            })
 
-          await client.set({
-            key,
-            value,
-            project,
-            service: effectiveService,
-            environment,
-            tags: tags.length > 0 ? tags : undefined,
-            sensitive: true, // Secrets are sensitive
-            metadata: {
-              source: 'manual',
-              ...(owner && { owner }),
-              ...(description && { description }),
-              // Preserve rotation policy (rotateAfter) if it exists
-              ...(existing?.metadata?.rotateAfter && { rotateAfter: existing.metadata.rotateAfter }),
-              // Update rotatedAt when value changes
-              ...(rotatedAt && { rotatedAt })
+            // Log to audit trail
+            await logSetOperation(auditLogger, {
+              key,
+              previousValue,
+              newValue: value,
+              project,
+              environment,
+              service: effectiveService,
+              source: 'cli'
+            })
+
+            results.push({ key, type: 'secret', success: true })
+
+            // Show rotation update in verbose mode
+            if (isValueChanged && !jsonOutput) {
+              ui.verbose(`Updated rotatedAt timestamp for ${key}`, verbose)
             }
-          })
 
-          // Log to audit trail
-          await logSetOperation(auditLogger, {
-            key,
-            previousValue,
-            newValue: value,
-            project,
-            environment,
-            service: effectiveService,
-            source: 'cli'
-          })
+            if (!jsonOutput) {
+              const scope = isShared ? c.env('shared') : colorEnv(environment)
+              ui.log(`${symbols.success} Set ${c.secretType('secret')} ${c.key(key)} in ${c.project(project)}/${scope}`)
+            }
+          } catch (err) {
+            results.push({ key, type: 'secret', success: false, error: (err as Error).message })
 
-          results.push({ key, type: 'secret', success: true })
-
-          // Show rotation update in verbose mode
-          if (isValueChanged && !jsonOutput) {
-            ui.verbose(`Updated rotatedAt timestamp for ${key}`, verbose)
-          }
-
-          if (!jsonOutput) {
-            const scope = isShared ? c.env('shared') : colorEnv(environment)
-            ui.log(`${symbols.success} Set ${c.secretType('secret')} ${c.key(key)} in ${c.project(project)}/${scope}`)
-          }
-        } catch (err) {
-          results.push({ key, type: 'secret', success: false, error: (err as Error).message })
-
-          if (!jsonOutput) {
-            ui.log(`${symbols.error} Failed to set ${c.secretType('secret')} ${c.key(key)}: ${c.error((err as Error).message)}`)
+            if (!jsonOutput) {
+              ui.log(`${symbols.error} Failed to set ${c.secretType('secret')} ${c.key(key)}: ${c.error((err as Error).message)}`)
+            }
           }
         }
-      }
+      })
     } finally {
-      await client.disconnect()
       await disconnectAuditLogger(auditLogger)
     }
   }
@@ -392,73 +390,71 @@ export async function runSet(context: SetContext): Promise<void> {
       writeToEnvFile(envFilePath, configs, verbose)
 
       // Also sync to backend in unified mode
-      const client = await createClientFromConfig({ args, config, project, verbose })
       const auditLogger = await createConnectedAuditLogger(config, project, environment, verbose)
 
       try {
-        await client.connect()
+        await withClient({ args, config, project, verbose }, async (client) => {
+          for (const [key, value] of configs) {
+            try {
+              // Get existing value for audit log
+              const existing = await client.get(key, project, environment, effectiveService)
+              const previousValue = existing?.value
 
-        for (const [key, value] of configs) {
-          try {
-            // Get existing value for audit log
-            const existing = await client.get(key, project, environment, effectiveService)
-            const previousValue = existing?.value
+              // Update rotatedAt if value changed (rotation tracking)
+              const isValueChanged = previousValue !== undefined && previousValue !== value
+              const rotatedAt = isValueChanged ? new Date().toISOString() : existing?.metadata?.rotatedAt
 
-            // Update rotatedAt if value changed (rotation tracking)
-            const isValueChanged = previousValue !== undefined && previousValue !== value
-            const rotatedAt = isValueChanged ? new Date().toISOString() : existing?.metadata?.rotatedAt
+              await client.set({
+                key,
+                value,
+                project,
+                service: effectiveService,
+                environment,
+                tags: tags.length > 0 ? tags : undefined,
+                sensitive: false, // Configs are not sensitive
+                metadata: {
+                  source: 'manual',
+                  ...(owner && { owner }),
+                  ...(description && { description }),
+                  // Preserve rotation policy (rotateAfter) if it exists
+                  ...(existing?.metadata?.rotateAfter && { rotateAfter: existing.metadata.rotateAfter }),
+                  // Update rotatedAt when value changes
+                  ...(rotatedAt && { rotatedAt })
+                }
+              })
 
-            await client.set({
-              key,
-              value,
-              project,
-              service: effectiveService,
-              environment,
-              tags: tags.length > 0 ? tags : undefined,
-              sensitive: false, // Configs are not sensitive
-              metadata: {
-                source: 'manual',
-                ...(owner && { owner }),
-                ...(description && { description }),
-                // Preserve rotation policy (rotateAfter) if it exists
-                ...(existing?.metadata?.rotateAfter && { rotateAfter: existing.metadata.rotateAfter }),
-                // Update rotatedAt when value changes
-                ...(rotatedAt && { rotatedAt })
+              // Log to audit trail
+              await logSetOperation(auditLogger, {
+                key,
+                previousValue,
+                newValue: value,
+                project,
+                environment,
+                service: effectiveService,
+                source: 'cli'
+              })
+
+              results.push({ key, type: 'config', success: true })
+
+              // Show rotation update in verbose mode
+              if (isValueChanged && !jsonOutput) {
+                ui.verbose(`Updated rotatedAt timestamp for ${key}`, verbose)
               }
-            })
 
-            // Log to audit trail
-            await logSetOperation(auditLogger, {
-              key,
-              previousValue,
-              newValue: value,
-              project,
-              environment,
-              service: effectiveService,
-              source: 'cli'
-            })
+              if (!jsonOutput) {
+                const scope = isShared ? c.env('shared') : colorEnv(environment)
+                ui.log(`${symbols.success} Set ${c.configType('config')} ${c.key(key)} in ${c.project(project)}/${scope}`)
+              }
+            } catch (err) {
+              results.push({ key, type: 'config', success: false, error: (err as Error).message })
 
-            results.push({ key, type: 'config', success: true })
-
-            // Show rotation update in verbose mode
-            if (isValueChanged && !jsonOutput) {
-              ui.verbose(`Updated rotatedAt timestamp for ${key}`, verbose)
-            }
-
-            if (!jsonOutput) {
-              const scope = isShared ? c.env('shared') : colorEnv(environment)
-              ui.log(`${symbols.success} Set ${c.configType('config')} ${c.key(key)} in ${c.project(project)}/${scope}`)
-            }
-          } catch (err) {
-            results.push({ key, type: 'config', success: false, error: (err as Error).message })
-
-            if (!jsonOutput) {
-              ui.log(`${symbols.error} Failed to set ${c.configType('config')} ${c.key(key)}: ${c.error((err as Error).message)}`)
+              if (!jsonOutput) {
+                ui.log(`${symbols.error} Failed to set ${c.configType('config')} ${c.key(key)}: ${c.error((err as Error).message)}`)
+              }
             }
           }
-        }
+        })
       } finally {
-        await client.disconnect()
         await disconnectAuditLogger(auditLogger)
       }
     } else {

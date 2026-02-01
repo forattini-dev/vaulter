@@ -56,7 +56,6 @@ import {
   handleMultiDeleteCall
 } from './handlers/batch.js'
 import {
-  handleSyncCall,
   handlePullCall,
   handlePushCall
 } from './handlers/sync.js'
@@ -102,6 +101,7 @@ import {
 } from './handlers/doctor.js'
 import {
   handleLocalPullCall,
+  handleLocalPushCall,
   handleLocalSetCall,
   handleLocalDeleteCall,
   handleLocalDiffCall,
@@ -326,9 +326,6 @@ export async function handleToolCall(
         return await handleMultiDeleteCall(client, project, environment, service, args)
 
       // === SYNC TOOLS ===
-      case 'vaulter_sync':
-        return await handleSyncCall(client, config, project, environment, service, args)
-
       case 'vaulter_pull':
         return await handlePullCall(client, config, project, environment, service, args)
 
@@ -398,6 +395,9 @@ export async function handleToolCall(
       // === LOCAL OVERRIDES TOOLS (need client for base env) ===
       case 'vaulter_local_pull':
         return await handleLocalPullCall(client, config!, project, environment, service, args)
+
+      case 'vaulter_local_push':
+        return await handleLocalPushCall(client, config!, project, environment, service, args)
 
       case 'vaulter_local_diff':
         return await handleLocalDiffCall(client, config!, project, environment, service, args)

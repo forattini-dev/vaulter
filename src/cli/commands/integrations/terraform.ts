@@ -5,7 +5,7 @@
  */
 
 import type { CLIArgs, VaulterConfig, Environment } from '../../../types.js'
-import { createClientFromConfig } from '../../lib/create-client.js'
+import { withClient } from '../../lib/create-client.js'
 import { print } from '../../lib/colors.js'
 import * as ui from '../../ui.js'
 
@@ -32,11 +32,7 @@ export async function runTfVars(context: TerraformContext): Promise<void> {
 
   ui.verbose(`Generating Terraform tfvars for ${project}/${environment}`, verbose)
 
-  const client = await createClientFromConfig({ args, config, project, verbose })
-
-  try {
-    await client.connect()
-
+  await withClient({ args, config, project, verbose }, async (client) => {
     const vars = await client.export(project, environment, service)
 
     if (Object.keys(vars).length === 0) {
@@ -60,9 +56,7 @@ export async function runTfVars(context: TerraformContext): Promise<void> {
       })
       ui.output(tfvars)
     }
-  } finally {
-    await client.disconnect()
-  }
+  })
 }
 
 /**
@@ -78,11 +72,7 @@ export async function runTfJson(context: TerraformContext): Promise<void> {
 
   ui.verbose(`Generating Terraform JSON for ${project}/${environment}`, verbose)
 
-  const client = await createClientFromConfig({ args, config, project, verbose })
-
-  try {
-    await client.connect()
-
+  await withClient({ args, config, project, verbose }, async (client) => {
     const vars = await client.export(project, environment, service)
 
     if (Object.keys(vars).length === 0) {
@@ -108,9 +98,7 @@ export async function runTfJson(context: TerraformContext): Promise<void> {
     }
 
     ui.output(JSON.stringify(output, null, 2))
-  } finally {
-    await client.disconnect()
-  }
+  })
 }
 
 /**

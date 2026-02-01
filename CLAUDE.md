@@ -188,47 +188,64 @@ vaulter_clone_env source="dev" target="prd"
 Local overrides são variáveis que sobrescrevem o backend **apenas localmente**. Útil para desenvolvimento.
 
 **Estrutura de arquivos:**
+
+Single repo:
 ```
 .vaulter/local/
-├── shared.env            # Vars compartilhadas (todos os services)
-├── overrides.env         # Single repo
-├── overrides.web.env     # Monorepo: overrides para 'web'
-└── overrides.api.env     # Monorepo: overrides para 'api'
+├── configs.env                 # shared configs (sensitive=false)
+├── secrets.env                 # shared secrets (sensitive=true)
+└── services/                   # monorepo only
+    ├── web/
+    │   ├── configs.env
+    │   └── secrets.env
+    └── api/
+        ├── configs.env
+        └── secrets.env
 ```
+
+**Separação por Sensitive:**
+- `KEY=value` → **secrets.env** (sensitive=true)
+- `KEY::value` → **configs.env** (sensitive=false)
 
 **Merge order (prioridade):** `backend < local shared < service overrides`
 
 ```bash
-# 1. Setar var compartilhada (todos os services)
-vaulter local set --shared DEBUG=true
-vaulter local set --shared LOG_LEVEL=debug
+# Shared vars (single repo ou monorepo)
+vaulter local set PORT::3001              # → configs.env
+vaulter local set API_KEY=xxx             # → secrets.env
 
-# 2. Setar override por service (monorepo)
-vaulter local set PORT=3001 -s web
-vaulter local set PORT=8080 -s api
+# Shared vars com --shared (mesmo efeito, só mais explícito)
+vaulter local set --shared DEBUG::true    # → configs.env
+vaulter local set --shared TOKEN=secret   # → secrets.env
 
-# 3. Ver o que está diferente do base env
+# Service-specific (monorepo)
+vaulter local set PORT::3001 -s web       # → services/web/configs.env
+vaulter local set API_KEY=xxx -s web      # → services/web/secrets.env
+
+# Ver o que está diferente do base env
 vaulter local diff
 
-# 4. Gerar .env files com: backend + shared + overrides
+# Gerar .env files com: backend + shared + overrides
 vaulter local pull --all
 
-# 5. Ver status (mostra shared + overrides count)
+# Ver status (mostra config/secrets count separados)
 vaulter local status
 
-# 6. Resetar overrides
+# Resetar overrides
 vaulter local reset
 ```
 
 **MCP Tools:**
 ```bash
-# Shared vars (todos os services)
-vaulter_local_shared_set key="DEBUG" value="true"
+# Shared vars
+vaulter_local_shared_set key="DEBUG" value="true"                 # → configs.env
+vaulter_local_shared_set key="TOKEN" value="xxx" sensitive=true   # → secrets.env
 vaulter_local_shared_delete key="DEBUG"
 vaulter_local_shared_list
 
-# Service-specific overrides
-vaulter_local_set key="PORT" value="3001" service="web"
+# Service-specific overrides (monorepo)
+vaulter_local_set key="PORT" value="3001" service="web"                    # → services/web/configs.env
+vaulter_local_set key="API_KEY" value="xxx" service="web" sensitive=true   # → services/web/secrets.env
 vaulter_local_delete key="PORT" service="web"
 
 # Pull (inclui shared + overrides automaticamente)

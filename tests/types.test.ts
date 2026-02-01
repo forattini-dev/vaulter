@@ -7,8 +7,7 @@ import {
   DEFAULT_ENVIRONMENTS,
   DEFAULT_ENVIRONMENT,
   COMMON_ENVIRONMENT_NAMES,
-  EXPORT_FORMATS,
-  DEFAULT_SECRET_PATTERNS
+  EXPORT_FORMATS
 } from '../src/types.js'
 
 describe('types', () => {
@@ -56,20 +55,4 @@ describe('types', () => {
     })
   })
 
-  describe('DEFAULT_SECRET_PATTERNS', () => {
-    it('should include common secret patterns', () => {
-      expect(DEFAULT_SECRET_PATTERNS).toContain('*_KEY')
-      expect(DEFAULT_SECRET_PATTERNS).toContain('*_SECRET')
-      expect(DEFAULT_SECRET_PATTERNS).toContain('*_TOKEN')
-      expect(DEFAULT_SECRET_PATTERNS).toContain('*_PASSWORD')
-      expect(DEFAULT_SECRET_PATTERNS).toContain('DATABASE_URL')
-      expect(DEFAULT_SECRET_PATTERNS).toContain('REDIS_URL')
-    })
-
-    it('should have patterns for security-sensitive values', () => {
-      expect(DEFAULT_SECRET_PATTERNS).toContain('*_CREDENTIAL')
-      expect(DEFAULT_SECRET_PATTERNS).toContain('*_CERT')
-      expect(DEFAULT_SECRET_PATTERNS).toContain('*_PRIVATE')
-    })
-  })
 })

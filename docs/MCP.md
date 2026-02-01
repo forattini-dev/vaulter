@@ -2,7 +2,7 @@
 
 Complete reference for the Vaulter Model Context Protocol (MCP) server.
 
-**Stats:** 47 tools | 5 resources | 10 prompts
+**Stats:** 53 tools | 6 resources | 12 prompts
 
 ---
 
@@ -223,7 +223,7 @@ if (diagnosis.summary.warn > 0) {
 
 ---
 
-## Tools Reference (47)
+## Tools Reference (53)
 
 ### Core Operations (5)
 
@@ -657,7 +657,7 @@ Show inheritance information for a service.
 ### Categorization (1)
 
 #### `vaulter_categorize_vars`
-Categorize variables by secret patterns.
+Categorize variables by their `sensitive` flag.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
@@ -665,7 +665,7 @@ Categorize variables by secret patterns.
 | `project` | string | No | auto | Project name |
 | `service` | string | No | - | Service name |
 
-Shows which variables would be treated as secrets vs configs based on naming patterns.
+Shows which variables are secrets (`sensitive=true`, encrypted) vs configs (`sensitive=false`, plain). No inference - uses the explicit `sensitive` flag set when the variable was created.
 
 ---
 
@@ -746,9 +746,20 @@ Demote a shared variable to a specific service.
 
 ---
 
-### Local Overrides (5)
+### Local Overrides (8)
 
 Local overrides are a transparent layer on top of a base environment. They are plaintext, gitignored, and never touch the backend.
+
+**File structure:**
+```
+.vaulter/local/
+├── configs.env           # Shared configs (sensitive=false)
+├── secrets.env           # Shared secrets (sensitive=true)
+└── services/             # Monorepo only
+    └── <service>/
+        ├── configs.env
+        └── secrets.env
+```
 
 #### `vaulter_local_pull`
 Pull base environment + local overrides to output targets (.env files).
@@ -760,13 +771,14 @@ Pull base environment + local overrides to output targets (.env files).
 | `service` | string | No | - | Service name (monorepo) |
 
 #### `vaulter_local_set`
-Set a local override. Only modifies local file, never touches backend.
+Set a local override for a service. Only modifies local file, never touches backend.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `key` | string | **Yes** | - | Variable name |
 | `value` | string | **Yes** | - | Value to set |
 | `service` | string | No | - | Service name (monorepo) |
+| `sensitive` | boolean | No | `false` | If true, writes to secrets.env; if false, writes to configs.env |
 
 #### `vaulter_local_delete`
 Remove a local override.
@@ -789,6 +801,29 @@ Show local overrides status: base environment, overrides count, snapshots count.
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `service` | string | No | - | Service name (monorepo) |
+
+#### `vaulter_local_shared_set`
+Set a shared local override (applies to all services).
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `key` | string | **Yes** | - | Variable name |
+| `value` | string | **Yes** | - | Value to set |
+| `sensitive` | boolean | No | `false` | If true, writes to secrets.env; if false, writes to configs.env |
+
+#### `vaulter_local_shared_delete`
+Remove a shared local override.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `key` | string | **Yes** | - | Variable name to remove |
+
+#### `vaulter_local_shared_list`
+List all shared local overrides.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| (none) | - | - | - | Returns all shared local vars from configs.env + secrets.env |
 
 ---
 
@@ -939,7 +974,7 @@ Show differences between local file and remote backend. Essential for understand
 
 ---
 
-## Resources Reference (5)
+## Resources Reference (6)
 
 Resources provide static/cached data that doesn't require input parameters. They are read-only and ideal for getting context before using tools.
 
@@ -1145,7 +1180,7 @@ Lists all services discovered in a monorepo. Services are detected by looking fo
 
 ---
 
-## Prompts Reference (10)
+## Prompts Reference (12)
 
 Prompts are pre-configured workflow templates that guide Claude through common tasks. They combine multiple tools and provide structured guidance.
 
@@ -1256,7 +1291,7 @@ Claude: I'll compare the variables between dev and prd...
 
 ### `security_audit`
 
-Audit environment variables for security issues. Checks for exposed secrets, weak patterns, and best practices.
+Audit environment variables for security issues. Checks for exposed secrets, weak values, and best practices.
 
 | Argument | Required | Default | Description |
 |----------|----------|---------|-------------|

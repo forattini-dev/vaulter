@@ -1,10 +1,9 @@
 /**
  * Vaulter MCP Tools
  *
- * This file re-exports all functionality from the modular tools structure
- * for backward compatibility.
+ * Re-exports all functionality from the modular tools structure.
  *
- * The actual implementation is split across:
+ * The implementation is split across:
  *   - tools/config.ts      - Configuration utilities
  *   - tools/definitions.ts - Tool schema definitions
  *   - tools/index.ts       - Main dispatcher

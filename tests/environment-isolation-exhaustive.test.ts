@@ -14,7 +14,7 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from
 import { VaulterClient } from '../src/client.js'
 import {
   loadOverrides,
-  saveOverrides,
+  setOverride,
   mergeWithOverrides,
   diffOverrides,
   resetOverrides
@@ -370,33 +370,37 @@ describe('Local Overrides', () => {
   })
 
   it('saves and loads overrides correctly', () => {
-    const overrides = { LOCAL_VAR: 'local-value', ANOTHER: 'another-value' }
-
-    saveOverrides(configDir, overrides)
+    // Use setOverride for each key
+    setOverride(configDir, 'LOCAL_VAR', 'local-value')
+    setOverride(configDir, 'ANOTHER', 'another-value')
     const loaded = loadOverrides(configDir)
 
-    expect(loaded).toEqual(overrides)
+    expect(loaded).toEqual({ LOCAL_VAR: 'local-value', ANOTHER: 'another-value' })
   })
 
   it('service-specific overrides are isolated', () => {
-    const apiOverrides = { PORT: '3000', API_KEY: 'api-local' }
-    const workerOverrides = { PORT: '4000', CONCURRENCY: '5' }
+    // Set api overrides
+    setOverride(configDir, 'PORT', '3000', 'api')
+    setOverride(configDir, 'API_KEY', 'api-local', 'api', true) // sensitive
 
-    saveOverrides(configDir, apiOverrides, 'api')
-    saveOverrides(configDir, workerOverrides, 'worker')
+    // Set worker overrides
+    setOverride(configDir, 'PORT', '4000', 'worker')
+    setOverride(configDir, 'CONCURRENCY', '5', 'worker')
 
     const loadedApi = loadOverrides(configDir, 'api')
     const loadedWorker = loadOverrides(configDir, 'worker')
 
-    expect(loadedApi).toEqual(apiOverrides)
-    expect(loadedWorker).toEqual(workerOverrides)
+    expect(loadedApi.PORT).toBe('3000')
+    expect(loadedApi.API_KEY).toBe('api-local')
+    expect(loadedWorker.PORT).toBe('4000')
+    expect(loadedWorker.CONCURRENCY).toBe('5')
     expect(loadedApi.CONCURRENCY).toBeUndefined()
     expect(loadedWorker.API_KEY).toBeUndefined()
   })
 
   it('resetOverrides clears only specified service', () => {
-    saveOverrides(configDir, { A: '1' }, 'api')
-    saveOverrides(configDir, { B: '2' }, 'worker')
+    setOverride(configDir, 'A', '1', 'api')
+    setOverride(configDir, 'B', '2', 'worker')
 
     resetOverrides(configDir, 'api')
 

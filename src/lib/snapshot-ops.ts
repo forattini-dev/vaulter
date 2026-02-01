@@ -2,6 +2,11 @@
  * Vaulter - Snapshot Ops
  *
  * Shared core logic for snapshot commands (CLI & MCP).
+ *
+ * Supports three snapshot sources:
+ * - cloud: Backup from remote backend (default)
+ * - local: Backup from local overrides only
+ * - merged: Backup of merged state (cloud + local shared + service overrides)
  */
 
 import type { VaulterClient } from '../client.js'
@@ -11,6 +16,16 @@ import {
   type SnapshotInfo,
   type SnapshotDriver
 } from './snapshot.js'
+import {
+  loadLocalShared,
+  loadOverrides,
+  mergeAllLocalVars,
+  resolveBaseEnvironment
+} from './local.js'
+import { findConfigDir } from './config-loader.js'
+
+/** Source for snapshot data */
+export type SnapshotSource = 'cloud' | 'local' | 'merged'
 
 export interface SnapshotDriverOptions {
   configDir: string
@@ -31,13 +46,68 @@ export interface SnapshotCreateOptions {
   service?: string
   name?: string
   driver?: SnapshotDriver
+  /** Source for snapshot: cloud (remote backend), local (local overrides), merged (cloud + local) */
+  source?: SnapshotSource
 }
 
-export async function snapshotCreate(options: SnapshotCreateOptions): Promise<SnapshotInfo> {
-  const { client, config, configDir, environment, service, name } = options
-  const vars = await client.export(config.project, environment, service)
+export interface SnapshotCreateResult extends SnapshotInfo {
+  /** Source used for this snapshot */
+  source: SnapshotSource
+}
+
+export async function snapshotCreate(options: SnapshotCreateOptions): Promise<SnapshotCreateResult> {
+  const { client, config, configDir, environment, service, name, source = 'cloud' } = options
   const driver = options.driver ?? getSnapshotDriver({ configDir, config, client })
-  return driver.create(environment, vars, { name, project: config.project, service })
+
+  let vars: Record<string, string>
+  let snapshotName = name
+
+  switch (source) {
+    case 'cloud':
+      // Backup from remote backend only
+      vars = await client.export(config.project, environment, service)
+      snapshotName = snapshotName || `cloud-${environment}`
+      break
+
+    case 'local': {
+      // Backup from local overrides only
+      const localConfigDir = configDir || findConfigDir()
+      if (!localConfigDir) {
+        throw new Error('Could not find .vaulter/ directory for local snapshot')
+      }
+      const localShared = loadLocalShared(localConfigDir)
+      const serviceOverrides = loadOverrides(localConfigDir, service)
+      vars = { ...localShared, ...serviceOverrides }
+      snapshotName = snapshotName || `local-${service || 'default'}`
+      break
+    }
+
+    case 'merged': {
+      // Backup merged state: cloud + local shared + service overrides
+      const mergedConfigDir = configDir || findConfigDir()
+      if (!mergedConfigDir) {
+        throw new Error('Could not find .vaulter/ directory for merged snapshot')
+      }
+      const baseEnv = resolveBaseEnvironment(config)
+      const cloudVars = await client.export(config.project, baseEnv, service)
+      const localShared = loadLocalShared(mergedConfigDir)
+      const serviceOverrides = loadOverrides(mergedConfigDir, service)
+      vars = mergeAllLocalVars(cloudVars, localShared, serviceOverrides)
+      snapshotName = snapshotName || `merged-${baseEnv}`
+      break
+    }
+
+    default:
+      throw new Error(`Unknown snapshot source: ${source}`)
+  }
+
+  const snapshot = await driver.create(environment, vars, {
+    name: snapshotName,
+    project: config.project,
+    service
+  })
+
+  return { ...snapshot, source }
 }
 
 export interface SnapshotListOptions {

@@ -144,7 +144,7 @@ describe('init-generator', () => {
         expect(content).toContain('- prd')
       })
 
-      it('should create local .env files', () => {
+      it('should create local configs and secrets files', () => {
         const options: InitOptions = {
           projectName: 'test',
           isMonorepo: false,
@@ -153,8 +153,8 @@ describe('init-generator', () => {
 
         generateVaulterStructure(tempDir, options)
 
-        expect(fs.existsSync(path.join(tempDir, '.vaulter', 'local', '.env'))).toBe(true)
-        expect(fs.existsSync(path.join(tempDir, '.vaulter', 'local', '.env.example'))).toBe(true)
+        expect(fs.existsSync(path.join(tempDir, '.vaulter', 'local', 'configs.env'))).toBe(true)
+        expect(fs.existsSync(path.join(tempDir, '.vaulter', 'local', 'secrets.env'))).toBe(true)
       })
 
       it('should create deploy config files for each environment', () => {
@@ -201,7 +201,8 @@ describe('init-generator', () => {
           path.join(tempDir, '.vaulter', '.gitignore'),
           'utf-8'
         )
-        expect(gitignore).toContain('local/.env')
+        expect(gitignore).toContain('local/configs.env')
+        expect(gitignore).toContain('local/secrets.env')
         expect(gitignore).toContain('deploy/secrets/*.env')
       })
 
@@ -237,13 +238,13 @@ describe('init-generator', () => {
         expect(result.success).toBe(true)
         expect(result.mode).toBe('monorepo')
 
-        // Verify monorepo-specific directories
+        // Verify monorepo-specific directories (shared files at local/ root)
         expect(fs.existsSync(path.join(tempDir, '.vaulter', 'local', 'services'))).toBe(true)
         expect(fs.existsSync(path.join(tempDir, '.vaulter', 'deploy', 'shared', 'configs'))).toBe(true)
         expect(fs.existsSync(path.join(tempDir, '.vaulter', 'deploy', 'shared', 'secrets'))).toBe(true)
       })
 
-      it('should create shared.env files', () => {
+      it('should create shared configs and secrets files at local root', () => {
         const options: InitOptions = {
           projectName: 'mono',
           isMonorepo: true,
@@ -252,8 +253,9 @@ describe('init-generator', () => {
 
         generateVaulterStructure(tempDir, options)
 
-        expect(fs.existsSync(path.join(tempDir, '.vaulter', 'local', 'shared.env'))).toBe(true)
-        expect(fs.existsSync(path.join(tempDir, '.vaulter', 'local', 'shared.env.example'))).toBe(true)
+        // Shared files are at local/ root (same as single repo)
+        expect(fs.existsSync(path.join(tempDir, '.vaulter', 'local', 'configs.env'))).toBe(true)
+        expect(fs.existsSync(path.join(tempDir, '.vaulter', 'local', 'secrets.env'))).toBe(true)
       })
 
       it('should create services .gitkeep', () => {
@@ -312,8 +314,12 @@ describe('init-generator', () => {
           path.join(tempDir, '.vaulter', '.gitignore'),
           'utf-8'
         )
-        expect(gitignore).toContain('local/shared.env')
-        expect(gitignore).toContain('local/services/*.env')
+        // Shared files at local/ root (same pattern as single repo)
+        expect(gitignore).toContain('local/configs.env')
+        expect(gitignore).toContain('local/secrets.env')
+        // Plus service-specific files
+        expect(gitignore).toContain('local/services/*/configs.env')
+        expect(gitignore).toContain('local/services/*/secrets.env')
         expect(gitignore).toContain('deploy/shared/secrets/*.env')
       })
     })
@@ -346,7 +352,7 @@ describe('init-generator', () => {
         generateVaulterStructure(tempDir, options)
 
         // Modify a file
-        const envPath = path.join(tempDir, '.vaulter', 'local', '.env')
+        const envPath = path.join(tempDir, '.vaulter', 'local', 'configs.env')
         fs.writeFileSync(envPath, 'CUSTOM=value')
 
         // Run again without force
@@ -367,7 +373,7 @@ describe('init-generator', () => {
         generateVaulterStructure(tempDir, options)
 
         // Modify a file
-        const envPath = path.join(tempDir, '.vaulter', 'local', '.env')
+        const envPath = path.join(tempDir, '.vaulter', 'local', 'configs.env')
         fs.writeFileSync(envPath, 'CUSTOM=value')
 
         // Run again with force

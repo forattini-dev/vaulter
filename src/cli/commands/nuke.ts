@@ -11,7 +11,7 @@
  */
 
 import type { CLIArgs, VaulterConfig } from '../../types.js'
-import { createClientFromConfig } from '../lib/create-client.js'
+import { withClient } from '../lib/create-client.js'
 import { createConnectedAuditLogger, disconnectAuditLogger } from '../lib/audit-helper.js'
 import { c, symbols, print } from '../lib/colors.js'
 import * as ui from '../ui.js'
@@ -74,12 +74,7 @@ export async function runNuke(context: NukeContext): Promise<void> {
     process.exit(1)
   }
 
-  // Create client and connect
-  const client = await createClientFromConfig({ args, config, project, verbose })
-
-  try {
-    await client.connect()
-
+  await withClient({ args, config, project, verbose }, async (client) => {
     // Get preview of what will be deleted
     const preview = await client.nukePreview()
 
@@ -246,8 +241,5 @@ export async function runNuke(context: NukeContext): Promise<void> {
     } finally {
       await disconnectAuditLogger(auditLogger)
     }
-
-  } finally {
-    await client.disconnect()
-  }
+  })
 }

@@ -5,7 +5,6 @@
  */
 
 import { VaulterClient } from '../../../client.js'
-import { getSecretPatterns, splitVarsBySecret } from '../../../lib/secret-patterns.js'
 import type { VaulterConfig, Environment } from '../../../types.js'
 import type { ToolResponse } from '../config.js'
 
@@ -57,20 +56,30 @@ function formatTfValue(value: string): string {
  */
 export async function handleHelmValuesCall(
   client: VaulterClient,
-  config: VaulterConfig | null,
+  _config: VaulterConfig | null,
   project: string,
   environment: Environment,
   service: string | undefined,
   _args: Record<string, unknown>
 ): Promise<ToolResponse> {
-  const vars = await client.export(project, environment, service)
+  // Use list() to get sensitive flag for each var
+  const allVars = await client.list({ project, environment, service })
 
-  if (Object.keys(vars).length === 0) {
+  if (allVars.length === 0) {
     return { content: [{ type: 'text', text: 'Warning: No variables found' }] }
   }
 
-  const patterns = getSecretPatterns(config)
-  const { plain, secrets } = splitVarsBySecret(vars, patterns)
+  // Split by sensitive flag (no pattern inference)
+  const plain: Record<string, string> = {}
+  const secrets: Record<string, string> = {}
+
+  for (const v of allVars) {
+    if (v.sensitive) {
+      secrets[v.key] = v.value
+    } else {
+      plain[v.key] = v.value
+    }
+  }
 
   // Generate Helm values YAML
   const lines: string[] = [
@@ -80,7 +89,7 @@ export async function handleHelmValuesCall(
     service ? `# Service: ${service}` : null,
     '# DO NOT EDIT - changes will be overwritten',
     '',
-    '# Environment variables (plain)',
+    '# Environment variables (sensitive=false)',
     'env:'
   ].filter(Boolean) as string[]
 
@@ -89,7 +98,7 @@ export async function handleHelmValuesCall(
   }
 
   lines.push('')
-  lines.push('# Secrets (matching patterns, for use with secretKeyRef)')
+  lines.push('# Secrets (sensitive=true)')
   lines.push('secrets:')
 
   for (const [key, value] of Object.entries(secrets)) {

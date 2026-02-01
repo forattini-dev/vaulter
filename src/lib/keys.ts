@@ -436,8 +436,8 @@ async function listKeysInDir(
       }
     }
 
-    // Determine environments based on naming convention
-    const environments = inferEnvironments(name)
+    // Get environments from key name (user explicitly named the key file)
+    const environments = getEnvironmentsFromKeyName(name)
 
     // Get creation time
     let createdAt: Date | undefined
@@ -488,23 +488,21 @@ function detectAlgorithm(privateKeyPem: string): AsymmetricAlgorithm | 'symmetri
 }
 
 /**
- * Infer environments from key name
+ * Get environments from key name (no inference - just returns key name as environment hint)
+ *
+ * This doesn't infer anything - it simply uses the key file name as a hint.
+ * Users explicitly create keys with names like "dev", "prd", "master".
+ * The key name IS the environment designation, not an inference.
  */
-function inferEnvironments(keyName: string): string[] {
-  const commonEnvNames = ['dev', 'stg', 'prd', 'prod', 'staging', 'production', 'sandbox', 'sbx']
-
-  // If key name matches a common env name, it's for that env
-  if (commonEnvNames.includes(keyName.toLowerCase())) {
-    return [keyName.toLowerCase()]
-  }
-
-  // 'master' is typically the fallback for all environments
+function getEnvironmentsFromKeyName(keyName: string): string[] {
+  // 'master' is the convention for fallback/all environments
   if (keyName === 'master' || keyName === 'default') {
-    return ['*'] // All environments
+    return ['*'] // Indicates fallback for all environments
   }
 
-  // Otherwise, unknown
-  return []
+  // Return the key name itself as the environment
+  // User explicitly named the key file after the environment
+  return [keyName.toLowerCase()]
 }
 
 // ============================================================================

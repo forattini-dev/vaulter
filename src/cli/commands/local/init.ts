@@ -1,13 +1,12 @@
 /**
  * vaulter local init
  *
- * Creates the overrides file and optionally pulls base env as a starting point.
+ * Creates the overrides directory structure.
  */
 
 import { findConfigDir } from '../../../lib/config-loader.js'
 import {
-  getOverridesPath,
-  saveOverrides,
+  getServiceDir,
   resolveBaseEnvironment
 } from '../../../lib/local.js'
 import { c, print } from '../../lib/colors.js'
@@ -29,23 +28,24 @@ export async function runLocalInit(context: LocalContext): Promise<void> {
     process.exit(1)
   }
 
-  const overridesPath = getOverridesPath(configDir, service)
+  const serviceDir = getServiceDir(configDir, service)
 
-  if (fs.existsSync(overridesPath)) {
-    print.warning(`Overrides file already exists: ${c.muted(overridesPath)}`)
+  if (fs.existsSync(serviceDir)) {
+    print.warning(`Local overrides directory already exists: ${c.muted(serviceDir)}`)
     ui.log(`Use ${c.command('vaulter local set')} to add overrides`)
     return
   }
 
-  // Create empty overrides file
-  saveOverrides(configDir, {}, service)
+  // Create the directory structure
+  fs.mkdirSync(serviceDir, { recursive: true })
 
   const baseEnv = resolveBaseEnvironment(config)
-  ui.success(`Created overrides file: ${c.muted(overridesPath)}`)
+  ui.success(`Created local directory: ${c.muted(serviceDir)}`)
   ui.log(`Base environment: ${c.highlight(baseEnv)}`)
   ui.log('')
   ui.log(c.header('Next steps:'))
-  ui.log(`  ${c.command('vaulter local set PORT=3001')}     ${c.muted('# Add override')}`)
-  ui.log(`  ${c.command('vaulter local pull --all')}        ${c.muted('# Generate .env files')}`)
-  ui.log(`  ${c.command('vaulter local diff')}              ${c.muted('# See what\'s overridden')}`)
+  ui.log(`  ${c.command('vaulter local set PORT::3001')}     ${c.muted('# Add config')}`)
+  ui.log(`  ${c.command('vaulter local set API_KEY=xxx')}    ${c.muted('# Add secret')}`)
+  ui.log(`  ${c.command('vaulter local pull --all')}         ${c.muted('# Generate .env files')}`)
+  ui.log(`  ${c.command('vaulter local diff')}               ${c.muted('# See what\'s overridden')}`)
 }

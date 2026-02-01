@@ -5,7 +5,7 @@
  */
 
 import type { CLIArgs, VaulterConfig, Environment, ExportFormat } from '../../types.js'
-import { createClientFromConfig } from '../lib/create-client.js'
+import { withClient } from '../lib/create-client.js'
 import { serializeEnv } from '../../lib/env-parser.js'
 import { SHARED_SERVICE } from '../../lib/shared.js'
 import { print } from '../lib/colors.js'
@@ -148,11 +148,7 @@ export async function runExport(context: ExportContext): Promise<void> {
   const scope = isShared ? '__shared__' : (effectiveService || '(no service)')
   ui.verbose(`Exporting ${project}/${scope}/${environment} as ${format}`, verbose)
 
-  const client = await createClientFromConfig({ args, config, project, verbose })
-
-  try {
-    await client.connect()
-
+  await withClient({ args, config, project, verbose }, async (client) => {
     const vars = await client.export(project, environment, effectiveService, { includeShared })
 
     // Format output
@@ -181,7 +177,5 @@ export async function runExport(context: ExportContext): Promise<void> {
     }
 
     ui.output(output)
-  } finally {
-    await client.disconnect()
-  }
+  })
 }

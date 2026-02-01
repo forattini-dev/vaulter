@@ -36,22 +36,34 @@ export async function runLocalStatus(context: LocalContext): Promise<void> {
   ui.log('')
   ui.log(`  Base environment:  ${colorEnv(status.baseEnvironment)}`)
   ui.log('')
+
+  // Shared vars section
   ui.log(c.label('  Shared vars (all services):'))
-  ui.log(`    File:   ${status.sharedExist ? symbols.success : c.muted('○')} ${c.muted(status.sharedPath)}`)
-  ui.log(`    Count:  ${c.highlight(String(status.sharedCount))}`)
+  ui.log(`    Path:    ${status.sharedExist ? symbols.success : c.muted('○')} ${c.muted(status.sharedPath)}`)
+  ui.log(`    Config:  ${c.highlight(String(status.sharedConfigCount))} vars  ${c.muted('(configs.env)')}`)
+  ui.log(`    Secrets: ${c.highlight(String(status.sharedSecretsCount))} vars  ${c.muted('(secrets.env)')}`)
   ui.log('')
-  ui.log(c.label('  Overrides (service-specific):'))
-  ui.log(`    File:   ${status.overridesExist ? symbols.success : c.muted('○')} ${c.muted(status.overridesPath)}`)
-  ui.log(`    Count:  ${c.highlight(String(status.overridesCount))}`)
+
+  // Overrides section
+  const overridesLabel = service
+    ? `  Overrides (service: ${c.highlight(service)}):`
+    : '  Overrides:'
+  ui.log(c.label(overridesLabel))
+  ui.log(`    Path:    ${status.overridesExist ? symbols.success : c.muted('○')} ${c.muted(status.overridesPath)}`)
+  ui.log(`    Config:  ${c.highlight(String(status.overridesConfigCount))} vars  ${c.muted('(configs.env)')}`)
+  ui.log(`    Secrets: ${c.highlight(String(status.overridesSecretsCount))} vars  ${c.muted('(secrets.env)')}`)
   ui.log('')
+
   ui.log(`  Snapshots:         ${c.highlight(String(status.snapshotsCount))}`)
   ui.log('')
 
   if (status.sharedCount === 0 && status.overridesCount === 0) {
     ui.log(c.header('Quick start:'))
-    ui.log(`  ${c.command('vaulter local set --shared DEBUG=true')}  ${c.muted('# shared across all services')}`)
-    ui.log(`  ${c.command('vaulter local set PORT=3001')}            ${c.muted('# service-specific override')}`)
-    ui.log(`  ${c.command('vaulter local pull --all')}               ${c.muted('# generate .env files')}`)
+    ui.log(`  ${c.command('vaulter local set --shared DEBUG::true')}   ${c.muted('# shared config')}`)
+    ui.log(`  ${c.command('vaulter local set --shared TOKEN=xxx')}     ${c.muted('# shared secret')}`)
+    ui.log(`  ${c.command('vaulter local set PORT::3001')}             ${c.muted('# service config')}`)
+    ui.log(`  ${c.command('vaulter local set API_KEY=xxx')}            ${c.muted('# service secret')}`)
+    ui.log(`  ${c.command('vaulter local pull --all')}                 ${c.muted('# generate .env files')}`)
   } else {
     ui.log(`Run ${c.command('vaulter local diff')} to see overrides vs base`)
   }

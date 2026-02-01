@@ -31,7 +31,7 @@ import {
 } from '../secrets-explorer/utils.js'
 import type { DisplayVar } from '../secrets-explorer/types.js'
 
-// Re-export for backwards compatibility
+// Re-export types
 export type { DisplayVar }
 
 // ============================================================================
@@ -123,9 +123,8 @@ async function loadSecrets(
     const isSharedView = service === '[SHARED]'
 
     if (isSharedView) {
-      const sharedPath = cfg.local?.shared
-        ? path.join(process.cwd(), cfg.local.shared)
-        : path.join(process.cwd(), '.vaulter', 'local', 'shared.env')
+      // Unified structure: shared files at .vaulter/local/configs.env
+      const sharedPath = path.join(process.cwd(), '.vaulter', 'local', 'configs.env')
       vars = parseEnvFileToDisplayVars(sharedPath, 'shared')
     } else {
       const envFilePath = findEnvFilePath(cfg, service, servicePath)

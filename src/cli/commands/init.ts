@@ -139,8 +139,8 @@ export async function runInit(context: InitContext): Promise<void> {
   ui.log('')
 
   if (isMonorepo) {
-    ui.log(`  ${yellow('1.')} Copy and fill local secrets:`)
-    ui.log(`     ${c.command('cp .vaulter/local/shared.env.example .vaulter/local/shared.env')}`)
+    ui.log(`  ${yellow('1.')} Edit local secrets in:`)
+    ui.log(`     ${cyan('.vaulter/local/shared/secrets.env')}`)
     ui.log('')
     ui.log(`  ${yellow('2.')} Configure backend in ${cyan('.vaulter/config.yaml')}`)
     ui.log('')
@@ -150,8 +150,8 @@ export async function runInit(context: InitContext): Promise<void> {
     ui.log(`  ${yellow('4.')} Run with env vars loaded:`)
     ui.log(`     ${c.command('vaulter run -s api -- pnpm dev')}`)
   } else {
-    ui.log(`  ${yellow('1.')} Copy and fill local secrets:`)
-    ui.log(`     ${c.command('cp .vaulter/local/.env.example .vaulter/local/.env')}`)
+    ui.log(`  ${yellow('1.')} Edit local secrets in:`)
+    ui.log(`     ${cyan('.vaulter/local/secrets.env')}`)
     ui.log('')
     ui.log(`  ${yellow('2.')} Configure backend in ${cyan('.vaulter/config.yaml')}`)
     ui.log('')

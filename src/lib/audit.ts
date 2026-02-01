@@ -14,7 +14,7 @@ import type {
   AuditConfig
 } from '../types.js'
 
-// Import and re-export maskValue from centralized module for backwards compatibility
+// Re-export maskValue from centralized module
 import { maskValue } from './masking.js'
 export { maskValue }
 

@@ -42,6 +42,12 @@ export async function runLocalGroup(context: LocalContext): Promise<void> {
       break
     }
 
+    case 'push': {
+      const { runLocalPushCommand } = await import('./push.js')
+      await runLocalPushCommand(context)
+      break
+    }
+
     case 'set': {
       const { runLocalSet } = await import('./set.js')
       await runLocalSet(context)
@@ -78,8 +84,9 @@ export async function runLocalGroup(context: LocalContext): Promise<void> {
         ui.log(`${c.label('Usage:')} ${c.command('vaulter local')} ${c.subcommand('<command>')} [options]`)
         ui.log('')
         ui.log(c.header('Commands:'))
-        ui.log(`  ${c.subcommand('init')}      Create overrides file from base env`)
+        ui.log(`  ${c.subcommand('init')}      Create local overrides directory`)
         ui.log(`  ${c.subcommand('pull')}      Base + overrides → .env outputs`)
+        ui.log(`  ${c.subcommand('push')}      Push local overrides to remote (share with team)`)
         ui.log(`  ${c.subcommand('set')}       Add local override (KEY=val KEY2::val2)`)
         ui.log(`  ${c.subcommand('delete')}    Remove local override`)
         ui.log(`  ${c.subcommand('diff')}      Show overrides vs base`)

@@ -351,13 +351,13 @@ export interface ServiceConfig {
  * Local development configuration
  *
  * For developers running services on their local machine.
- * These files are typically gitignored (except templates).
+ * These files are typically gitignored.
  *
- * @example
- * local:
- *   shared: .vaulter/local/shared.env           # All services (gitignored)
- *   shared_example: .vaulter/local/shared.env.example  # Template (committed)
- *   service: .vaulter/local/{service}.env       # Per-service override
+ * Structure (unified for single repo and monorepo):
+ *   .vaulter/local/configs.env     # Shared configs (sensitive=false)
+ *   .vaulter/local/secrets.env     # Shared secrets (sensitive=true)
+ *   .vaulter/local/services/<svc>/configs.env   # Service-specific (monorepo)
+ *   .vaulter/local/services/<svc>/secrets.env   # Service-specific (monorepo)
  */
 export interface LocalConfig {
   /** Single-repo local env file (alias for shared) */
@@ -626,12 +626,8 @@ export interface VaulterConfig {
   snapshots?: SnapshotsConfig
   /** Versioning configuration */
   versioning?: VersioningConfig
-  /** Monorepo services list - legacy */
+  /** Monorepo services list */
   services?: Array<string | ServiceConfig>
-
-  // ============================================================================
-  // New structure (recommended)
-  // ============================================================================
 
   /** Monorepo configuration */
   monorepo?: MonorepoConfig
@@ -851,30 +847,6 @@ export type ExportFormat = 'shell' | 'json' | 'yaml' | 'env' | 'tfvars' | 'docke
 export const EXPORT_FORMATS: ExportFormat[] = ['shell', 'json', 'yaml', 'env', 'tfvars', 'docker-args']
 
 // ============================================================================
-// Secret Detection Patterns
-// ============================================================================
-
-export const DEFAULT_SECRET_PATTERNS = [
-  '*_KEY',
-  '*_SECRET',
-  '*_TOKEN',
-  '*_PASSWORD',
-  '*_CREDENTIAL',
-  '*_PASS',
-  '*_PWD',
-  '*_PRIVATE',
-  '*_CERT',
-  '*_SSL',
-  '*_TLS',
-  '*_ENCRYPT',
-  '*_HASH',
-  '*_SALT',
-  'DATABASE_URL',
-  'REDIS_URL',
-  'MONGODB_URL',
-  'API_KEY',
-  'AUTH_*'
-]
 
 // ============================================================================
 // Audit Logging Types

@@ -4,7 +4,18 @@
  * Local overrides are plaintext, gitignored files that layer on top of
  * a base environment (fetched from the backend). They never touch the backend.
  *
- * Snapshots are timestamped backups of an environment's variables.
+ * STRUCTURE (unified for single repo and monorepo):
+ *
+ * .vaulter/local/
+ * ├── configs.env             # shared configs (sensitive=false)
+ * ├── secrets.env             # shared secrets (sensitive=true)
+ * └── services/               # monorepo only
+ *     ├── web/
+ *     │   ├── configs.env
+ *     │   └── secrets.env
+ *     └── api/
+ *         ├── configs.env
+ *         └── secrets.env
  */
 
 import fs from 'node:fs'
@@ -18,8 +29,8 @@ import type { VaulterConfig } from '../types.js'
 // Constants
 // ============================================================================
 
-const OVERRIDES_FILE = 'overrides.env'
-const SHARED_FILE = 'shared.env'
+const CONFIGS_FILE = 'configs.env'
+const SECRETS_FILE = 'secrets.env'
 
 // ============================================================================
 // Path Helpers
@@ -33,36 +44,67 @@ export function getLocalDir(configDir: string): string {
 }
 
 /**
- * Get the shared.env file path
- * Contains local variables shared across ALL services in monorepo
+ * Get the shared directory path (.vaulter/local/)
+ * Shared configs/secrets are at the root of local dir (not in a subdirectory)
  */
-export function getSharedPath(configDir: string): string {
-  return path.join(getLocalDir(configDir), SHARED_FILE)
+export function getSharedDir(configDir: string): string {
+  return getLocalDir(configDir)
 }
 
 /**
- * Get the overrides file path
- * - Single repo: .vaulter/local/overrides.env
- * - Monorepo: .vaulter/local/overrides.<service>.env
+ * Get path to shared configs.env
  */
-export function getOverridesPath(configDir: string, service?: string): string {
+export function getSharedConfigPath(configDir: string): string {
+  return path.join(getSharedDir(configDir), CONFIGS_FILE)
+}
+
+/**
+ * Get path to shared secrets.env
+ */
+export function getSharedSecretsPath(configDir: string): string {
+  return path.join(getSharedDir(configDir), SECRETS_FILE)
+}
+
+/**
+ * Get the service directory path
+ * - Single repo: returns local dir itself (files at root)
+ * - Monorepo: .vaulter/local/services/<service>/
+ */
+export function getServiceDir(configDir: string, service?: string): string {
   const localDir = getLocalDir(configDir)
   if (service) {
-    return path.join(localDir, `overrides.${service}.env`)
+    return path.join(localDir, 'services', service)
   }
-  return path.join(localDir, OVERRIDES_FILE)
+  // Single repo: files directly in .vaulter/local/
+  return localDir
+}
+
+/**
+ * Get path to service configs.env
+ * - Single repo: .vaulter/local/configs.env
+ * - Monorepo: .vaulter/local/services/<service>/configs.env
+ */
+export function getServiceConfigPath(configDir: string, service?: string): string {
+  return path.join(getServiceDir(configDir, service), CONFIGS_FILE)
+}
+
+/**
+ * Get path to service secrets.env
+ * - Single repo: .vaulter/local/secrets.env
+ * - Monorepo: .vaulter/local/services/<service>/secrets.env
+ */
+export function getServiceSecretsPath(configDir: string, service?: string): string {
+  return path.join(getServiceDir(configDir, service), SECRETS_FILE)
 }
 
 // ============================================================================
-// Local Shared Vars Operations
+// Generic File Operations
 // ============================================================================
 
 /**
- * Load local shared vars from .vaulter/local/shared.env
- * These are LOCAL variables shared across all services (not from backend)
+ * Read an env file if it exists
  */
-export function loadLocalShared(configDir: string): Record<string, string> {
-  const filePath = getSharedPath(configDir)
+function readEnvFile(filePath: string): Record<string, string> {
   if (!fs.existsSync(filePath)) {
     return {}
   }
@@ -71,10 +113,9 @@ export function loadLocalShared(configDir: string): Record<string, string> {
 }
 
 /**
- * Save local shared vars to .vaulter/local/shared.env
+ * Write an env file, creating directories as needed
  */
-export function saveLocalShared(configDir: string, vars: Record<string, string>): void {
-  const filePath = getSharedPath(configDir)
+function writeEnvFile(filePath: string, vars: Record<string, string>): void {
   const dir = path.dirname(filePath)
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true })
@@ -84,85 +125,172 @@ export function saveLocalShared(configDir: string, vars: Record<string, string>)
 }
 
 /**
- * Set a local shared var
+ * Set a variable in an env file
  */
-export function setLocalShared(configDir: string, key: string, value: string): void {
-  const vars = loadLocalShared(configDir)
+function setInFile(filePath: string, key: string, value: string): void {
+  const vars = readEnvFile(filePath)
   vars[key] = value
-  saveLocalShared(configDir, vars)
+  writeEnvFile(filePath, vars)
 }
 
 /**
- * Delete a local shared var
+ * Delete a variable from an env file
+ * Returns true if deleted, false if not found
  */
-export function deleteLocalShared(configDir: string, key: string): boolean {
-  const vars = loadLocalShared(configDir)
+function deleteFromFile(filePath: string, key: string): boolean {
+  const vars = readEnvFile(filePath)
   if (!(key in vars)) {
     return false
   }
   delete vars[key]
-  saveLocalShared(configDir, vars)
+  if (Object.keys(vars).length === 0) {
+    // Remove empty file
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath)
+    }
+  } else {
+    writeEnvFile(filePath, vars)
+  }
   return true
 }
 
 // ============================================================================
-// Overrides Operations
+// Local Shared Vars Operations
 // ============================================================================
 
 /**
- * Load overrides from the local file
+ * Load local shared configs from .vaulter/local/shared/configs.env
+ */
+export function loadLocalSharedConfigs(configDir: string): Record<string, string> {
+  return readEnvFile(getSharedConfigPath(configDir))
+}
+
+/**
+ * Load local shared secrets from .vaulter/local/shared/secrets.env
+ */
+export function loadLocalSharedSecrets(configDir: string): Record<string, string> {
+  return readEnvFile(getSharedSecretsPath(configDir))
+}
+
+/**
+ * Load ALL local shared vars (configs + secrets merged)
+ */
+export function loadLocalShared(configDir: string): Record<string, string> {
+  const configs = loadLocalSharedConfigs(configDir)
+  const secrets = loadLocalSharedSecrets(configDir)
+  return { ...configs, ...secrets }
+}
+
+/**
+ * Set a local shared var (routes to config or secrets based on sensitive flag)
+ */
+export function setLocalShared(configDir: string, key: string, value: string, sensitive = false): void {
+  if (sensitive) {
+    setInFile(getSharedSecretsPath(configDir), key, value)
+    // Also delete from config if exists (to avoid duplicates)
+    deleteFromFile(getSharedConfigPath(configDir), key)
+  } else {
+    setInFile(getSharedConfigPath(configDir), key, value)
+    // Also delete from secrets if exists (to avoid duplicates)
+    deleteFromFile(getSharedSecretsPath(configDir), key)
+  }
+}
+
+/**
+ * Delete a local shared var (from both config and secrets)
+ */
+export function deleteLocalShared(configDir: string, key: string): boolean {
+  const deletedConfig = deleteFromFile(getSharedConfigPath(configDir), key)
+  const deletedSecrets = deleteFromFile(getSharedSecretsPath(configDir), key)
+  return deletedConfig || deletedSecrets
+}
+
+// ============================================================================
+// Service/Default Overrides Operations
+// ============================================================================
+
+/**
+ * Load service configs
+ * - Single repo: .vaulter/local/configs.env
+ * - Monorepo: .vaulter/local/services/<svc>/configs.env
+ */
+export function loadServiceConfigs(configDir: string, service?: string): Record<string, string> {
+  return readEnvFile(getServiceConfigPath(configDir, service))
+}
+
+/**
+ * Load service secrets
+ * - Single repo: .vaulter/local/secrets.env
+ * - Monorepo: .vaulter/local/services/<svc>/secrets.env
+ */
+export function loadServiceSecrets(configDir: string, service?: string): Record<string, string> {
+  return readEnvFile(getServiceSecretsPath(configDir, service))
+}
+
+/**
+ * Load ALL overrides (configs + secrets merged)
  */
 export function loadOverrides(configDir: string, service?: string): Record<string, string> {
-  const filePath = getOverridesPath(configDir, service)
-  if (!fs.existsSync(filePath)) {
-    return {}
-  }
-  const content = fs.readFileSync(filePath, 'utf-8')
-  return parseEnvString(content, { expand: false })
+  const configs = loadServiceConfigs(configDir, service)
+  const secrets = loadServiceSecrets(configDir, service)
+  return { ...configs, ...secrets }
 }
 
 /**
- * Save overrides to the local file
+ * Set a single override (routes to config or secrets based on sensitive flag)
  */
-export function saveOverrides(configDir: string, overrides: Record<string, string>, service?: string): void {
-  const filePath = getOverridesPath(configDir, service)
-  const dir = path.dirname(filePath)
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true })
+export function setOverride(configDir: string, key: string, value: string, service?: string, sensitive = false): void {
+  if (sensitive) {
+    setInFile(getServiceSecretsPath(configDir, service), key, value)
+    // Also delete from config if exists (to avoid duplicates)
+    deleteFromFile(getServiceConfigPath(configDir, service), key)
+  } else {
+    setInFile(getServiceConfigPath(configDir, service), key, value)
+    // Also delete from secrets if exists (to avoid duplicates)
+    deleteFromFile(getServiceSecretsPath(configDir, service), key)
   }
-  const content = formatEnvFile(overrides)
-  fs.writeFileSync(filePath, content, 'utf-8')
 }
 
 /**
- * Set a single override (adds or updates)
- */
-export function setOverride(configDir: string, key: string, value: string, service?: string): void {
-  const overrides = loadOverrides(configDir, service)
-  overrides[key] = value
-  saveOverrides(configDir, overrides, service)
-}
-
-/**
- * Delete a single override
+ * Delete a single override (from both config and secrets)
  */
 export function deleteOverride(configDir: string, key: string, service?: string): boolean {
-  const overrides = loadOverrides(configDir, service)
-  if (!(key in overrides)) {
-    return false
-  }
-  delete overrides[key]
-  saveOverrides(configDir, overrides, service)
-  return true
+  const deletedConfig = deleteFromFile(getServiceConfigPath(configDir, service), key)
+  const deletedSecrets = deleteFromFile(getServiceSecretsPath(configDir, service), key)
+  return deletedConfig || deletedSecrets
 }
 
 /**
- * Reset (clear) all overrides
+ * Reset (clear) all overrides for a service
  */
 export function resetOverrides(configDir: string, service?: string): void {
-  const filePath = getOverridesPath(configDir, service)
-  if (fs.existsSync(filePath)) {
-    fs.unlinkSync(filePath)
+  const configPath = getServiceConfigPath(configDir, service)
+  const secretsPath = getServiceSecretsPath(configDir, service)
+  if (fs.existsSync(configPath)) fs.unlinkSync(configPath)
+  if (fs.existsSync(secretsPath)) fs.unlinkSync(secretsPath)
+
+  // Clean up empty service directory (only for monorepo, not single repo root)
+  if (service) {
+    const serviceDir = getServiceDir(configDir, service)
+    if (fs.existsSync(serviceDir) && fs.readdirSync(serviceDir).length === 0) {
+      fs.rmdirSync(serviceDir)
+    }
+  }
+}
+
+/**
+ * Reset (clear) all shared vars
+ */
+export function resetShared(configDir: string): void {
+  const configPath = getSharedConfigPath(configDir)
+  const secretsPath = getSharedSecretsPath(configDir)
+  if (fs.existsSync(configPath)) fs.unlinkSync(configPath)
+  if (fs.existsSync(secretsPath)) fs.unlinkSync(secretsPath)
+
+  // Clean up empty directory
+  const sharedDir = getSharedDir(configDir)
+  if (fs.existsSync(sharedDir) && fs.readdirSync(sharedDir).length === 0) {
+    fs.rmdirSync(sharedDir)
   }
 }
 
@@ -184,8 +312,8 @@ export function mergeWithOverrides(
 /**
  * Full merge for local pull:
  * 1. Backend vars (base)
- * 2. Local shared vars (from .vaulter/local/shared.env)
- * 3. Service-specific overrides (from .vaulter/local/overrides.<service>.env)
+ * 2. Local shared vars (from .vaulter/local/shared/)
+ * 3. Service-specific overrides (from .vaulter/local/[default|services/<svc>]/)
  *
  * Priority: overrides > localShared > backend
  */
@@ -243,14 +371,28 @@ export function diffOverrides(
 // ============================================================================
 
 export interface LocalStatusResult {
-  /** Path to shared.env */
+  // Shared vars info
+  /** Path to shared directory */
   sharedPath: string
   sharedExist: boolean
+  /** Total shared var count */
   sharedCount: number
-  /** Path to overrides file */
+  /** Shared config count */
+  sharedConfigCount: number
+  /** Shared secrets count */
+  sharedSecretsCount: number
+
+  // Service overrides info
+  /** Path to service directory */
   overridesPath: string
   overridesExist: boolean
+  /** Total overrides count */
   overridesCount: number
+  /** Service config count */
+  overridesConfigCount: number
+  /** Service secrets count */
+  overridesSecretsCount: number
+
   baseEnvironment: string
   snapshotsCount: number
 }
@@ -263,23 +405,30 @@ export function getLocalStatus(
   config: VaulterConfig,
   service?: string
 ): LocalStatusResult {
-  const sharedPath = getSharedPath(configDir)
-  const sharedExist = fs.existsSync(sharedPath)
-  const localShared = sharedExist ? loadLocalShared(configDir) : {}
-
-  const overridesPath = getOverridesPath(configDir, service)
-  const overridesExist = fs.existsSync(overridesPath)
-  const overrides = overridesExist ? loadOverrides(configDir, service) : {}
   const baseEnvironment = resolveBaseEnvironment(config)
   const snapshotsCount = getSnapshotCount(configDir)
 
+  const sharedConfigs = loadLocalSharedConfigs(configDir)
+  const sharedSecrets = loadLocalSharedSecrets(configDir)
+  const sharedConfigCount = Object.keys(sharedConfigs).length
+  const sharedSecretsCount = Object.keys(sharedSecrets).length
+
+  const serviceConfigs = loadServiceConfigs(configDir, service)
+  const serviceSecrets = loadServiceSecrets(configDir, service)
+  const overridesConfigCount = Object.keys(serviceConfigs).length
+  const overridesSecretsCount = Object.keys(serviceSecrets).length
+
   return {
-    sharedPath,
-    sharedExist,
-    sharedCount: Object.keys(localShared).length,
-    overridesPath,
-    overridesExist,
-    overridesCount: Object.keys(overrides).length,
+    sharedPath: getSharedDir(configDir),
+    sharedExist: sharedConfigCount > 0 || sharedSecretsCount > 0,
+    sharedCount: sharedConfigCount + sharedSecretsCount,
+    sharedConfigCount,
+    sharedSecretsCount,
+    overridesPath: getServiceDir(configDir, service),
+    overridesExist: overridesConfigCount > 0 || overridesSecretsCount > 0,
+    overridesCount: overridesConfigCount + overridesSecretsCount,
+    overridesConfigCount,
+    overridesSecretsCount,
     baseEnvironment,
     snapshotsCount
   }
@@ -295,3 +444,4 @@ export function getLocalStatus(
 export function resolveBaseEnvironment(config: VaulterConfig): string {
   return config.default_environment || 'dev'
 }
+

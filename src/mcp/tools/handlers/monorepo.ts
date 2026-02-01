@@ -5,7 +5,6 @@
  */
 
 import { VaulterClient } from '../../../client.js'
-import { getSecretPatterns, splitVarsBySecret } from '../../../lib/secret-patterns.js'
 import { createAuditLogger } from '../../../lib/audit.js'
 import {
   SHARED_SERVICE,
@@ -21,29 +20,30 @@ import type { ToolResponse } from '../config.js'
  */
 export async function handleCategorizeVarsCall(
   client: VaulterClient,
-  config: VaulterConfig | null,
+  _config: VaulterConfig | null,
   project: string,
   environment: Environment,
   service: string | undefined
 ): Promise<ToolResponse> {
   const vars = await client.list({ project, environment, service })
-  const patterns = getSecretPatterns(config)
 
-  // Convert EnvVar[] to Record<string, string>
-  const varsRecord: Record<string, string> = {}
+  // Split by sensitive flag (no pattern inference)
+  const secretKeys: string[] = []
+  const configKeys: string[] = []
+
   for (const v of vars) {
-    varsRecord[v.key] = v.value
+    if (v.sensitive) {
+      secretKeys.push(v.key)
+    } else {
+      configKeys.push(v.key)
+    }
   }
-
-  const { secrets, plain } = splitVarsBySecret(varsRecord, patterns)
-  const secretKeys = Object.keys(secrets)
-  const plainKeys = Object.keys(plain)
 
   const lines = [
     `Variable Categorization for ${project}/${environment}${service ? `/${service}` : ''}`,
     '',
     `SECRETS (${secretKeys.length} variables):`,
-    '  (Should be encrypted and kept in secrets directory)'
+    '  (sensitive=true, encrypted)'
   ]
 
   for (const key of secretKeys) {
@@ -51,21 +51,16 @@ export async function handleCategorizeVarsCall(
   }
 
   lines.push('')
-  lines.push(`CONFIGS (${plainKeys.length} variables):`)
-  lines.push('  (Can be committed to git)')
+  lines.push(`CONFIGS (${configKeys.length} variables):`)
+  lines.push('  (sensitive=false, plain config)')
 
-  for (const key of plainKeys) {
+  for (const key of configKeys) {
     lines.push(`  • ${key}`)
   }
 
   lines.push('')
-  lines.push('Based on patterns:')
-  for (const p of patterns.slice(0, 5)) {
-    lines.push(`  ${p}`)
-  }
-  if (patterns.length > 5) {
-    lines.push(`  ... and ${patterns.length - 5} more`)
-  }
+  lines.push('Note: Category is based on the sensitive flag set when the variable was created.')
+  lines.push('Use KEY=value for secrets, KEY::value for configs.')
 
   return { content: [{ type: 'text', text: lines.join('\n') }] }
 }

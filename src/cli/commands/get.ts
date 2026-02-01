@@ -6,7 +6,7 @@
  */
 
 import type { CLIArgs, VaulterConfig, Environment } from '../../types.js'
-import { createClientFromConfig } from '../lib/create-client.js'
+import { withClient } from '../lib/create-client.js'
 import { c, symbols, colorEnv, print } from '../lib/colors.js'
 import { SHARED_SERVICE, formatSource } from '../../lib/shared.js'
 import * as ui from '../ui.js'
@@ -57,11 +57,7 @@ export async function runGet(context: GetContext): Promise<void> {
   const scope = isShared ? c.env('shared') : c.service(service || '(no service)')
   ui.verbose(`${symbols.info} Getting ${c.key(key)} for ${c.project(project)}/${scope}/${colorEnv(environment)}`, verbose)
 
-  const client = await createClientFromConfig({ args, config, project, verbose })
-
-  try {
-    await client.connect()
-
+  await withClient({ args, config, project, verbose }, async (client) => {
     // Handle version request
     if (requestedVersion !== undefined) {
       const versionInfo = await client.getVersion(key, project, environment, requestedVersion, effectiveService)
@@ -141,7 +137,5 @@ export async function runGet(context: GetContext): Promise<void> {
       // Output just the value for easy piping
       ui.output(envVar.value)
     }
-  } finally {
-    await client.disconnect()
-  }
+  })
 }
