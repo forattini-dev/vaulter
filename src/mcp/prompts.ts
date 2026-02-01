@@ -3,7 +3,7 @@
  *
  * Pre-configured prompt templates for common workflows
  *
- * Prompts (12):
+ * Prompts (13):
  *   setup_project           → Initialize a new vaulter project
  *   migrate_dotenv          → Migrate existing .env files to vaulter
  *   deploy_secrets          → Deploy secrets to Kubernetes
@@ -16,6 +16,7 @@
  *   sync_workflow           → Sync local files with remote backend (diff/push/pull/merge)
  *   monorepo_deploy         → Complete monorepo setup with isolation guarantees
  *   local_overrides_workflow → Manage local dev overrides (configs.env + secrets.env)
+ *   development_workflow    → Daily development workflow: backend sync, local overrides, env promotion
  */
 
 import type { Prompt, GetPromptResult } from '@modelcontextprotocol/sdk/types.js'
@@ -296,6 +297,27 @@ export function registerPrompts(): Prompt[] {
           required: false
         }
       ]
+    },
+    {
+      name: 'development_workflow',
+      description: 'Daily development workflow guide: backend as source of truth, local overrides for personal dev, environment promotion (dev → stg → prd).',
+      arguments: [
+        {
+          name: 'stage',
+          description: 'Workflow stage: "start" (pull from backend), "develop" (local overrides), "push" (sync to backend), "promote" (clone to next env), "team" (onboard new member)',
+          required: true
+        },
+        {
+          name: 'environment',
+          description: 'Environment: dev, stg, prd',
+          required: false
+        },
+        {
+          name: 'service',
+          description: 'Service name for monorepo workflows',
+          required: false
+        }
+      ]
     }
   ]
 }
@@ -329,6 +351,8 @@ export function getPrompt(name: string, args: Record<string, string>): GetPrompt
       return getMonorepoDeployPrompt(args)
     case 'local_overrides_workflow':
       return getLocalOverridesWorkflowPrompt(args)
+    case 'development_workflow':
+      return getDevelopmentWorkflowPrompt(args)
     default:
       throw new Error(`Unknown prompt: ${name}`)
   }
@@ -1606,6 +1630,244 @@ Summary: 1 new, 1 modified, 10 base-only
 - **Use shared for** common dev settings (DEBUG, LOG_LEVEL)
 - **Use overrides for** per-service customization (PORT, specific URLs)
 - **Pull generates section-aware .env** - your custom vars are preserved`
+        }
+      }
+    ]
+  }
+}
+
+function getDevelopmentWorkflowPrompt(args: Record<string, string>): GetPromptResult {
+  const stage = args.stage || 'start'
+  const environment = args.environment || 'dev'
+  const service = args.service || ''
+
+  return {
+    description: `Development workflow: ${stage}`,
+    messages: [
+      {
+        role: 'user',
+        content: {
+          type: 'text',
+          text: `Help me with the development workflow.
+
+## 🎯 The Golden Rule
+
+> **Backend is the source of truth. Everything syncs via backend.**
+
+---
+
+${stage === 'start' ? `## Start of Day: Pull from Backend
+
+I'm starting work. Help me pull the latest variables from the backend.
+
+**Environment:** ${environment}
+${service ? `**Service:** ${service}` : ''}
+
+Please:
+
+1. **Check backend status** using \`vaulter_doctor\`:
+   \`\`\`json
+   { "environment": "${environment}" }
+   \`\`\`
+
+2. **List what's in the backend**:
+   \`\`\`json
+   { "environment": "${environment}", "showValues": false }
+   \`\`\`
+
+3. **Pull and generate .env files**:
+   \`\`\`json
+   { "all": true }
+   \`\`\`
+
+4. **Show local status** to confirm:
+   \`\`\`json
+   { }
+   \`\`\`
+
+This will:
+- Fetch all variables from the backend
+- Apply any local overrides you have
+- Generate .env files for all output targets
+` : ''}
+
+${stage === 'develop' ? `## During Development: Add Local Overrides
+
+I need to customize variables for my local development without affecting the backend.
+
+**Environment:** ${environment}
+${service ? `**Service:** ${service}` : ''}
+
+Please help me:
+
+1. **Understand local overrides structure:**
+   \`\`\`
+   .vaulter/local/
+   ├── configs.env     # Non-sensitive (DEBUG, LOG_LEVEL)
+   ├── secrets.env     # Sensitive (API_KEY for testing)
+   └── services/       # Per-service overrides
+       └── ${service || '<service>'}/
+           ├── configs.env
+           └── secrets.env
+   \`\`\`
+
+2. **Show current local state**:
+   \`\`\`json
+   // vaulter_local_status
+   { }
+   \`\`\`
+
+3. **Example: Add shared override (applies to all services)**:
+   \`\`\`json
+   // vaulter_local_shared_set
+   { "key": "DEBUG", "value": "true" }
+   \`\`\`
+
+4. **Example: Add service-specific override**:
+   \`\`\`json
+   // vaulter_local_set
+   { "key": "PORT", "value": "3001", "service": "${service || 'web'}" }
+   \`\`\`
+
+5. **Regenerate .env files with overrides**:
+   \`\`\`json
+   // vaulter_local_pull
+   { "all": true }
+   \`\`\`
+
+**Merge order:** backend < local shared < service overrides
+` : ''}
+
+${stage === 'push' ? `## Push Changes to Backend
+
+I have new variables that should be shared with the team via the backend.
+
+**Environment:** ${environment}
+
+Please:
+
+1. **Preview differences** between local and backend:
+   \`\`\`json
+   // vaulter_diff
+   { "environment": "${environment}", "showValues": true }
+   \`\`\`
+
+   Symbols:
+   - \`+\` Local only (will be pushed)
+   - \`-\` Remote only (will remain or be deleted with prune)
+   - \`~\` Different values (local wins on push)
+   - \`=\` Identical (no action)
+
+2. **Push to backend** (dry run first):
+   \`\`\`json
+   // vaulter_push
+   { "environment": "${environment}", "dryRun": true }
+   \`\`\`
+
+3. **Execute push**:
+   \`\`\`json
+   // vaulter_push
+   { "environment": "${environment}", "dryRun": false }
+   \`\`\`
+
+4. **Verify** the push:
+   \`\`\`json
+   // vaulter_diff
+   { "environment": "${environment}" }
+   \`\`\`
+
+**Note:** Local overrides in \`.vaulter/local/\` are NOT pushed. They're personal.
+` : ''}
+
+${stage === 'promote' ? `## Promote to Next Environment
+
+I need to promote variables from ${environment} to the next environment.
+
+**Source:** ${environment}
+**Target:** ${environment === 'dev' ? 'stg' : environment === 'stg' ? 'prd' : 'stg'}
+
+Please:
+
+1. **Compare environments**:
+   \`\`\`json
+   // vaulter_compare
+   { "source": "${environment}", "target": "${environment === 'dev' ? 'stg' : 'prd'}" }
+   \`\`\`
+
+2. **Clone (dry run first)**:
+   \`\`\`json
+   // vaulter_clone_env
+   { "source": "${environment}", "target": "${environment === 'dev' ? 'stg' : 'prd'}", "dryRun": true }
+   \`\`\`
+
+3. **Execute clone**:
+   \`\`\`json
+   // vaulter_clone_env
+   { "source": "${environment}", "target": "${environment === 'dev' ? 'stg' : 'prd'}" }
+   \`\`\`
+
+4. **Update environment-specific values**:
+   After cloning, some values need to be different per environment:
+   - DATABASE_URL → different host/credentials
+   - LOG_LEVEL → debug (dev), info (stg), error (prd)
+   - NODE_ENV → development, staging, production
+
+   \`\`\`json
+   // vaulter_multi_set
+   {
+     "variables": [
+       { "key": "LOG_LEVEL", "value": "${environment === 'dev' ? 'info' : 'error'}", "sensitive": false }
+     ],
+     "environment": "${environment === 'dev' ? 'stg' : 'prd'}",
+     "shared": true
+   }
+   \`\`\`
+` : ''}
+
+${stage === 'team' ? `## Team Onboarding
+
+Help a new team member get set up with vaulter.
+
+Please guide them through:
+
+1. **Clone the repository** (contains \`.vaulter/config.yaml\`)
+
+2. **Get the encryption key** from a team member (securely, NOT via git!)
+   - Ask team lead for the key
+   - Set as environment variable:
+   \`\`\`bash
+   export VAULTER_KEY_DEV=<key-from-team>
+   \`\`\`
+
+3. **Verify setup**:
+   \`\`\`json
+   // vaulter_doctor
+   { "environment": "dev" }
+   \`\`\`
+
+4. **Pull from backend**:
+   \`\`\`json
+   // vaulter_local_pull
+   { "all": true }
+   \`\`\`
+
+5. **Check generated .env files** in the output directories
+
+**Key points for new members:**
+- Backend is source of truth (not git for variables)
+- Local overrides are personal (not shared)
+- Never commit .env files
+- If you add a new variable, push it to backend
+- Then notify team to pull: \`vaulter local pull --all\`
+` : ''}
+
+---
+
+## 📚 Related Resources
+
+- \`vaulter://workflow\` - Full workflow documentation
+- \`vaulter://instructions\` - How vaulter works
+- \`vaulter://tools-guide\` - Which tool for each scenario`
         }
       }
     ]

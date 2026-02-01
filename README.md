@@ -36,6 +36,127 @@ eval $(vaulter export shell -e dev)                   # Export to shell
 
 ---
 
+## 🔄 Development Workflow
+
+Vaulter follows a **backend-sync** workflow where the backend is the source of truth and local overrides are for personal customization.
+
+### The Golden Rule
+
+> **Backend is the source of truth. Everything syncs via backend.**
+
+| Component | Git Status | Purpose |
+|:----------|:-----------|:--------|
+| **`.vaulter/config.yaml`** | ✅ Committed | Project configuration |
+| **`.vaulter/local/*`** | ❌ Gitignored | Personal local overrides |
+| **`*.env` files** | ❌ Gitignored | Generated outputs |
+
+### Directory Structure
+
+```
+.vaulter/
+├── config.yaml              # ✅ Committed - Project config
+└── local/                   # ❌ Gitignored - Personal overrides
+    ├── configs.env          # Non-sensitive overrides (DEBUG, PORT)
+    ├── secrets.env          # Sensitive overrides (test API keys)
+    └── services/            # Monorepo per-service overrides
+        └── api/
+            ├── configs.env
+            └── secrets.env
+
+apps/web/.env                # ❌ Gitignored - Generated output
+apps/api/.env                # ❌ Gitignored - Generated output
+```
+
+### .gitignore Setup
+
+```gitignore
+# Vaulter - only commit config.yaml
+.vaulter/local/
+*.env
+.env.*
+```
+
+### Daily Workflow
+
+```bash
+# 1. Start: Pull latest from backend + apply your local overrides
+vaulter local pull --all
+
+# 2. Work: Add personal overrides (not shared with team)
+vaulter local set DEBUG::true                  # Shared override
+vaulter local set PORT::3001 -s api            # Service-specific
+
+# 3. Add new variable for team? Push to backend
+vaulter set NEW_VAR=value -e dev               # Add to backend
+vaulter sync push -e dev                       # Or push local .env
+
+# 4. Check: See what's different
+vaulter diff -e dev                            # Local vs backend
+
+# 5. Promote: Clone to staging/production
+vaulter clone dev stg --dry-run                # Preview
+vaulter clone dev stg                          # Execute
+```
+
+### Environment Promotion Flow
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     DEVELOPMENT WORKFLOW                         │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│   LOCAL (.vaulter/local/)      ◄── Personal only (gitignored)   │
+│   ├── configs.env                                               │
+│   └── secrets.env                                               │
+│          │                                                       │
+│          │ merged on `vaulter local pull`                       │
+│          ▼                                                       │
+│                                                                  │
+│   BACKEND (S3/MinIO)           ◄── Source of truth (synced)     │
+│   ├── dev/  ──────────────────────────────────────────────┐     │
+│   │   └── all vars (encrypted)                            │     │
+│   │                                                       │     │
+│   ├── stg/  ◄─────── vaulter clone dev stg ──────────────┤     │
+│   │   └── all vars (encrypted)                            │     │
+│   │                                                       │     │
+│   └── prd/  ◄─────── vaulter clone stg prd ──────────────┘     │
+│       └── all vars (encrypted)                                   │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Team Collaboration
+
+**New team member setup:**
+```bash
+git clone <repo>                    # Gets .vaulter/config.yaml
+export VAULTER_KEY_DEV=<from-team>  # Get key securely from team
+vaulter local pull --all            # Generates .env files from backend
+```
+
+**Sharing a new variable:**
+```bash
+# 1. Add to backend
+vaulter set NEW_FEATURE=enabled -e dev
+
+# 2. Notify team
+# "New var added, run: vaulter local pull --all"
+```
+
+### MCP Tools for Workflow
+
+| Task | Tool |
+|:-----|:-----|
+| Check health | `vaulter_doctor` |
+| Pull with overrides | `vaulter_local_pull all=true` |
+| Set shared override | `vaulter_local_shared_set key="DEBUG" value="true"` |
+| Set service override | `vaulter_local_set key="PORT" value="3001" service="api"` |
+| See differences | `vaulter_local_diff` |
+| Clone environment | `vaulter_clone_env source="dev" target="stg"` |
+| Compare environments | `vaulter_compare source="dev" target="prd"` |
+
+---
+
 ## What is Vaulter?
 
 Vaulter is an **opinionated organizer** for your environment variables. It uses [dotenv](https://github.com/motdotla/dotenv) under the hood for parsing `.env` files - we don't reinvent the wheel, we just add structure.

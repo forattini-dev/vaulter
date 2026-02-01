@@ -5,8 +5,9 @@
  * Resources provide static/cached data that doesn't require input parameters.
  * For actions that require input, use Tools instead.
  *
- * Resources (6 types - no redundancy with tools):
+ * Resources (7 types - no redundancy with tools):
  *   vaulter://instructions     → CRITICAL: How vaulter works (READ THIS FIRST!)
+ *   vaulter://workflow         → Development workflow: local-first, configs committed, secrets gitignored
  *   vaulter://tools-guide      → Guide on which tools to use for each scenario
  *   vaulter://monorepo-example → Complete example of monorepo isolation
  *   vaulter://mcp-config       → MCP configuration with sources
@@ -28,8 +29,9 @@ import { findConfigDir } from '../lib/config-loader.js'
 /**
  * Parse a vaulter:// URI
  *
- * Supported formats (6 resources - no redundancy with tools):
+ * Supported formats (7 resources - no redundancy with tools):
  *   vaulter://instructions     → How vaulter works (critical!)
+ *   vaulter://workflow         → Development workflow (local-first, configs committed, secrets gitignored)
  *   vaulter://tools-guide      → Guide on which tools to use
  *   vaulter://monorepo-example → Complete monorepo isolation example
  *   vaulter://mcp-config       → MCP configuration sources
@@ -38,6 +40,7 @@ import { findConfigDir } from '../lib/config-loader.js'
  */
 type ParsedUri =
   | { type: 'instructions' }
+  | { type: 'workflow' }
   | { type: 'tools-guide' }
   | { type: 'monorepo-example' }
   | { type: 'mcp-config' }
@@ -49,6 +52,11 @@ function parseResourceUri(uri: string): ParsedUri {
   // vaulter://instructions (CRITICAL - must read first!)
   if (uri === 'vaulter://instructions') {
     return { type: 'instructions' }
+  }
+
+  // vaulter://workflow (development workflow)
+  if (uri === 'vaulter://workflow') {
+    return { type: 'workflow' }
   }
 
   // vaulter://tools-guide
@@ -125,7 +133,7 @@ function discoverServices(rootDir: string): Array<{ name: string; path: string; 
 
 /**
  * List available resources
- * Returns 6 static resources (no redundancy with tools)
+ * Returns 7 static resources (no redundancy with tools)
  */
 export async function listResources(): Promise<Resource[]> {
   const resources: Resource[] = []
@@ -135,6 +143,14 @@ export async function listResources(): Promise<Resource[]> {
     uri: 'vaulter://instructions',
     name: '⚠️ CRITICAL: How Vaulter Works',
     description: 'IMPORTANT: Read this FIRST before using any vaulter tools. Explains how data is stored and what NOT to do.',
+    mimeType: 'text/markdown'
+  })
+
+  // Development Workflow - local-first development with backend sync
+  resources.push({
+    uri: 'vaulter://workflow',
+    name: 'Development Workflow',
+    description: 'Local-first development workflow: work with local overrides, sync with backend, promote to other environments.',
     mimeType: 'text/markdown'
   })
 
@@ -188,12 +204,14 @@ export async function handleResourceRead(uri: string): Promise<{ contents: Array
   const parsed = parseResourceUri(uri)
 
   if (!parsed) {
-    throw new Error(`Invalid resource URI: ${uri}. Valid resources: vaulter://instructions, vaulter://tools-guide, vaulter://monorepo-example, vaulter://mcp-config, vaulter://config, vaulter://services. For keys/env/compare, use the corresponding tools instead.`)
+    throw new Error(`Invalid resource URI: ${uri}. Valid resources: vaulter://instructions, vaulter://workflow, vaulter://tools-guide, vaulter://monorepo-example, vaulter://mcp-config, vaulter://config, vaulter://services. For keys/env/compare, use the corresponding tools instead.`)
   }
 
   switch (parsed.type) {
     case 'instructions':
       return handleInstructionsRead(uri)
+    case 'workflow':
+      return handleWorkflowRead(uri)
     case 'tools-guide':
       return handleToolsGuideRead(uri)
     case 'monorepo-example':
@@ -486,6 +504,226 @@ Backend resolution priority (first match wins):
       uri,
       mimeType: 'text/markdown',
       text: instructions
+    }]
+  }
+}
+
+/**
+ * Read workflow resource - Development workflow with backend sync
+ */
+async function handleWorkflowRead(uri: string): Promise<{ contents: Array<{ uri: string; mimeType: string; text: string }> }> {
+  const workflow = `# Development Workflow
+
+## 🎯 The Golden Rule
+
+> **Backend is the source of truth. Everything syncs via backend.**
+
+- ✅ **Sync** all variables (configs + secrets) via backend
+- ✅ **Local overrides** for personal dev customization (gitignored)
+- ❌ **Never** commit secrets or local overrides to git
+
+---
+
+## 📁 Directory Structure
+
+\`\`\`
+.vaulter/
+├── config.yaml         # Project config (committed to git)
+└── local/              # Local overrides (GITIGNORED)
+    ├── configs.env     # Non-sensitive overrides
+    ├── secrets.env     # Sensitive overrides
+    └── services/       # Monorepo per-service overrides
+        └── <service>/
+            ├── configs.env
+            └── secrets.env
+
+apps/web/.env           # Generated output (GITIGNORED)
+apps/api/.env           # Generated output (GITIGNORED)
+\`\`\`
+
+**What to commit:**
+- \`.vaulter/config.yaml\` - Project configuration
+- \`.gitignore\` rules for everything else
+
+**What to gitignore:**
+- \`.vaulter/local/\` - Personal local overrides
+- \`*.env\` files - Generated outputs
+- \`.env.*\` files - All env files
+
+---
+
+## 🔄 Daily Workflow
+
+### 1. Start of Day: Pull from Backend
+
+\`\`\`bash
+# See what's in the backend
+vaulter list -e dev
+
+# Pull and generate .env files
+vaulter local pull --all
+\`\`\`
+
+**MCP Tools:**
+\`\`\`
+vaulter_list environment="dev"
+vaulter_local_pull all=true
+\`\`\`
+
+### 2. During Development: Add Local Overrides
+
+Need to customize something for your local dev?
+
+\`\`\`bash
+# Shared override (applies to all services)
+vaulter local set DEBUG::true           # config (non-sensitive)
+vaulter local set API_KEY=test-key      # secret (sensitive)
+
+# Service-specific override (monorepo)
+vaulter local set PORT::3001 -s web
+vaulter local set DB_HOST::localhost -s api
+\`\`\`
+
+**MCP Tools:**
+\`\`\`
+vaulter_local_shared_set key="DEBUG" value="true"
+vaulter_local_set key="PORT" value="3001" service="web"
+\`\`\`
+
+### 3. Regenerate .env Files
+
+After adding overrides, regenerate your .env files:
+
+\`\`\`bash
+vaulter local pull --all
+\`\`\`
+
+The merge order is: **backend < local shared < service overrides**
+
+### 4. Push Changes to Backend
+
+When you have new variables that should be in the backend:
+
+\`\`\`bash
+# Preview what will change
+vaulter diff -e dev
+
+# Push to backend
+vaulter push -e dev
+
+# Or sync bidirectionally
+vaulter sync merge -e dev
+\`\`\`
+
+**MCP Tools:**
+\`\`\`
+vaulter_diff environment="dev" showValues=true
+vaulter_push environment="dev" dryRun=true
+\`\`\`
+
+---
+
+## 🚀 Environment Promotion
+
+\`\`\`
+    ┌─────────┐    clone     ┌─────────┐    clone     ┌─────────┐
+    │   dev   │ ──────────▶  │   stg   │ ──────────▶  │   prd   │
+    └─────────┘              └─────────┘              └─────────┘
+         │                        │                        │
+         │ develop                │ test                   │ production
+         │ iterate                │ validate               │ deploy
+         ▼                        ▼                        ▼
+    local overrides          test values            prod values
+\`\`\`
+
+### Clone Environment
+
+\`\`\`bash
+# Preview first
+vaulter clone dev stg --dry-run
+
+# Execute
+vaulter clone dev stg
+\`\`\`
+
+**MCP Tools:**
+\`\`\`
+vaulter_clone_env source="dev" target="stg" dryRun=true
+vaulter_clone_env source="dev" target="stg"
+\`\`\`
+
+### Update Environment-Specific Values
+
+After cloning, update values that differ per environment:
+
+\`\`\`bash
+# Update stg-specific values
+vaulter set DATABASE_URL=postgres://stg-db/app -e stg --shared
+vaulter set LOG_LEVEL::info -e stg --shared
+\`\`\`
+
+---
+
+## 👥 Team Collaboration
+
+### New Team Member Setup
+
+1. Clone the repo (gets \`.vaulter/config.yaml\`)
+2. Get encryption key from team (securely, not via git!)
+3. Set environment variable: \`export VAULTER_KEY_DEV=...\`
+4. Pull from backend: \`vaulter local pull --all\`
+
+### Sharing New Variables
+
+1. Add to backend: \`vaulter set NEW_VAR=value -e dev\`
+2. Notify team: "New var added, run \`vaulter local pull --all\`"
+
+### Everyone Gets Same Base
+
+Since backend is source of truth:
+- All team members sync from same backend
+- Local overrides are personal (not shared)
+- No merge conflicts on .env files (they're gitignored)
+
+---
+
+## 📊 Workflow Summary
+
+| Step | Command | MCP Tool |
+|------|---------|----------|
+| See backend vars | \`vaulter list -e dev\` | \`vaulter_list\` |
+| Pull to local | \`vaulter local pull --all\` | \`vaulter_local_pull\` |
+| Add local override | \`vaulter local set KEY::value\` | \`vaulter_local_set\` |
+| Add shared override | \`vaulter local set KEY::value --shared\` | \`vaulter_local_shared_set\` |
+| See local diff | \`vaulter local diff\` | \`vaulter_local_diff\` |
+| Push to backend | \`vaulter push -e dev\` | \`vaulter_push\` |
+| Clone environment | \`vaulter clone dev stg\` | \`vaulter_clone_env\` |
+| Compare environments | \`vaulter compare dev prd\` | \`vaulter_compare\` |
+
+---
+
+## 💡 Best Practices
+
+1. **Never commit .env files** - Always gitignore
+2. **Use backend for sharing** - Not git for variables
+3. **Local overrides for personal dev** - DEBUG, custom ports, etc.
+4. **Clone before promoting** - Preview with --dry-run
+5. **Snapshot before big changes** - \`vaulter snapshot create -e dev\`
+
+---
+
+## 🔗 Related Resources
+
+- \`vaulter://instructions\` - How vaulter works (data storage)
+- \`vaulter://tools-guide\` - Which tool for each scenario
+- \`vaulter://monorepo-example\` - Monorepo isolation example
+`
+
+  return {
+    contents: [{
+      uri,
+      mimeType: 'text/markdown',
+      text: workflow
     }]
   }
 }
