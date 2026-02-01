@@ -6,6 +6,7 @@
  */
 
 import { createSignal, batch } from 'tuiuiu.js'
+import { DEFAULT_ENVIRONMENTS } from '../../../types.js'
 import type { VaulterConfig } from '../../../types.js'
 import type {
   DisplayVar,
@@ -62,7 +63,7 @@ export {
 
 const [services, setServices] = createSignal<ServiceInfo[]>([])
 const [selectedServiceIdx, setSelectedServiceIdx] = createSignal(0)
-const [environments, setEnvironments] = createSignal<string[]>(['dev', 'stg', 'prd'])
+const [environments, setEnvironments] = createSignal<string[]>(['local', ...DEFAULT_ENVIRONMENTS])
 const [selectedEnvIdx, setSelectedEnvIdx] = createSignal(0)
 
 export {
@@ -212,7 +213,7 @@ export function resetAllState() {
     setEnvFetchStatuses([])
     setServices([])
     setSelectedServiceIdx(0)
-    setEnvironments(['dev', 'stg', 'prd'])
+    setEnvironments(['local', ...DEFAULT_ENVIRONMENTS])
     setSelectedEnvIdx(0)
     setSecrets([])
     setLoading(false)

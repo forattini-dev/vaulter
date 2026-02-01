@@ -23,6 +23,7 @@ import {
   getBaseDir,
   DEFAULT_CONFIG
 } from '../../src/lib/config-loader.js'
+import { DEFAULT_ENVIRONMENTS } from '../../src/types.js'
 
 describe('config-loader', () => {
   let tempDir: string
@@ -89,7 +90,7 @@ describe('config-loader', () => {
     it('should return default config when no config found', () => {
       const config = loadConfig(tempDir)
       expect(config.version).toBe('1')
-      expect(config.environments).toEqual(['dev', 'stg', 'prd'])
+      expect(config.environments).toEqual(DEFAULT_ENVIRONMENTS)
       expect(config.default_environment).toBe('dev')
     })
 

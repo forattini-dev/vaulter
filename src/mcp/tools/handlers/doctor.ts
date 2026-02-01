@@ -7,6 +7,7 @@
 
 import fs from 'node:fs'
 import path from 'node:path'
+import { DEFAULT_ENVIRONMENTS } from '../../../types.js'
 import type { VaulterConfig, Environment } from '../../../types.js'
 import { maskValue } from '../../../lib/masking.js'
 import {
@@ -173,7 +174,7 @@ export async function handleDoctorCall(
     }
 
     // Build environments info
-    const envList = config.environments || ['dev', 'stg', 'prd']
+    const envList = config.environments || DEFAULT_ENVIRONMENTS
     for (const env of envList) {
       result.environments[env] = { isEmpty: true }
     }

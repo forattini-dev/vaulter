@@ -5,6 +5,7 @@
  */
 
 import path from 'node:path'
+import { DEFAULT_ENVIRONMENTS } from '../../types.js'
 import type { CLIArgs, VaulterConfig } from '../../types.js'
 import { discoverServices, findMonorepoRoot } from '../../lib/monorepo.js'
 import { print } from '../lib/colors.js'
@@ -96,7 +97,7 @@ async function runServicesList(context: ServicesContext): Promise<void> {
         ui.log(`    Path: ${relativePath}`)
         ui.log(`    Project: ${service.config.project}`)
         if (verbose) {
-          ui.log(`    Environments: ${(service.config.environments || ['dev', 'stg', 'prd']).join(', ')}`)
+          ui.log(`    Environments: ${(service.config.environments || DEFAULT_ENVIRONMENTS).join(', ')}`)
           ui.log(`    Default: ${service.config.default_environment || 'dev'}`)
           if (service.config.backend?.url) {
             ui.log(`    Backend: ${service.config.backend.url}`)

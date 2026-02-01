@@ -17,7 +17,7 @@
 export type Environment = string
 
 /** Default environments used when initializing a new project */
-export const DEFAULT_ENVIRONMENTS: string[] = ['dev', 'stg', 'prd']
+export const DEFAULT_ENVIRONMENTS: string[] = ['dev', 'stg', 'sdx', 'prd']
 
 /** Default environment when none specified */
 export const DEFAULT_ENVIRONMENT = 'dev'
@@ -31,12 +31,14 @@ export const COMMON_ENVIRONMENT_NAMES: Record<string, string> = {
   development: 'development',
   stg: 'staging',
   staging: 'staging',
+  sdx: 'sandbox',
+  sbx: 'sandbox',
+  sandbox: 'sandbox',
   prd: 'production',
   prod: 'production',
   production: 'production',
-  sbx: 'sandbox',
-  sandbox: 'sandbox',
   dr: 'disaster-recovery',
+  dry: 'disaster-recovery',
   qa: 'quality assurance',
   uat: 'user acceptance testing',
   homolog: 'homologation',

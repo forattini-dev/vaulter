@@ -44,27 +44,96 @@ export function sortSecrets(secrets: DisplayVar[]): DisplayVar[] {
 }
 
 /**
- * Get color for environment badge
+ * Semantic color type for badges
  */
-export function getEnvColor(env: string): 'success' | 'warning' | 'error' | 'info' | 'accent' | 'primary' {
-  switch (env.toLowerCase()) {
-    case 'local': return 'accent'
-    case 'dev': return 'info'
-    case 'stg':
-    case 'staging': return 'warning'
-    case 'sdx':
-    case 'sandbox': return 'primary'
-    case 'prd':
-    case 'prod':
-    case 'production': return 'error'
-    default: return 'info'
+export type BadgeColor = 'success' | 'warning' | 'error' | 'info' | 'accent' | 'primary'
+
+/**
+ * Environment color mapping - supports 10+ predefined environments
+ * Production-like envs are red/error, dev-like are blue/info, etc.
+ */
+const ENV_COLOR_MAP: Record<string, BadgeColor> = {
+  // Local development
+  local: 'accent',
+
+  // Development
+  dev: 'info',
+  development: 'info',
+
+  // Staging/QA
+  stg: 'warning',
+  staging: 'warning',
+  qa: 'warning',
+  uat: 'warning',
+  test: 'warning',
+  testing: 'warning',
+
+  // Sandbox/Preview
+  sdx: 'primary',
+  sbx: 'primary',
+  sandbox: 'primary',
+  preview: 'primary',
+  demo: 'primary',
+
+  // Pre-production
+  preprod: 'success',
+  'pre-prod': 'success',
+  homolog: 'success',
+  hml: 'success',
+
+  // Production (danger!)
+  prd: 'error',
+  prod: 'error',
+  production: 'error',
+  live: 'error',
+
+  // Disaster recovery
+  dr: 'error',
+  dry: 'error',
+  'disaster-recovery': 'error',
+}
+
+/**
+ * Fallback colors for unknown environments (cycled based on hash)
+ */
+const FALLBACK_COLORS: BadgeColor[] = ['info', 'primary', 'success', 'warning', 'accent']
+
+/**
+ * Simple string hash for consistent color assignment
+ */
+function hashString(str: string): number {
+  let hash = 0
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i)
+    hash = ((hash << 5) - hash) + char
+    hash = hash & hash // Convert to 32bit integer
   }
+  return Math.abs(hash)
+}
+
+/**
+ * Get color for environment badge
+ *
+ * Supports 10+ predefined environments with semantic colors.
+ * Unknown environments get a consistent color based on name hash.
+ */
+export function getEnvColor(env: string): BadgeColor {
+  const normalized = env.toLowerCase()
+
+  // Check predefined mapping
+  if (normalized in ENV_COLOR_MAP) {
+    return ENV_COLOR_MAP[normalized]
+  }
+
+  // Fallback: deterministic color based on hash (consistent per env name)
+  const hash = hashString(normalized)
+  return FALLBACK_COLORS[hash % FALLBACK_COLORS.length]
 }
 
 /**
  * Get color for source badge
  */
-export function getSourceColor(source: DisplayVar['source']): 'accent' | 'info' | 'warning' | 'success' {
+export function getSourceColor(source: DisplayVar['source']): BadgeColor {
   switch (source) {
     case 'shared': return 'accent'
     case 'service': return 'info'

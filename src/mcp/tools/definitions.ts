@@ -330,7 +330,7 @@ export function registerTools(): Tool[] {
           project: { type: 'string', description: 'Project name (auto-detected from directory name if omitted)' },
           backend: { type: 'string', description: 'Backend URL (e.g., s3://bucket/path, file:///path)' },
           monorepo: { type: 'boolean', description: 'Force monorepo mode (auto-detected from nx.json, turbo.json, etc.)', default: false },
-          environments: { type: 'array', items: { type: 'string' }, description: 'Environments to create', default: ['dev', 'stg', 'prd'] }
+          environments: { type: 'array', items: { type: 'string' }, description: 'Environments to create', default: ['dev', 'stg', 'sdx', 'prd'] }
         }
       }
     },

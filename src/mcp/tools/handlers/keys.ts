@@ -16,6 +16,7 @@ import {
   parseKeyName
 } from '../../../lib/config-loader.js'
 import { generateKeyPair, generatePassphrase, detectAlgorithm } from '../../../lib/crypto.js'
+import { DEFAULT_ENVIRONMENTS } from '../../../types.js'
 import type { VaulterConfig, AsymmetricAlgorithm } from '../../../types.js'
 import type { ToolResponse } from '../config.js'
 
@@ -518,7 +519,7 @@ export async function handleKeyRotateCall(
     return { content: [{ type: 'text', text: 'Error: No vaulter configuration found. Run vaulter init first.' }] }
   }
 
-  const environments = config.environments || ['dev', 'stg', 'prd']
+  const environments = config.environments || DEFAULT_ENVIRONMENTS
   const keysDir = getProjectKeysDir(projectName)
 
   const lines: string[] = []

@@ -14,6 +14,7 @@ import {
 } from 'tuiuiu.js'
 import fs from 'node:fs'
 import path from 'node:path'
+import { DEFAULT_ENVIRONMENTS } from '../../../types.js'
 import type { VaulterConfig } from '../../../types.js'
 import { loadConfig, getValidEnvironments } from '../../../lib/config-loader.js'
 import { discoverServices, isMonorepo as checkIsMonorepo, findMonorepoRoot } from '../../../lib/monorepo.js'
@@ -93,7 +94,7 @@ export async function startSecretsExplorer(options: {
   let config: VaulterConfig | null = null
   let monorepoRoot: string | null = null
   let discoveredServices: ServiceInfo[] = []
-  let envList: string[] = ['dev', 'stg', 'prd']
+  let envList: string[] = ['local', ...DEFAULT_ENVIRONMENTS]
   let defaultEnvIdx = 0
 
   const performLoading = async () => {
