@@ -14,12 +14,13 @@ import {
 describe('types', () => {
   describe('DEFAULT_ENVIRONMENTS', () => {
     it('should have default environments', () => {
-      expect(DEFAULT_ENVIRONMENTS).toHaveLength(3)
+      expect(DEFAULT_ENVIRONMENTS).toHaveLength(4)
     })
 
-    it('should contain dev, stg, prd', () => {
+    it('should contain dev, stg, sdx, prd', () => {
       expect(DEFAULT_ENVIRONMENTS).toContain('dev')
       expect(DEFAULT_ENVIRONMENTS).toContain('stg')
+      expect(DEFAULT_ENVIRONMENTS).toContain('sdx')
       expect(DEFAULT_ENVIRONMENTS).toContain('prd')
     })
 
