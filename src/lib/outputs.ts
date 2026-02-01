@@ -43,7 +43,8 @@ export function normalizeOutputTarget(
   }
 
   // Full object
-  let filename = input.filename || '.env'
+  // Support both 'filename' and 'file' for convenience
+  let filename = input.filename || (input as unknown as { file?: string }).file || '.env'
 
   // Replace {env} placeholder
   filename = filename.replace(/\{env\}/g, environment)
@@ -454,11 +455,10 @@ export async function pullToOutputs(options: PullToOutputsOptions): Promise<Pull
 // ============================================================================
 
 /** Known fields for OutputTarget */
-const KNOWN_OUTPUT_FIELDS = new Set(['path', 'filename', 'service', 'include', 'exclude', 'inherit'])
+const KNOWN_OUTPUT_FIELDS = new Set(['path', 'filename', 'file', 'service', 'include', 'exclude', 'inherit'])
 
 /** Common typos/mistakes and their corrections */
 const FIELD_SUGGESTIONS: Record<string, string> = {
-  file: 'filename',
   name: 'service',
   target: 'path',
   dir: 'path',

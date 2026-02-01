@@ -83,6 +83,15 @@ describe('outputs', () => {
       }, 'dev')
       expect(result.inherit).toBe(false)
     })
+
+    it('should accept "file" as alias for "filename"', () => {
+      // @ts-expect-error file is not in types but accepted at runtime
+      const result = normalizeOutputTarget('web', {
+        path: 'apps/web',
+        file: '.env.local'
+      }, 'dev')
+      expect(result.filename).toBe('.env.local')
+    })
   })
 
   describe('normalizeOutputTargets', () => {
@@ -443,18 +452,18 @@ describe('outputs', () => {
       expect(errors).toContain('Output "api": must be a string or object')
     })
 
-    it('should detect unknown field "file" and suggest "filename"', () => {
+    it('should accept "file" as alias for "filename"', () => {
       const config: VaulterConfig = {
         version: '1',
         project: 'test',
         outputs: {
-          // @ts-expect-error testing unknown field
+          // @ts-expect-error file is not in types but accepted at runtime
           web: { path: 'apps/web', file: '.env.local' }
         }
       }
 
       const errors = validateOutputsConfig(config)
-      expect(errors).toContain('Output "web": unknown field "file". Did you mean "filename"?')
+      expect(errors).toEqual([])
     })
 
     it('should detect unknown field with no suggestion', () => {
