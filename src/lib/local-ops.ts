@@ -48,7 +48,7 @@ export async function runLocalPull(options: LocalPullOptions): Promise<LocalPull
     client,
     config,
     configDir,
-    service,
+    service: serviceArg,
     all = false,
     output,
     dryRun,
@@ -65,6 +65,15 @@ export async function runLocalPull(options: LocalPullOptions): Promise<LocalPull
   }
 
   const baseEnvironment = resolveBaseEnvironment(config)
+
+  // Resolve service from output config if specified, otherwise use serviceArg
+  let service = serviceArg
+  if (output && !service && config.outputs[output]) {
+    const outputConfig = config.outputs[output]
+    if (typeof outputConfig === 'object' && outputConfig.service) {
+      service = outputConfig.service
+    }
+  }
 
   // Load local shared vars (shared across all services)
   const localShared = loadLocalShared(configDir)
