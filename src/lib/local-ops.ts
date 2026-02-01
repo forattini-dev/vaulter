@@ -78,15 +78,43 @@ export async function runLocalPull(options: LocalPullOptions): Promise<LocalPull
   // Load local shared vars (shared across all services)
   const localShared = loadLocalShared(configDir)
 
-  // Load service-specific overrides
-  const overrides = loadOverrides(configDir, service)
+  // For --all mode, we need to load overrides per-output based on each output's service
+  // For single output mode, we load overrides once for the resolved service
+  const overrides = all ? {} : loadOverrides(configDir, service)
+
+  // Create a loader function for per-output overrides (used with --all)
+  // This returns: local shared + service-specific overrides for the given service
+  const localOverridesLoader = (targetService?: string): Record<string, string> => {
+    const serviceOverrides = loadOverrides(configDir, targetService)
+    // Merge: local shared (lower priority) + service overrides (higher priority)
+    return { ...localShared, ...serviceOverrides }
+  }
+
+  // Collect all unique service overrides for reporting (only when --all)
+  let totalOverridesCount = 0
+  if (all && config.outputs) {
+    const seenServices = new Set<string | undefined>()
+    for (const [, outputConfig] of Object.entries(config.outputs)) {
+      const svc = typeof outputConfig === 'object' ? outputConfig.service : undefined
+      if (!seenServices.has(svc)) {
+        seenServices.add(svc)
+        const svcOverrides = loadOverrides(configDir, svc)
+        totalOverridesCount += Object.keys(svcOverrides).length
+      }
+    }
+  } else {
+    totalOverridesCount = Object.keys(overrides).length
+  }
 
   // Fetch from backend
   const baseVars = await client.export(config.project, baseEnvironment, service)
   const sharedServiceVars = await getSharedServiceVars(client, config.project, baseEnvironment)
 
-  // Merge: backend + local shared + service overrides
-  const merged = mergeAllLocalVars(baseVars, localShared, overrides)
+  // For single output: merge backend + local shared + service overrides
+  // For --all: only merge backend + local shared; service overrides applied per-output via loader
+  const merged = all
+    ? mergeAllLocalVars(baseVars, localShared, {})
+    : mergeAllLocalVars(baseVars, localShared, overrides)
 
   const projectRoot = path.dirname(configDir)
   const result = await pullToOutputs({
@@ -100,7 +128,9 @@ export async function runLocalPull(options: LocalPullOptions): Promise<LocalPull
     verbose,
     varsOverride: merged,
     sharedVarsOverride: sharedServiceVars,
-    sectionAware: !overwrite  // Default: section-aware; --overwrite disables it
+    sectionAware: !overwrite,  // Default: section-aware; --overwrite disables it
+    // Pass the loader so each output gets its own service-specific overrides
+    localOverridesLoader: all ? localOverridesLoader : undefined
   })
 
   return {
@@ -108,7 +138,7 @@ export async function runLocalPull(options: LocalPullOptions): Promise<LocalPull
     localShared,
     localSharedCount: Object.keys(localShared).length,
     overrides,
-    overridesCount: Object.keys(overrides).length,
+    overridesCount: totalOverridesCount,
     result
   }
 }

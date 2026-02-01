@@ -442,6 +442,50 @@ describe('outputs', () => {
       const errors = validateOutputsConfig(config)
       expect(errors).toContain('Output "api": must be a string or object')
     })
+
+    it('should detect unknown field "file" and suggest "filename"', () => {
+      const config: VaulterConfig = {
+        version: '1',
+        project: 'test',
+        outputs: {
+          // @ts-expect-error testing unknown field
+          web: { path: 'apps/web', file: '.env.local' }
+        }
+      }
+
+      const errors = validateOutputsConfig(config)
+      expect(errors).toContain('Output "web": unknown field "file". Did you mean "filename"?')
+    })
+
+    it('should detect unknown field with no suggestion', () => {
+      const config: VaulterConfig = {
+        version: '1',
+        project: 'test',
+        outputs: {
+          // @ts-expect-error testing unknown field
+          web: { path: 'apps/web', foobar: 'test' }
+        }
+      }
+
+      const errors = validateOutputsConfig(config)
+      expect(errors[0]).toContain('Output "web": unknown field "foobar"')
+      expect(errors[0]).toContain('Valid fields:')
+    })
+
+    it('should suggest corrections for common typos', () => {
+      const config: VaulterConfig = {
+        version: '1',
+        project: 'test',
+        outputs: {
+          // @ts-expect-error testing unknown field
+          web: { path: 'apps/web', dir: '/wrong', pattern: ['*'] }
+        }
+      }
+
+      const errors = validateOutputsConfig(config)
+      expect(errors).toContain('Output "web": unknown field "dir". Did you mean "path"?')
+      expect(errors).toContain('Output "web": unknown field "pattern". Did you mean "include"?')
+    })
   })
 
   describe('getSharedServiceVars', () => {

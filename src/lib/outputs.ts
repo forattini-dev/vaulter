@@ -224,6 +224,13 @@ export interface PullToOutputsOptions {
    * Set to false to overwrite the entire file.
    */
   sectionAware?: boolean
+  /**
+   * Loader function for local overrides per service.
+   * When provided, this function is called for each output target to get
+   * service-specific local overrides that should be merged with base vars.
+   * This enables --all to apply different overrides per output based on service.
+   */
+  localOverridesLoader?: (service?: string) => Record<string, string>
 }
 
 export interface PullToOutputsResult {
@@ -277,7 +284,8 @@ export async function pullToOutputs(options: PullToOutputsOptions): Promise<Pull
     verbose = false,
     varsOverride,
     sharedVarsOverride,
-    sectionAware = true // Default to section-aware mode
+    sectionAware = true, // Default to section-aware mode
+    localOverridesLoader
   } = options
 
   const result: PullToOutputsResult = {
@@ -359,6 +367,15 @@ export async function pullToOutputs(options: PullToOutputsOptions): Promise<Pull
       }
     }
 
+    // Apply local overrides for this target's service (if loader provided)
+    // This enables --all to use different overrides per output based on service
+    if (localOverridesLoader) {
+      const localOverrides = localOverridesLoader(target.service)
+      if (Object.keys(localOverrides).length > 0) {
+        sourceVars = { ...sourceVars, ...localOverrides }
+      }
+    }
+
     // Filter and merge target-specific vars
     const filteredVars = filterVarsByPatterns(sourceVars, target.include, target.exclude)
 
@@ -436,6 +453,24 @@ export async function pullToOutputs(options: PullToOutputsOptions): Promise<Pull
 // Validation
 // ============================================================================
 
+/** Known fields for OutputTarget */
+const KNOWN_OUTPUT_FIELDS = new Set(['path', 'filename', 'service', 'include', 'exclude', 'inherit'])
+
+/** Common typos/mistakes and their corrections */
+const FIELD_SUGGESTIONS: Record<string, string> = {
+  file: 'filename',
+  name: 'service',
+  target: 'path',
+  dir: 'path',
+  directory: 'path',
+  folder: 'path',
+  pattern: 'include',
+  patterns: 'include',
+  filter: 'include',
+  ignore: 'exclude',
+  shared: 'inherit'
+}
+
 /**
  * Validate outputs configuration
  */
@@ -487,6 +522,18 @@ export function validateOutputsConfig(config: VaulterConfig): string[] {
 
     if (input.inherit !== undefined && typeof input.inherit !== 'boolean') {
       errors.push(`Output "${name}": inherit must be a boolean`)
+    }
+
+    // Check for unknown/typo fields and suggest corrections
+    for (const field of Object.keys(input)) {
+      if (!KNOWN_OUTPUT_FIELDS.has(field)) {
+        const suggestion = FIELD_SUGGESTIONS[field]
+        if (suggestion) {
+          errors.push(`Output "${name}": unknown field "${field}". Did you mean "${suggestion}"?`)
+        } else {
+          errors.push(`Output "${name}": unknown field "${field}". Valid fields: ${[...KNOWN_OUTPUT_FIELDS].join(', ')}`)
+        }
+      }
     }
   }
 
