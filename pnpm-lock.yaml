@@ -20,9 +20,6 @@ importers:
       dotenv:
         specifier: ^17.2.3
         version: 17.2.3
-      hono:
-        specifier: 4.11.7
-        version: 4.11.7
       p-limit:
         specifier: ^7.2.0
         version: 7.2.0
