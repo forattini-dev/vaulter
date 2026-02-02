@@ -868,11 +868,14 @@ List all shared local overrides.
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `targetEnvironment` | string | No | base env | Target environment in backend |
+| `overwrite` | boolean | No | `false` | Delete backend vars NOT in local (makes backend match local exactly) |
 | `dryRun` | boolean | No | `false` | Preview changes without applying |
 
 **Pushes:**
 - `.vaulter/local/configs.env + secrets.env` → backend `__shared__`
 - `.vaulter/local/services/{svc}/*.env` → backend `{svc}`
+
+**With `overwrite=true`:** Also DELETES backend vars that don't exist locally. Use with caution!
 
 #### `vaulter_local_sync`
 **[USES BACKEND]** Pull from backend to `.vaulter/local/`. Use to get team's shared variables.

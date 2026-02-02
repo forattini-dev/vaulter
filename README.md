@@ -517,18 +517,11 @@ audit:
   enabled: true
   retention_days: 90
 
-# Local development files
-local:
-  configs: .vaulter/local/configs.env      # sensitive=false
-  secrets: .vaulter/local/secrets.env      # sensitive=true
+# Local development files (see "Local vs Deploy Structure" below)
+# local: .vaulter/local/
 
-deploy:
-  shared:
-    configs: .vaulter/deploy/shared/configs/{env}.env
-    secrets: .vaulter/deploy/shared/secrets/{env}.env
-  services:
-    configs: .vaulter/deploy/services/{service}/configs/{env}.env
-    secrets: .vaulter/deploy/services/{service}/secrets/{env}.env
+# CI/CD deploy files (see "Local vs Deploy Structure" below)
+# deploy: .vaulter/deploy/
 ```
 
 ### Backend URLs
