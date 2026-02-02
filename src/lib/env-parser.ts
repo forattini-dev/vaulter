@@ -447,7 +447,6 @@ export function writeEnvFileSections(filePath: string, sections: EnvFileSections
   if (sections.vaulterVars.size > 0) {
     lines.push(VAULTER_SECTION_MARKER)
     lines.push(`# Synced: ${new Date().toISOString()}`)
-    lines.push('')
 
     // Sort keys for consistent output
     const sortedKeys = Array.from(sections.vaulterVars.keys()).sort()
