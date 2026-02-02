@@ -142,16 +142,20 @@ vaulter clone dev stg                          # Execute
 ```bash
 git clone <repo>                    # Gets .vaulter/config.yaml
 export VAULTER_KEY_DEV=<from-team>  # Get key securely from team
-vaulter local pull --all            # Generates .env files from backend
+vaulter sync pull --dir -e dev      # Pull from backend → .vaulter/local/
+vaulter local pull --all            # Generate .env files (offline)
 ```
 
 **Sharing a new variable:**
 ```bash
-# 1. Add to backend
-vaulter set NEW_FEATURE=enabled -e dev
+# 1. Add locally
+vaulter local set NEW_FEATURE::enabled  # Shared config
 
-# 2. Notify team
-# "New var added, run: vaulter local pull --all"
+# 2. Push to backend (share with team)
+vaulter sync push --dir -e dev
+
+# 3. Notify team
+# "New var added, run: vaulter sync pull --dir && vaulter local pull --all"
 ```
 
 ### MCP Tools for Workflow
@@ -914,46 +918,93 @@ outputs:
 
 ---
 
-## Local Overrides (Dev Environment)
+## Local Overrides (Dev Environment) - OFFLINE FIRST
 
-Override backend variables **locally** without touching the remote. Perfect for development.
+**`vaulter local pull` is 100% OFFLINE** - no backend calls!
+
+Works entirely from local files in `.vaulter/local/`. Perfect for local development where you want to work offline and sync later.
+
+### Quick Reference
+
+| Command | What it does | Backend? |
+|---------|--------------|----------|
+| `vaulter local pull --all` | Generate .env files from local | ❌ OFFLINE |
+| `vaulter local push --all` | Send local → backend | ✅ Backend |
+| `vaulter local sync` | Download backend → local | ✅ Backend |
+
+### Workflow
+
+```
+┌─────────────────────────────────────────────────────┐
+│              LOCAL DEVELOPMENT                       │
+│  1. Edit .vaulter/local/*.env                       │
+│  2. vaulter local pull --all  → Generate .env       │
+│  3. Develop...                                       │
+└─────────────────────────────────────────────────────┘
+                         ↓
+┌─────────────────────────────────────────────────────┐
+│              SHARE WITH TEAM                         │
+│  vaulter local push --all  → Upload to backend      │
+└─────────────────────────────────────────────────────┘
+                         ↓
+┌─────────────────────────────────────────────────────┐
+│              NEW TEAM MEMBER                         │
+│  1. git clone <repo>                                │
+│  2. vaulter local sync     → Download from backend  │
+│  3. vaulter local pull --all → Generate .env        │
+└─────────────────────────────────────────────────────┘
+```
 
 ### File Structure
 
 ```
 .vaulter/local/
-├── configs.env           # Shared configs (sensitive=false)
-├── secrets.env           # Shared secrets (sensitive=true)
+├── configs.env           # Shared configs (all services)
+├── secrets.env           # Shared secrets (all services)
 └── services/             # Monorepo only
     ├── web/
-    │   ├── configs.env
-    │   └── secrets.env
+    │   ├── configs.env   # web-specific configs
+    │   └── secrets.env   # web-specific secrets
     └── api/
         ├── configs.env
         └── secrets.env
 ```
 
-### Merge Order
+### Merge Order (Per Output)
 
-**Priority:** `backend < local shared < service overrides`
+**Priority:** `shared vars < service-specific vars`
+
+For each output target, vaulter merges:
+1. Shared vars from `.vaulter/local/{configs,secrets}.env`
+2. Service-specific vars from `.vaulter/local/services/{service}/*.env`
+
+**Example:**
+- 20 shared vars + 3 service-specific = 23 vars for that service
+- NOT all vars from all services merged together!
+
+### CLI Commands
 
 ```bash
-# Set shared var (all services)
-vaulter local set --shared DEBUG::true     # config (sensitive=false)
-vaulter local set --shared API_KEY=xxx     # secret (sensitive=true)
+# === EDIT LOCALLY ===
+vaulter local set --shared DEBUG::true     # shared config
+vaulter local set --shared API_KEY=xxx     # shared secret
+vaulter local set PORT::3001 -s web        # service config
+vaulter local set DB_URL=xxx -s api        # service secret
 
-# Set service-specific override
-vaulter local set PORT::3001 -s web        # config
-vaulter local set DB_URL=xxx -s api        # secret
-
-# Generate .env files (backend + shared + overrides)
+# === GENERATE .ENV FILES [OFFLINE] ===
 vaulter local pull --all
+# Output: "svc-auth: 23 vars (21 shared + 2 service)"
 
-# See what's different from base
-vaulter local diff
+# === SHARE WITH TEAM ===
+vaulter local push --all                   # Upload entire structure
 
-# Check status
-vaulter local status
+# === GET TEAM'S CHANGES ===
+vaulter local sync                         # Download from backend
+vaulter local pull --all                   # Generate .env files
+
+# === OTHER ===
+vaulter local diff                         # Show differences
+vaulter local status                       # Show summary
 ```
 
 ### Section-Aware .env Management

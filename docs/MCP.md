@@ -768,9 +768,24 @@ Demote a shared variable to a specific service.
 
 ---
 
-### Local Overrides (8)
+### Local Overrides (10)
 
-Local overrides are a transparent layer on top of a base environment. They are plaintext, gitignored, and never touch the backend.
+**OFFLINE-FIRST ARCHITECTURE:**
+
+| Tool | What it does | Backend? |
+|------|--------------|----------|
+| `vaulter_local_pull` | Generate .env files from `.vaulter/local/` | ❌ OFFLINE |
+| `vaulter_local_push_all` | Send `.vaulter/local/` → backend | ✅ Uses backend |
+| `vaulter_local_sync` | Download backend → `.vaulter/local/` | ✅ Uses backend |
+
+**Workflow:**
+1. Edit files in `.vaulter/local/`
+2. `vaulter_local_pull all=true` → Generate .env files (OFFLINE)
+3. `vaulter_local_push_all` → Share with team (when ready)
+
+New dev joins:
+1. `vaulter_local_sync` → Download from backend
+2. `vaulter_local_pull all=true` → Generate .env files
 
 **File structure:**
 ```
@@ -784,7 +799,7 @@ Local overrides are a transparent layer on top of a base environment. They are p
 ```
 
 #### `vaulter_local_pull`
-Pull base environment + local overrides to output targets (.env files).
+**[OFFLINE]** Generate .env files from `.vaulter/local/`. NO backend calls!
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
@@ -846,6 +861,28 @@ List all shared local overrides.
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | (none) | - | - | - | Returns all shared local vars from configs.env + secrets.env |
+
+#### `vaulter_local_push_all`
+**[USES BACKEND]** Push ENTIRE `.vaulter/local/` structure to backend. Use to share your complete local setup with the team.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `targetEnvironment` | string | No | base env | Target environment in backend |
+| `dryRun` | boolean | No | `false` | Preview changes without applying |
+
+**Pushes:**
+- `.vaulter/local/configs.env + secrets.env` → backend `__shared__`
+- `.vaulter/local/services/{svc}/*.env` → backend `{svc}`
+
+#### `vaulter_local_sync`
+**[USES BACKEND]** Pull from backend to `.vaulter/local/`. Use to get team's shared variables.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `sourceEnvironment` | string | No | base env | Source environment to pull from |
+| `dryRun` | boolean | No | `false` | Preview changes without applying |
+
+**After sync, run:** `vaulter_local_pull all=true` to generate .env files.
 
 ---
 

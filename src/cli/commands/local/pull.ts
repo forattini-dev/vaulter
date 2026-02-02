@@ -1,29 +1,28 @@
 /**
  * vaulter local pull
  *
- * Fetches base env from backend, merges with local overrides,
- * then writes to output targets.
+ * OFFLINE-FIRST: Generates .env files from local files ONLY.
+ * NO backend calls - reads from .vaulter/local/ directory.
+ *
+ * For each output:
+ *   1. Loads shared vars: .vaulter/local/{configs,secrets}.env
+ *   2. Loads service-specific: .vaulter/local/services/{service}/*.env
+ *   3. Merges: shared + service-specific (service wins)
+ *   4. Writes to output path
  */
 
 import { findConfigDir } from '../../../lib/config-loader.js'
 import { runLocalPull as runLocalPullCore } from '../../../lib/local-ops.js'
-import { resolveBaseEnvironment } from '../../../lib/local.js'
 import { validateOutputsConfig } from '../../../lib/outputs.js'
-import { createClientFromConfig } from '../../lib/create-client.js'
 import { c, colorEnv, print } from '../../lib/colors.js'
 import * as ui from '../../ui.js'
 import type { LocalContext } from './index.js'
 
 export async function runLocalPull(context: LocalContext): Promise<void> {
-  const { args, config, project, service, verbose, dryRun, jsonOutput } = context
+  const { args, config, service, verbose, dryRun, jsonOutput } = context
 
   if (!config) {
     print.error('Config required. Run "vaulter init" first.')
-    process.exit(1)
-  }
-
-  if (!project) {
-    print.error('Project not specified')
     process.exit(1)
   }
 
@@ -50,6 +49,12 @@ export async function runLocalPull(context: LocalContext): Promise<void> {
 
   if (!config.outputs || Object.keys(config.outputs).length === 0) {
     print.error('No outputs defined in config')
+    ui.log('')
+    ui.log('Add outputs to .vaulter/config.yaml:')
+    ui.log(`  ${c.muted('outputs:')}`)
+    ui.log(`  ${c.muted('  app-admin:')}`)
+    ui.log(`  ${c.muted('    path: apps/app-admin')}`)
+    ui.log(`  ${c.muted('    service: app-admin')}`)
     process.exit(1)
   }
 
@@ -60,87 +65,62 @@ export async function runLocalPull(context: LocalContext): Promise<void> {
     process.exit(1)
   }
 
-  const baseEnv = resolveBaseEnvironment(config)
-
-  // Fetch base vars from backend
-  const client = await createClientFromConfig({
-    args,
+  // OFFLINE-FIRST: No client needed - reads from local files only
+  const result = await runLocalPullCore({
     config,
-    project,
-    environment: baseEnv,
-    verbose
+    configDir,
+    service,
+    all,
+    output: target,
+    dryRun,
+    verbose,
+    overwrite
   })
 
-  try {
-    await client.connect()
+  if (verbose) {
+    ui.verbose(`Base env: ${colorEnv(result.baseEnvironment)}`, true)
+    ui.verbose(`Shared vars: ${result.localSharedCount}`, true)
+    ui.verbose(`Service-specific vars: ${result.totalServiceVarsCount}`, true)
+  }
 
-    const {
-      baseEnvironment,
-      localSharedCount,
-      overridesCount,
-      result
-    } = await runLocalPullCore({
-      client,
-      config,
-      configDir,
-      service,
-      all,
-      output: target,
+  if (jsonOutput) {
+    ui.output(JSON.stringify({
+      success: true,
       dryRun,
-      verbose,
-      overwrite
-    })
-
-    if (verbose) {
-      const parts = [`Base env: ${colorEnv(baseEnvironment)}`]
-      if (localSharedCount > 0) parts.push(`shared: ${localSharedCount}`)
-      if (overridesCount > 0) parts.push(`overrides: ${overridesCount}`)
-      ui.verbose(parts.join(', '), true)
-    }
-
-    if (jsonOutput) {
-      ui.output(JSON.stringify({
-        success: true,
-        dryRun,
-        project,
-        baseEnvironment,
-        localSharedCount,
-        overridesCount,
-        sectionAware: result.sectionAware,
-        files: result.files.map(f => ({
-          output: f.output,
-          path: f.fullPath,
-          varsCount: f.varsCount,
-          userVarsCount: f.userVars ? Object.keys(f.userVars).length : 0,
-          totalVarsCount: f.totalVarsCount
-        })),
-        warnings: result.warnings
-      }, null, 2))
+      baseEnvironment: result.baseEnvironment,
+      localSharedCount: result.localSharedCount,
+      totalServiceVarsCount: result.totalServiceVarsCount,
+      sectionAware: result.sectionAware,
+      files: result.files.map(f => ({
+        output: f.output,
+        path: f.fullPath,
+        varsCount: f.varsCount,
+        sharedCount: f.sharedCount,
+        serviceCount: f.serviceCount,
+        userVarsCount: f.userVars ? Object.keys(f.userVars).length : 0,
+        totalVarsCount: f.totalVarsCount
+      })),
+      warnings: result.warnings
+    }, null, 2))
+  } else {
+    if (dryRun) {
+      ui.log('Dry run - would write:')
     } else {
-      if (dryRun) {
-        ui.log('Dry run - would write:')
-      } else {
-        const mode = result.sectionAware ? 'section-aware' : 'overwrite'
-        const extras: string[] = []
-        if (localSharedCount > 0) extras.push(`${localSharedCount} shared`)
-        if (overridesCount > 0) extras.push(`${overridesCount} overrides`)
-        const extrasStr = extras.length > 0 ? ` + ${extras.join(' + ')}` : ''
-        ui.success(`Pulled to ${result.files.length} output(s) [${mode}] (base: ${baseEnvironment}${extrasStr}):`)
-      }
-
-      for (const file of result.files) {
-        const userCount = file.userVars ? Object.keys(file.userVars).length : 0
-        const varsInfo = result.sectionAware && userCount > 0
-          ? `${file.varsCount} vaulter + ${userCount} user vars`
-          : `${file.varsCount} vars`
-        ui.log(`  ${c.highlight(file.output)}: ${c.muted(file.fullPath)} (${varsInfo})`)
-      }
-
-      for (const warning of result.warnings) {
-        print.warning(warning)
-      }
+      const mode = result.sectionAware ? 'section-aware' : 'overwrite'
+      ui.success(`Pulled to ${result.files.length} output(s) [${mode}]:`)
     }
-  } finally {
-    await client.disconnect()
+
+    for (const file of result.files) {
+      const userCount = file.userVars ? Object.keys(file.userVars).length : 0
+      const breakdown = `${file.sharedCount} shared + ${file.serviceCount} service`
+      const varsInfo = result.sectionAware && userCount > 0
+        ? `${file.varsCount} vars (${breakdown}) + ${userCount} user`
+        : `${file.varsCount} vars (${breakdown})`
+      ui.log(`  ${c.highlight(file.output)}: ${c.muted(file.fullPath)} (${varsInfo})`)
+    }
+
+    for (const warning of result.warnings) {
+      print.warning(warning)
+    }
   }
 }

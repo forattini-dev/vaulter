@@ -3,11 +3,16 @@
  *
  * Push local overrides to the remote backend.
  * This allows sharing local development configs with the team.
+ *
+ * Modes:
+ * - --all: Push entire .vaulter/local/ structure (shared + all services)
+ * - --shared: Push only shared vars
+ * - -s <service>: Push only service-specific vars
  */
 
 import { findConfigDir } from '../../../lib/config-loader.js'
 import { withClient } from '../../lib/create-client.js'
-import { runLocalPush } from '../../../lib/local-ops.js'
+import { runLocalPush, runLocalPushAll } from '../../../lib/local-ops.js'
 import { maskValue } from '../../../lib/masking.js'
 import { c, colorEnv, print } from '../../lib/colors.js'
 import * as ui from '../../ui.js'
@@ -27,8 +32,16 @@ export async function runLocalPushCommand(context: LocalContext): Promise<void> 
     process.exit(1)
   }
 
+  const isAll = args.all as boolean | undefined
   const isShared = args.shared as boolean | undefined
   const targetEnv = args.env as string | undefined
+  const isOverwrite = args.overwrite as boolean | undefined
+
+  // --all mode: push entire .vaulter/local/ structure
+  if (isAll) {
+    await runLocalPushAllMode(context, configDir, targetEnv, isOverwrite)
+    return
+  }
 
   await withClient({ args, config, project: config.project, verbose: false }, async (client) => {
     const result = await runLocalPush({
@@ -106,6 +119,90 @@ export async function runLocalPushCommand(context: LocalContext): Promise<void> 
       ui.log(`Run without ${c.command('--dry-run')} to apply changes`)
     } else {
       ui.log(c.muted(`Source: ${source} → Target: ${result.targetEnvironment}`))
+    }
+  })
+}
+
+/**
+ * Push entire .vaulter/local/ structure to backend
+ */
+async function runLocalPushAllMode(
+  context: LocalContext,
+  configDir: string,
+  targetEnv?: string,
+  overwrite?: boolean
+): Promise<void> {
+  const { args, config, dryRun, jsonOutput } = context
+
+  if (!config) {
+    print.error('Config required')
+    process.exit(1)
+  }
+
+  await withClient({ args, config, project: config.project, verbose: false }, async (client) => {
+    const result = await runLocalPushAll({
+      client,
+      config,
+      configDir,
+      dryRun,
+      targetEnvironment: targetEnv,
+      overwrite
+    })
+
+    if (jsonOutput) {
+      ui.output(JSON.stringify({
+        targetEnvironment: result.targetEnvironment,
+        shared: result.shared,
+        services: result.services,
+        totalPushed: result.totalPushed,
+        totalDeleted: result.totalDeleted,
+        deleted: result.deleted,
+        dryRun: result.dryRun
+      }, null, 2))
+      return
+    }
+
+    if (result.totalPushed === 0 && result.totalDeleted === 0) {
+      ui.log('No changes to make')
+      return
+    }
+
+    if (dryRun) {
+      const parts: string[] = []
+      if (result.totalPushed > 0) parts.push(`push ${result.totalPushed}`)
+      if (result.totalDeleted > 0) parts.push(`${c.removed(`delete ${result.totalDeleted}`)}`)
+      ui.log(c.header(`[DRY RUN] Would ${parts.join(', ')} var(s) in ${colorEnv(result.targetEnvironment)}`))
+    } else {
+      const parts: string[] = []
+      if (result.totalPushed > 0) parts.push(`pushed ${result.totalPushed}`)
+      if (result.totalDeleted > 0) parts.push(`deleted ${result.totalDeleted}`)
+      ui.success(`${parts.join(', ')} var(s) in ${colorEnv(result.targetEnvironment)}`)
+    }
+
+    ui.log('')
+    ui.log(`  ${c.label('Shared:')} ${result.shared.configs} configs, ${result.shared.secrets} secrets`)
+
+    for (const [svc, counts] of Object.entries(result.services)) {
+      ui.log(`  ${c.service(svc)}: ${counts.configs} configs, ${counts.secrets} secrets`)
+    }
+
+    // Show deleted vars if any
+    if (result.totalDeleted > 0) {
+      ui.log('')
+      ui.log(c.removed(`  Deleted from backend (${result.totalDeleted}):`))
+      if (result.deleted.shared.length > 0) {
+        ui.log(`    ${c.label('Shared:')} ${result.deleted.shared.join(', ')}`)
+      }
+      for (const [svc, keys] of Object.entries(result.deleted.services)) {
+        if (keys.length > 0) {
+          ui.log(`    ${c.service(svc)}: ${keys.join(', ')}`)
+        }
+      }
+    }
+
+    ui.log('')
+    if (dryRun) {
+      ui.log(`Run without ${c.command('--dry-run')} to apply changes`)
     }
   })
 }

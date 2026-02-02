@@ -18,7 +18,7 @@ import {
   getServiceConfigPath,
   getServiceSecretsPath
 } from '../../../lib/local.js'
-import { runLocalPull, runLocalDiff, runLocalPush } from '../../../lib/local-ops.js'
+import { runLocalPull, runLocalDiff, runLocalPush, runLocalPushAll, runLocalSync } from '../../../lib/local-ops.js'
 import { maskValue } from '../../../lib/masking.js'
 import { snapshotCreate, snapshotList, snapshotRestore, type SnapshotSource } from '../../../lib/snapshot-ops.js'
 
@@ -38,10 +38,13 @@ function getConfigDirOrError(): { configDir: string } | { error: ToolResponse } 
 }
 
 /**
- * vaulter_local_pull - Base env + local shared + service overrides → output targets
+ * vaulter_local_pull - OFFLINE-FIRST local pull
+ *
+ * Generates .env files from local files ONLY - NO backend calls.
+ * For each output: shared vars + service-specific vars → .env file
  */
 export async function handleLocalPullCall(
-  client: VaulterClient,
+  _client: VaulterClient,
   config: VaulterConfig,
   _project: string,
   _environment: Environment,
@@ -58,8 +61,7 @@ export async function handleLocalPullCall(
       output: args.output as string | undefined
     }
 
-    const { baseEnvironment, localSharedCount, overridesCount, result: pullResult } = await runLocalPull({
-      client,
+    const pullResult = await runLocalPull({
       config,
       configDir,
       service,
@@ -67,11 +69,16 @@ export async function handleLocalPullCall(
       output
     })
 
-    const mergeSummary = `base: ${baseEnvironment} + ${localSharedCount} shared + ${overridesCount} overrides`
-    const lines = [`✓ Pulled to ${pullResult.files.length} output(s) (${mergeSummary})`]
+    const lines = [`✓ Pulled to ${pullResult.files.length} output(s) [OFFLINE]`]
+    lines.push(`  Shared: ${pullResult.localSharedCount} vars`)
+    lines.push(`  Service-specific: ${pullResult.totalServiceVarsCount} vars total`)
+    lines.push('')
+
     for (const file of pullResult.files) {
-      lines.push(`  ${file.output}: ${file.fullPath} (${file.varsCount} vars)`)
+      const breakdown = `${file.sharedCount} shared + ${file.serviceCount} service`
+      lines.push(`  ${file.output}: ${file.fullPath} (${file.varsCount} vars = ${breakdown})`)
     }
+
     for (const warning of pullResult.warnings) {
       lines.push(`⚠️ ${warning}`)
     }
@@ -377,6 +384,145 @@ export async function handleLocalSharedListCall(
   lines.push('These vars apply to ALL services in the monorepo.')
 
   return { content: [{ type: 'text', text: lines.join('\n') }] }
+}
+
+/**
+ * vaulter_local_push_all - Push entire .vaulter/local/ structure to backend
+ *
+ * This pushes:
+ * - .vaulter/local/configs.env + secrets.env → backend __shared__
+ * - .vaulter/local/services/{svc}/*.env → backend {svc}
+ *
+ * With overwrite=true, also DELETES backend vars that don't exist locally.
+ */
+export async function handleLocalPushAllCall(
+  client: VaulterClient,
+  config: VaulterConfig,
+  _project: string,
+  _environment: Environment,
+  _service: string | undefined,
+  args: Record<string, unknown>
+): Promise<ToolResponse> {
+  const result = getConfigDirOrError()
+  if ('error' in result) return result.error
+  const { configDir } = result
+
+  try {
+    const dryRun = args.dryRun === true || args.dry_run === true
+    const targetEnv = args.targetEnvironment as string | undefined
+    const overwrite = args.overwrite === true
+
+    const pushResult = await runLocalPushAll({
+      client,
+      config,
+      configDir,
+      dryRun,
+      targetEnvironment: targetEnv,
+      overwrite
+    })
+
+    if (pushResult.totalPushed === 0 && pushResult.totalDeleted === 0) {
+      return {
+        content: [{
+          type: 'text',
+          text: 'No changes to make. Add vars to .vaulter/local/ or use overwrite=true to sync.'
+        }]
+      }
+    }
+
+    const lines: string[] = []
+
+    // Summary line
+    const parts: string[] = []
+    if (pushResult.totalPushed > 0) parts.push(`pushed ${pushResult.totalPushed}`)
+    if (pushResult.totalDeleted > 0) parts.push(`deleted ${pushResult.totalDeleted}`)
+    const prefix = dryRun ? '[DRY RUN] Would' : '✓'
+    lines.push(`${prefix} ${parts.join(', ')} var(s) in ${pushResult.targetEnvironment}`)
+    lines.push('')
+
+    // Pushed breakdown
+    lines.push(`Shared: ${pushResult.shared.configs} configs, ${pushResult.shared.secrets} secrets`)
+    for (const [svc, counts] of Object.entries(pushResult.services)) {
+      lines.push(`${svc}: ${counts.configs} configs, ${counts.secrets} secrets`)
+    }
+
+    // Deleted breakdown
+    if (pushResult.totalDeleted > 0) {
+      lines.push('')
+      lines.push(`Deleted from backend (${pushResult.totalDeleted}):`)
+      if (pushResult.deleted.shared.length > 0) {
+        lines.push(`  Shared: ${pushResult.deleted.shared.join(', ')}`)
+      }
+      for (const [svc, keys] of Object.entries(pushResult.deleted.services)) {
+        if (keys.length > 0) {
+          lines.push(`  ${svc}: ${keys.join(', ')}`)
+        }
+      }
+    }
+
+    return { content: [{ type: 'text', text: lines.join('\n') }] }
+  } catch (err) {
+    return { content: [{ type: 'text', text: `Error: ${(err as Error).message}` }] }
+  }
+}
+
+/**
+ * vaulter_local_sync - Pull from backend to .vaulter/local/
+ *
+ * This syncs the team's shared variables to your local environment.
+ * The opposite of vaulter_local_push_all.
+ */
+export async function handleLocalSyncCall(
+  client: VaulterClient,
+  config: VaulterConfig,
+  _project: string,
+  _environment: Environment,
+  _service: string | undefined,
+  args: Record<string, unknown>
+): Promise<ToolResponse> {
+  const result = getConfigDirOrError()
+  if ('error' in result) return result.error
+  const { configDir } = result
+
+  try {
+    const dryRun = args.dryRun === true || args.dry_run === true
+    const sourceEnv = args.sourceEnvironment as string | undefined
+
+    const syncResult = await runLocalSync({
+      client,
+      config,
+      configDir,
+      sourceEnvironment: sourceEnv,
+      dryRun
+    })
+
+    if (syncResult.totalSynced === 0) {
+      return {
+        content: [{
+          type: 'text',
+          text: 'No variables to sync from backend.'
+        }]
+      }
+    }
+
+    const prefix = dryRun ? '[DRY RUN] Would sync' : '✓ Synced'
+    const lines = [`${prefix} ${syncResult.totalSynced} var(s) from ${syncResult.sourceEnvironment} to .vaulter/local/`]
+    lines.push('')
+    lines.push(`Shared: ${syncResult.shared.configs} configs, ${syncResult.shared.secrets} secrets`)
+
+    for (const [svc, counts] of Object.entries(syncResult.services)) {
+      lines.push(`${svc}: ${counts.configs} configs, ${counts.secrets} secrets`)
+    }
+
+    if (!dryRun) {
+      lines.push('')
+      lines.push('Run vaulter_local_pull all=true to generate .env files')
+    }
+
+    return { content: [{ type: 'text', text: lines.join('\n') }] }
+  } catch (err) {
+    return { content: [{ type: 'text', text: `Error: ${(err as Error).message}` }] }
+  }
 }
 
 /**

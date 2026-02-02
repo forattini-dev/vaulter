@@ -48,6 +48,12 @@ export async function runLocalGroup(context: LocalContext): Promise<void> {
       break
     }
 
+    case 'sync': {
+      const { runLocalSyncCommand } = await import('./sync.js')
+      await runLocalSyncCommand(context)
+      break
+    }
+
     case 'set': {
       const { runLocalSet } = await import('./set.js')
       await runLocalSet(context)
@@ -79,12 +85,18 @@ export async function runLocalGroup(context: LocalContext): Promise<void> {
         ui.log('')
         ui.log(c.header('Commands:'))
         ui.log(`  ${c.subcommand('init')}      Create local overrides directory`)
-        ui.log(`  ${c.subcommand('pull')}      Base + overrides → .env outputs`)
-        ui.log(`  ${c.subcommand('push')}      Push local overrides to remote (share with team)`)
-        ui.log(`  ${c.subcommand('set')}       Add local override (KEY=val KEY2::val2)`)
+        ui.log(`  ${c.subcommand('pull')}      Generate .env files from local files ${c.muted('[OFFLINE]')}`)
+        ui.log(`  ${c.subcommand('push')}      Push local to backend ${c.muted('(--all for entire structure)')}`)
+        ui.log(`  ${c.subcommand('sync')}      Pull from backend to .vaulter/local/`)
+        ui.log(`  ${c.subcommand('set')}       Add local override (KEY=val KEY::val2)`)
         ui.log(`  ${c.subcommand('delete')}    Remove local override`)
         ui.log(`  ${c.subcommand('diff')}      Show overrides vs base`)
         ui.log(`  ${c.subcommand('status')}    Show local state summary`)
+        ui.log('')
+        ui.log(c.header('Workflow:'))
+        ui.log(`  ${c.muted('1.')} Edit files in .vaulter/local/`)
+        ui.log(`  ${c.muted('2.')} ${c.command('vaulter local pull --all')}  ${c.muted('Generate .env files')}`)
+        ui.log(`  ${c.muted('3.')} ${c.command('vaulter local push --all')} ${c.muted('Share with team')}`)
         process.exit(1)
       } else {
         print.error(`Unknown subcommand: ${c.command('local')} ${c.subcommand(subcommand)}`)

@@ -183,22 +183,51 @@ vaulter_clone_env source="dev" target="prd" dryRun=true
 vaulter_clone_env source="dev" target="prd"
 ```
 
-### Workflow: Local Overrides (Dev)
+### Workflow: Local Overrides (Dev) - OFFLINE FIRST
 
-Local overrides são variáveis que sobrescrevem o backend **apenas localmente**. Útil para desenvolvimento.
+**ARQUITETURA OFFLINE-FIRST:**
+
+| Comando | O que faz | Backend? |
+|---------|-----------|----------|
+| `vaulter local pull --all` | Gera .env files de `.vaulter/local/` | ❌ OFFLINE |
+| `vaulter local push --all` | Envia `.vaulter/local/` → backend | ✅ Usa backend |
+| `vaulter local push --all --overwrite` | **Substitui backend** pelo local (apaga extras) | ✅ Usa backend |
+| `vaulter local sync` | Baixa backend → `.vaulter/local/` | ✅ Usa backend |
+
+**Fluxo típico de desenvolvimento:**
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     DESENVOLVIMENTO LOCAL                        │
+│  1. Editar .vaulter/local/configs.env                           │
+│  2. vaulter local pull --all  → Gera .env files [OFFLINE]       │
+│  3. Desenvolver...                                               │
+└─────────────────────────────────────────────────────────────────┘
+                              ↓
+┌─────────────────────────────────────────────────────────────────┐
+│                   COMPARTILHAR COM TIME                          │
+│  vaulter local push --all     → Envia para backend              │
+└─────────────────────────────────────────────────────────────────┘
+                              ↓
+┌─────────────────────────────────────────────────────────────────┐
+│                    NOVO DEV DO TIME                              │
+│  1. git clone <repo>                                             │
+│  2. vaulter local sync        → Baixa backend → .vaulter/local/ │
+│  3. vaulter local pull --all  → Gera .env files                 │
+└─────────────────────────────────────────────────────────────────┘
+```
 
 **Estrutura de arquivos:**
 
-Single repo:
 ```
 .vaulter/local/
-├── configs.env                 # shared configs (sensitive=false)
-├── secrets.env                 # shared secrets (sensitive=true)
-└── services/                   # monorepo only
-    ├── web/
-    │   ├── configs.env
-    │   └── secrets.env
-    └── api/
+├── configs.env                 # shared configs (todos services)
+├── secrets.env                 # shared secrets (todos services)
+└── services/                   # monorepo: configs por service
+    ├── svc-auth/
+    │   ├── configs.env         # configs específicos do svc-auth
+    │   └── secrets.env         # secrets específicos do svc-auth
+    └── svc-api/
         ├── configs.env
         └── secrets.env
 ```
@@ -207,46 +236,78 @@ Single repo:
 - `KEY=value` → **secrets.env** (sensitive=true)
 - `KEY::value` → **configs.env** (sensitive=false)
 
-**Merge order (prioridade):** `backend < local shared < service overrides`
+**Merge para cada output:** `shared vars + service-specific vars`
+- Service vars sobrescrevem shared vars com mesmo nome
 
+**Exemplo prático:**
+```
+# .vaulter/local/configs.env (20 vars shared)
+NODE_ENV=local
+LOG_LEVEL=debug
+...
+
+# .vaulter/local/services/svc-auth/configs.env (2 vars específicos)
+PORT=28000
+S3DB_CONNECTION_STRING=...
+
+# Resultado para svc-auth: 20 shared + 2 service = 22 vars
+# (NÃO 38 vars misturados de todos os services!)
+```
+
+**CLI:**
 ```bash
-# Shared vars (single repo ou monorepo)
-vaulter local set PORT::3001              # → configs.env
-vaulter local set API_KEY=xxx             # → secrets.env
-
-# Shared vars com --shared (mesmo efeito, só mais explícito)
-vaulter local set --shared DEBUG::true    # → configs.env
-vaulter local set --shared TOKEN=secret   # → secrets.env
+# === EDITAR LOCALMENTE ===
+# Shared vars (todos services)
+vaulter local set DEBUG::true             # → configs.env
+vaulter local set JWT_SECRET=xxx          # → secrets.env
 
 # Service-specific (monorepo)
 vaulter local set PORT::3001 -s web       # → services/web/configs.env
 vaulter local set API_KEY=xxx -s web      # → services/web/secrets.env
 
-# Ver o que está diferente do base env
-vaulter local diff
-
-# Gerar .env files com: backend + shared + overrides
+# === GERAR .ENV FILES [OFFLINE] ===
 vaulter local pull --all
+# Output: "svc-auth: 23 vars (21 shared + 2 service)"
 
-# Ver status (mostra config/secrets count separados)
+# === COMPARTILHAR COM TIME ===
+vaulter local push --all                  # Envia tudo para backend (merge)
+vaulter local push --all --overwrite      # SUBSTITUI backend pelo local (apaga extras!)
+
+# === RECEBER DO TIME ===
+vaulter local sync                        # Baixa backend → .vaulter/local/
+vaulter local pull --all                  # Gera .env files
+
+# Ver status
 vaulter local status
 ```
 
 **MCP Tools:**
 ```bash
-# Shared vars
-vaulter_local_shared_set key="DEBUG" value="true"                 # → configs.env
-vaulter_local_shared_set key="TOKEN" value="xxx" sensitive=true   # → secrets.env
-vaulter_local_shared_delete key="DEBUG"
-vaulter_local_shared_list
+# === EDITAR LOCALMENTE ===
+vaulter_local_shared_set key="DEBUG" value="true"     # shared config
+vaulter_local_set key="PORT" value="3001" service="web"  # service config
 
-# Service-specific overrides (monorepo)
-vaulter_local_set key="PORT" value="3001" service="web"                    # → services/web/configs.env
-vaulter_local_set key="API_KEY" value="xxx" service="web" sensitive=true   # → services/web/secrets.env
-vaulter_local_delete key="PORT" service="web"
-
-# Pull (inclui shared + overrides automaticamente)
+# === GERAR .ENV [OFFLINE] ===
 vaulter_local_pull all=true
+
+# === COMPARTILHAR COM TIME ===
+vaulter_local_push_all                    # Envia tudo para backend
+
+# === RECEBER DO TIME ===
+vaulter_local_sync                        # Baixa backend → .vaulter/local/
+vaulter_local_pull all=true               # Gera .env files
+```
+
+**JSON Output:**
+```json
+{
+  "success": true,
+  "localSharedCount": 21,
+  "totalServiceVarsCount": 33,
+  "files": [
+    { "output": "svc-auth", "varsCount": 23, "sharedCount": 21, "serviceCount": 2 }
+  ]
+}
 ```
 
 ### Workflow: Snapshots

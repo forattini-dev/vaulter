@@ -102,6 +102,8 @@ import {
 import {
   handleLocalPullCall,
   handleLocalPushCall,
+  handleLocalPushAllCall,
+  handleLocalSyncCall,
   handleLocalSetCall,
   handleLocalDeleteCall,
   handleLocalDiffCall,
@@ -401,6 +403,12 @@ export async function handleToolCall(
 
       case 'vaulter_local_diff':
         return await handleLocalDiffCall(client, config!, project, environment, service, args)
+
+      case 'vaulter_local_push_all':
+        return await handleLocalPushAllCall(client, config!, project, environment, service, args)
+
+      case 'vaulter_local_sync':
+        return await handleLocalSyncCall(client, config!, project, environment, service, args)
 
       // === SNAPSHOT TOOLS (need client) ===
       case 'vaulter_snapshot_create':

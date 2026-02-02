@@ -688,6 +688,29 @@ export function registerTools(): Tool[] {
       }
     },
     {
+      name: 'vaulter_local_push_all',
+      description: 'Push ENTIRE .vaulter/local/ structure to backend. This pushes shared vars AND all service-specific vars at once. Use overwrite=true to DELETE backend vars that don\'t exist locally (makes backend match local exactly).',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          targetEnvironment: { type: 'string', description: 'Target environment (defaults to base env from config)' },
+          dryRun: { type: 'boolean', description: 'Preview changes without applying', default: false },
+          overwrite: { type: 'boolean', description: 'Delete backend vars that don\'t exist locally (destructive!)', default: false }
+        }
+      }
+    },
+    {
+      name: 'vaulter_local_sync',
+      description: 'Pull from backend to .vaulter/local/. This syncs the team\'s shared variables to your local environment. The opposite of vaulter_local_push_all. After sync, run vaulter_local_pull all=true to generate .env files.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          sourceEnvironment: { type: 'string', description: 'Source environment to pull from (defaults to base env from config)' },
+          dryRun: { type: 'boolean', description: 'Preview changes without applying', default: false }
+        }
+      }
+    },
+    {
       name: 'vaulter_local_diff',
       description: 'Show local overrides vs base environment. Shows which variables are added or modified locally (both shared and service-specific).',
       inputSchema: {
