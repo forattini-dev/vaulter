@@ -1076,10 +1076,13 @@ Load secrets directly from the backend at application startup - **no .env files,
 ### Quick Start
 
 ```typescript
-// Option 1: Side-effect import (auto-loads with defaults)
+// Option 1: Simple import (like dotenv/config)
+import 'vaulter/load'
+
+// Option 2: Side-effect import with full path
 import 'vaulter/runtime/load'
 
-// Option 2: With options
+// Option 3: With options
 import { loadRuntime } from 'vaulter'
 
 await loadRuntime({
@@ -1087,6 +1090,11 @@ await loadRuntime({
   service: 'api',        // Optional: for monorepos
   required: true         // Default: true in prd, false otherwise
 })
+
+// Option 4: Using config() with backend source
+import { config } from 'vaulter'
+
+await config({ source: 'backend' })
 
 // Now process.env has all your secrets!
 console.log(process.env.DATABASE_URL)

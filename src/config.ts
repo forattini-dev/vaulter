@@ -20,6 +20,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import dotenv from 'dotenv'
 import { loadConfig, findConfigDir, getBaseDir } from './lib/config-loader.js'
+import { loadRuntime, isRuntimeAvailable } from './runtime/index.js'
 import type { VaulterConfig } from './types.js'
 
 // ============================================================================
@@ -28,9 +29,20 @@ import type { VaulterConfig } from './types.js'
 
 export type ConfigMode = 'auto' | 'local' | 'deploy' | 'skip'
 
+export type ConfigSource = 'local' | 'backend' | 'auto'
+
 export type DetectedEnvironment = 'kubernetes' | 'ci' | 'local'
 
 export interface ConfigOptions {
+  /**
+   * Where to load variables from:
+   * - 'local': Load from .vaulter/local/*.env files (dotenv-style)
+   * - 'backend': Load dynamically from S3/backend
+   * - 'auto': Use backend in K8s/CI, local otherwise
+   * @default 'auto'
+   */
+  source?: ConfigSource
+
   /**
    * Force a specific mode instead of auto-detecting
    * @default 'auto'
@@ -66,6 +78,14 @@ export interface ConfigOptions {
    * @default false
    */
   verbose?: boolean
+
+  /**
+   * If true, throws error when vars cannot be loaded from backend.
+   * If false, logs warning and falls back to local files.
+   * Only applies when source='backend' or 'auto'.
+   * @default true in production, false otherwise
+   */
+  required?: boolean
 }
 
 export interface ConfigResult {
@@ -75,12 +95,17 @@ export interface ConfigResult {
   mode: ConfigMode
 
   /**
+   * Source used for loading: 'local' or 'backend'
+   */
+  source: 'local' | 'backend' | 'none'
+
+  /**
    * Detected environment type
    */
   detectedEnv: DetectedEnvironment
 
   /**
-   * Files that were loaded
+   * Files that were loaded (only for source='local')
    */
   loadedFiles: string[]
 
@@ -93,6 +118,16 @@ export interface ConfigResult {
    * Number of variables loaded
    */
   varsLoaded: number
+
+  /**
+   * Backend URL used (only for source='backend')
+   */
+  backend?: string
+
+  /**
+   * Time taken to load from backend (ms)
+   */
+  durationMs?: number
 
   /**
    * Whether loading was skipped entirely
@@ -308,6 +343,100 @@ function loadEnvFile(
 }
 
 // ============================================================================
+// Backend Loading
+// ============================================================================
+
+/**
+ * Load variables from the backend (S3/MinIO)
+ */
+async function loadFromBackend(
+  options: ConfigOptions,
+  detectedEnv: DetectedEnvironment,
+  environment: string
+): Promise<ConfigResult> {
+  const {
+    service,
+    cwd = process.cwd(),
+    override = false,
+    verbose = process.env.VAULTER_VERBOSE === 'true',
+    required
+  } = options
+
+  if (verbose) {
+    console.log(`[vaulter] Loading from backend for ${environment}...`)
+  }
+
+  // Check if backend is available
+  if (!isRuntimeAvailable(cwd)) {
+    const msg = 'No .vaulter config found, cannot load from backend'
+    if (verbose) {
+      console.log(`[vaulter] ${msg}`)
+    }
+    return {
+      mode: 'auto',
+      source: 'none',
+      detectedEnv,
+      loadedFiles: [],
+      skippedFiles: [],
+      varsLoaded: 0,
+      skipped: true,
+      skipReason: msg
+    }
+  }
+
+  try {
+    const result = await loadRuntime({
+      cwd,
+      environment,
+      service,
+      override,
+      required,
+      verbose,
+      silent: !verbose
+    })
+
+    if (verbose) {
+      console.log(`[vaulter] Loaded ${result.varsLoaded} vars from backend in ${result.durationMs}ms`)
+    }
+
+    return {
+      mode: 'auto',
+      source: 'backend',
+      detectedEnv,
+      loadedFiles: [],
+      skippedFiles: [],
+      varsLoaded: result.varsLoaded,
+      backend: result.backend,
+      durationMs: result.durationMs,
+      skipped: false
+    }
+  } catch (err) {
+    const errMsg = err instanceof Error ? err.message : String(err)
+
+    if (verbose) {
+      console.error(`[vaulter] Backend load failed: ${errMsg}`)
+    }
+
+    // If required, re-throw
+    if (required) {
+      throw err
+    }
+
+    // Otherwise return empty result
+    return {
+      mode: 'auto',
+      source: 'none',
+      detectedEnv,
+      loadedFiles: [],
+      skippedFiles: [],
+      varsLoaded: 0,
+      skipped: true,
+      skipReason: `Backend load failed: ${errMsg}`
+    }
+  }
+}
+
+// ============================================================================
 // Main Config Function
 // ============================================================================
 
@@ -330,9 +459,14 @@ function loadEnvFile(
  * @example
  * // Monorepo with service-specific vars
  * config({ service: 'svc-auth' })
+ *
+ * @example
+ * // Load from backend (S3)
+ * await config({ source: 'backend' })
  */
-export function config(options: ConfigOptions = {}): ConfigResult {
+export function config(options: ConfigOptions = {}): ConfigResult | Promise<ConfigResult> {
   const {
+    source = 'auto',
     mode = 'auto',
     service = process.env.VAULTER_SERVICE,
     cwd = process.cwd(),
@@ -347,11 +481,18 @@ export function config(options: ConfigOptions = {}): ConfigResult {
   let varsLoaded = 0
 
   if (verbose) {
-    console.log(`[vaulter] Detected: ${detectedEnv}, mode: ${mode}, env: ${environment}`)
+    console.log(`[vaulter] Detected: ${detectedEnv}, mode: ${mode}, env: ${environment}, source: ${source}`)
     if (service) console.log(`[vaulter] Service: ${service}`)
   }
 
-  // Determine effective mode
+  // Determine if we should use backend
+  // Only use backend when explicitly requested (source='backend')
+  // 'auto' mode keeps the original behavior (local files)
+  if (source === 'backend') {
+    return loadFromBackend(options, detectedEnv, environment)
+  }
+
+  // Determine effective mode for local loading
   let effectiveMode: ConfigMode = mode
   if (mode === 'auto') {
     if (detectedEnv === 'kubernetes') {
@@ -370,6 +511,7 @@ export function config(options: ConfigOptions = {}): ConfigResult {
     }
     return {
       mode: effectiveMode,
+      source: 'none',
       detectedEnv,
       loadedFiles,
       skippedFiles,
@@ -390,6 +532,7 @@ export function config(options: ConfigOptions = {}): ConfigResult {
     const vars = result.parsed ? Object.keys(result.parsed).length : 0
     return {
       mode: effectiveMode,
+      source: 'local',
       detectedEnv,
       loadedFiles: result.parsed ? ['.env'] : [],
       skippedFiles: result.parsed ? [] : ['.env'],
@@ -496,6 +639,7 @@ export function config(options: ConfigOptions = {}): ConfigResult {
 
   return {
     mode: effectiveMode,
+    source: 'local',
     detectedEnv,
     loadedFiles,
     skippedFiles,

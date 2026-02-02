@@ -110,6 +110,7 @@ export {
 } from './config.js'
 export type {
   ConfigMode,
+  ConfigSource,
   ConfigOptions,
   ConfigResult,
   DetectedEnvironment

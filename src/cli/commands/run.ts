@@ -53,7 +53,7 @@ export async function runRun(context: RunContext): Promise<void> {
   }
 
   // Load env vars using smart config
-  const result = config({
+  const result = await config({
     mode: 'auto',
     environment,
     service,
