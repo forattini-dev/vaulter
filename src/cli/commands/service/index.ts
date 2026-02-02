@@ -55,6 +55,12 @@ export async function runServiceGroup(context: ServiceContext): Promise<void> {
       break
     }
 
+    case 'dedupe': {
+      const { runDedupe } = await import('./dedupe.js')
+      await runDedupe({ ...context, dryRun: args['dry-run'] as boolean || false })
+      break
+    }
+
     default:
       // If no subcommand, default to list
       if (!subcommand || subcommand.startsWith('-')) {
@@ -87,8 +93,14 @@ async function runTree(context: ServiceContext): Promise<void> {
   try {
     await client.connect()
 
-    // Get all services from config
-    const services = config?.services || []
+    // Get all services from config outputs
+    let services: string[] = []
+    if (config?.outputs) {
+      services = Object.values(config.outputs)
+        .map(o => typeof o === 'object' ? o.service : undefined)
+        .filter((s): s is string => !!s && s !== '__shared__')
+      services = [...new Set(services)]  // dedupe
+    }
 
     // Get shared variables (if supported by backend)
     let sharedVars: Record<string, string> = {}
@@ -101,8 +113,7 @@ async function runTree(context: ServiceContext): Promise<void> {
     // Get service-specific variables
     const serviceVars: Record<string, { total: number; overrides: number }> = {}
 
-    for (const svc of services) {
-      const svcName = typeof svc === 'string' ? svc : svc.name
+    for (const svcName of services) {
       try {
         const vars = await client.export(project, environment, svcName)
         const overrideCount = Object.keys(vars).filter(k => sharedVars[k] !== undefined).length
@@ -186,6 +197,7 @@ export function printServiceHelp(): void {
   ui.log(`  ${c.subcommand('list')}             List services in monorepo`)
   ui.log(`  ${c.subcommand('scan')} [path]      Scan for packages (auto-detect NX, Turborepo, Lerna)`)
   ui.log(`  ${c.subcommand('tree')}             Show variable inheritance tree`)
+  ui.log(`  ${c.subcommand('dedupe')}           Find and clean duplicate vars between services and __shared__`)
   ui.log('')
   ui.log(c.header('Options:'))
   ui.log(`  ${c.highlight('-e')}, ${c.highlight('--env')}        Environment (${colorEnv('dev')}, ${colorEnv('stg')}, ${colorEnv('prd')})`)
@@ -195,4 +207,6 @@ export function printServiceHelp(): void {
   ui.log(`  ${c.command('vaulter service list')}`)
   ui.log(`  ${c.command('vaulter service scan')} ${c.muted('./packages')}`)
   ui.log(`  ${c.command('vaulter service tree')} ${c.highlight('-e')} ${colorEnv('prd')}`)
+  ui.log(`  ${c.command('vaulter service dedupe preview -e dev')}  ${c.muted('# Find duplicates')}`)
+  ui.log(`  ${c.command('vaulter service dedupe clean -e dev')}    ${c.muted('# Delete from services')}`)
 }

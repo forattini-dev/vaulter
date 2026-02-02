@@ -230,9 +230,6 @@ vaulter local pull --all
 
 # Ver status (mostra config/secrets count separados)
 vaulter local status
-
-# Resetar overrides
-vaulter local reset
 ```
 
 **MCP Tools:**
@@ -398,6 +395,34 @@ vaulter sync merge -e dev --strategy remote
 # Erro em conflitos (não faz nada)
 vaulter sync merge -e dev --strategy error
 ```
+
+### Sync com Directory Mode (--dir)
+
+O modo `--dir` sincroniza a estrutura completa `.vaulter/{env}/`:
+
+```bash
+# Push: .vaulter/dev/ → backend
+vaulter sync push --dir -e dev
+
+# Pull: backend → .vaulter/dev/
+vaulter sync pull --dir -e dev
+
+# Dry-run para ver o que seria feito
+vaulter sync push --dir -e dev --dry-run
+```
+
+**Estrutura sincronizada:**
+```
+.vaulter/dev/
+├── configs.env       # → __shared__ (sensitive=false)
+├── secrets.env       # → __shared__ (sensitive=true)
+└── services/
+    └── api/
+        ├── configs.env   # → api (sensitive=false)
+        └── secrets.env   # → api (sensitive=true)
+```
+
+**Importante:** Arquivos locais **nunca são deletados** pelo CLI. Use `vaulter nuke --confirm=<project>` apenas para deletar dados do backend.
 
 ---
 

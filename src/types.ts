@@ -736,6 +736,8 @@ export interface CLIArgs {
   'skip-shared'?: boolean
   // Nuke command
   confirm?: string
+  // Push/Pull dir mode
+  dir?: boolean
 }
 
 export interface CommandContext {

@@ -67,12 +67,6 @@ export async function runLocalGroup(context: LocalContext): Promise<void> {
       break
     }
 
-    case 'reset': {
-      const { runLocalReset } = await import('./reset.js')
-      await runLocalReset(context)
-      break
-    }
-
     case 'status': {
       const { runLocalStatus } = await import('./status.js')
       await runLocalStatus(context)
@@ -90,7 +84,6 @@ export async function runLocalGroup(context: LocalContext): Promise<void> {
         ui.log(`  ${c.subcommand('set')}       Add local override (KEY=val KEY2::val2)`)
         ui.log(`  ${c.subcommand('delete')}    Remove local override`)
         ui.log(`  ${c.subcommand('diff')}      Show overrides vs base`)
-        ui.log(`  ${c.subcommand('reset')}     Clear all overrides`)
         ui.log(`  ${c.subcommand('status')}    Show local state summary`)
         process.exit(1)
       } else {

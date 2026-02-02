@@ -1,7 +1,9 @@
 /**
  * Vaulter CLI - Push Command
  *
- * Push local .env file to backend (one-way sync, local wins)
+ * Two modes:
+ * 1. File mode (default): Push single .env file to backend
+ * 2. Dir mode (--dir): Push .vaulter/{env}/* structure to backend
  */
 
 import fs from 'node:fs'
@@ -11,6 +13,8 @@ import { withClient } from '../lib/create-client.js'
 import { findConfigDir, getEnvFilePathForConfig } from '../../lib/config-loader.js'
 import { parseEnvFile, hasStdinData, parseEnvFromStdin } from '../../lib/env-parser.js'
 import { createConnectedAuditLogger, logPushOperation, disconnectAuditLogger } from '../lib/audit-helper.js'
+import { pushToBackend } from '../../lib/backend-sync.js'
+import { getEnvDir } from '../../lib/fs-store.js'
 import { c, colorEnv, print } from '../lib/colors.js'
 import { SHARED_SERVICE } from '../../lib/shared.js'
 import * as ui from '../ui.js'
@@ -28,6 +32,8 @@ export interface PushContext {
   prune?: boolean
   /** Target shared variables scope (monorepo) */
   shared?: boolean
+  /** Use directory mode: push .vaulter/{env}/ structure */
+  dir?: boolean
 }
 
 /**
@@ -50,6 +56,23 @@ export async function runPush(context: PushContext): Promise<void> {
     print.error('Project not specified and no config found')
     ui.log(`Run "${c.command('vaulter init')}" or specify ${c.highlight('--project')}`)
     process.exit(1)
+  }
+
+  // Check for --dir flag or auto-detect .vaulter/{env}/ structure
+  const dirMode = args.dir || context.dir
+  const configDir = findConfigDir()
+
+  if (dirMode && configDir) {
+    await runDirPush(context, configDir)
+    return
+  }
+
+  // Auto-detect: if .vaulter/{env}/ exists, suggest using --dir
+  if (configDir) {
+    const envDir = getEnvDir(configDir, environment)
+    if (fs.existsSync(envDir) && !args.file) {
+      ui.log(`${c.muted('Tip:')} Found ${c.highlight(`.vaulter/${environment}/`)} - use ${c.command('--dir')} to push entire directory structure`)
+    }
   }
 
   // Show environment banner (respects --quiet and --json)
@@ -268,6 +291,73 @@ export async function runPush(context: PushContext): Promise<void> {
         }
         if (deletedKeys.length > 0) {
           ui.log(`  ${c.removed(`Deleted: ${deletedKeys.length}`)}`)
+        }
+      }
+    })
+  } finally {
+    await disconnectAuditLogger(auditLogger)
+  }
+}
+
+/**
+ * Run push in directory mode
+ *
+ * Pushes entire .vaulter/{env}/ structure to backend:
+ * - configs.env + secrets.env → __shared__
+ * - services/{svc}/configs.env + secrets.env → {svc}
+ */
+async function runDirPush(context: PushContext, configDir: string): Promise<void> {
+  const { args, config, project, environment, verbose, dryRun, jsonOutput } = context
+
+  // Show environment banner
+  if (!jsonOutput && !dryRun) {
+    ui.showEnvironmentBanner(environment, {
+      project,
+      action: 'Pushing directory structure'
+    })
+  }
+
+  // Production confirmation
+  if (isProdEnvironment(environment) && config?.security?.confirm_production && !args.force) {
+    print.warning(`You are pushing to ${colorEnv(environment)} (production) environment`)
+    ui.log(`Use ${c.highlight('--force')} to confirm this action`)
+    process.exit(1)
+  }
+
+  const auditLogger = await createConnectedAuditLogger(config, project, environment, verbose)
+
+  try {
+    await withClient({ args, config, project, verbose }, async (client) => {
+      const result = await pushToBackend({
+        client,
+        vaulterDir: configDir,
+        project,
+        environment,
+        dryRun
+      })
+
+      if (jsonOutput) {
+        ui.output(JSON.stringify({
+          success: true,
+          dryRun,
+          project,
+          environment,
+          pushed: result.pushed,
+          services: result.services,
+          details: result.details
+        }))
+      } else if (dryRun) {
+        ui.log(`${c.muted('Dry run')} - would push:`)
+        ui.log(`  Shared: ${result.details.shared.configs} configs, ${result.details.shared.secrets} secrets`)
+        for (const [svc, counts] of Object.entries(result.details.services)) {
+          ui.log(`  ${c.service(svc)}: ${counts.configs} configs, ${counts.secrets} secrets`)
+        }
+        ui.log(`  ${c.muted('Total:')} ${result.pushed} variables`)
+      } else {
+        ui.success(`Pushed ${result.pushed} variables to ${project}/${environment}`)
+        ui.log(`  Shared: ${result.details.shared.configs} configs, ${result.details.shared.secrets} secrets`)
+        for (const [svc, counts] of Object.entries(result.details.services)) {
+          ui.log(`  ${c.service(svc)}: ${counts.configs} configs, ${counts.secrets} secrets`)
         }
       }
     })

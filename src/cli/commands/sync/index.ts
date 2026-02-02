@@ -61,9 +61,10 @@ export async function runSyncGroup(context: SyncContext): Promise<void> {
         ...args,
         _: ['push', ...args._.slice(2)]
       }
-      // Pass prune flag from args
+      // Pass prune and dir flags from args
       const prune = args.prune as boolean | undefined
-      await runPush({ ...context, args: shiftedArgs, prune })
+      const dir = args.dir as boolean | undefined
+      await runPush({ ...context, args: shiftedArgs, prune, dir })
       break
     }
 
@@ -73,10 +74,11 @@ export async function runSyncGroup(context: SyncContext): Promise<void> {
         ...args,
         _: ['pull', ...args._.slice(2)]
       }
-      // Pass outputs flags from args
+      // Pass outputs and dir flags from args
       const all = args.all as boolean | undefined
       const target = args.output as string | undefined
-      await runPull({ ...context, args: shiftedArgs, all, target })
+      const dir = args.dir as boolean | undefined
+      await runPull({ ...context, args: shiftedArgs, all, target, dir })
       break
     }
 

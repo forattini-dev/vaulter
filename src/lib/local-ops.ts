@@ -83,11 +83,10 @@ export async function runLocalPull(options: LocalPullOptions): Promise<LocalPull
   const overrides = all ? {} : loadOverrides(configDir, service)
 
   // Create a loader function for per-output overrides (used with --all)
-  // This returns: local shared + service-specific overrides for the given service
+  // This returns ONLY service-specific overrides for the given service
+  // Note: localShared is already included in varsOverride (merged), so we don't add it here
   const localOverridesLoader = (targetService?: string): Record<string, string> => {
-    const serviceOverrides = loadOverrides(configDir, targetService)
-    // Merge: local shared (lower priority) + service overrides (higher priority)
-    return { ...localShared, ...serviceOverrides }
+    return loadOverrides(configDir, targetService)
   }
 
   // Collect all unique service overrides for reporting (only when --all)

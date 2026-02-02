@@ -58,6 +58,7 @@ import { runAudit } from './commands/audit.js'
 import { runRotation } from './commands/rotation.js'
 import { runRun } from './commands/run.js'
 import { runNuke } from './commands/nuke.js'
+import { runOutput } from './commands/output.js'
 
 // Hierarchical command group routers
 import { runVar } from './commands/var/index.js'
@@ -366,6 +367,11 @@ const cliSchema: CLISchema = {
           type: 'boolean',
           default: false,
           description: 'Show masked values in diff output'
+        },
+        dir: {
+          type: 'boolean',
+          default: false,
+          description: 'Use directory mode: push/pull entire .vaulter/{env}/ structure'
         }
       },
       commands: {
@@ -373,10 +379,10 @@ const cliSchema: CLISchema = {
           description: 'Two-way merge (local ↔ remote)'
         },
         push: {
-          description: 'Push local to remote (use --prune to delete remote-only)'
+          description: 'Push local to remote (use --prune to delete remote-only, --dir for directory mode)'
         },
         pull: {
-          description: 'Pull remote to outputs. Use --all or --output <name>'
+          description: 'Pull remote to local. Use --all or --output <name>, --dir for directory mode'
         },
         diff: {
           description: 'Show differences between local and remote'
@@ -507,6 +513,12 @@ const cliSchema: CLISchema = {
         },
         tree: {
           description: 'Show inheritance tree with shared variables'
+        },
+        dedupe: {
+          description: 'Find and clean duplicate vars between services and __shared__',
+          positional: [
+            { name: 'action', required: false, description: 'preview | clean | keep-service' }
+          ]
         }
       }
     },
@@ -535,9 +547,6 @@ const cliSchema: CLISchema = {
         },
         diff: {
           description: 'Show overrides vs base environment'
-        },
-        reset: {
-          description: 'Clear all local overrides'
         },
         status: {
           description: 'Show local state summary'
@@ -684,13 +693,17 @@ const cliSchema: CLISchema = {
     },
 
     nuke: {
-      description: 'DANGER: Permanently delete ALL data from remote storage',
+      description: 'Delete all data from backend',
       options: {
         confirm: {
           type: 'string',
-          description: 'Project name confirmation (required, must match exactly)'
+          description: 'Project name confirmation (required)'
         }
       }
+    },
+
+    output: {
+      description: 'Generate .env files in apps from local .vaulter/{env}/ files'
     },
 
     completion: {
@@ -843,7 +856,9 @@ function toCliArgs(result: CommandParseResult): CLIArgs {
     repo: opts.repo as string | undefined,
     'skip-shared': opts['skip-shared'] as boolean | undefined,
     // Nuke command
-    confirm: opts.confirm as string | undefined
+    confirm: opts.confirm as string | undefined,
+    // Sync dir mode
+    dir: opts.dir as boolean | undefined
   }
 }
 
@@ -1081,6 +1096,10 @@ async function main(): Promise<void> {
 
       case 'nuke':
         await runNuke(context)
+        break
+
+      case 'output':
+        await runOutput(context)
         break
 
       case 'rotation':

@@ -1,8 +1,7 @@
 /**
  * Vaulter CLI - Nuke Command
  *
- * DANGER: Permanently deletes ALL data from the remote storage.
- * This includes all environment variables, partitions, and metadata.
+ * Permanently deletes ALL data from the remote backend storage.
  *
  * Safety locks:
  * 1. --confirm=<project-name> required (must match exactly)
@@ -10,7 +9,7 @@
  * 3. Non-interactive mode (CI): requires additional --force flag
  */
 
-import type { CLIArgs, VaulterConfig } from '../../types.js'
+import type { CLIArgs, VaulterConfig, Environment } from '../../types.js'
 import { withClient } from '../lib/create-client.js'
 import { createConnectedAuditLogger, disconnectAuditLogger } from '../lib/audit-helper.js'
 import { c, symbols, print } from '../lib/colors.js'
@@ -21,6 +20,7 @@ interface NukeContext {
   args: CLIArgs
   config: VaulterConfig | null
   project: string
+  environment: Environment
   verbose: boolean
   dryRun: boolean
   jsonOutput: boolean
