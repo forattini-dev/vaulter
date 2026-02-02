@@ -55,10 +55,17 @@ Vaulter follows a **backend-sync** workflow where the backend is the source of t
 ```
 .vaulter/
 ├── config.yaml              # ✅ Committed - Project config
-└── local/                   # ❌ Gitignored - Personal overrides
-    ├── configs.env          # Non-sensitive overrides (DEBUG, PORT)
-    ├── secrets.env          # Sensitive overrides (test API keys)
-    └── services/            # Monorepo per-service overrides
+├── local/                   # ❌ Gitignored - Personal overrides
+│   ├── configs.env          # Non-sensitive overrides (DEBUG, PORT)
+│   ├── secrets.env          # Sensitive overrides (test API keys)
+│   └── services/            # Monorepo per-service overrides
+│       └── api/
+│           ├── configs.env
+│           └── secrets.env
+└── dev/                     # ❌ Gitignored - Environment data (--dir mode)
+    ├── configs.env          # Shared non-sensitive vars
+    ├── secrets.env          # Shared sensitive vars
+    └── services/            # Monorepo service vars
         └── api/
             ├── configs.env
             └── secrets.env
@@ -66,6 +73,10 @@ Vaulter follows a **backend-sync** workflow where the backend is the source of t
 apps/web/.env                # ❌ Gitignored - Generated output
 apps/api/.env                # ❌ Gitignored - Generated output
 ```
+
+**Directory modes:**
+- `.vaulter/local/` - Personal overrides (never synced to backend)
+- `.vaulter/{env}/` - Environment data (synced with `--dir` mode)
 
 ### .gitignore Setup
 
@@ -278,9 +289,10 @@ See [docs/DOCTOR.md](docs/DOCTOR.md) for complete guide.
 | Command | Description |
 |:--------|:------------|
 | `sync merge -e <env>` | Bidirectional merge (default) |
-| `sync pull -e <env>` | Download from backend |
-| `sync pull --prune -e <env>` | Download, delete local-only vars |
-| `sync push -e <env>` | Upload to backend |
+| `sync pull -e <env>` | Download from backend to outputs |
+| `sync pull --dir -e <env>` | Download to `.vaulter/{env}/` directory |
+| `sync push -e <env>` | Upload .env file to backend |
+| `sync push --dir -e <env>` | Upload `.vaulter/{env}/` directory to backend |
 | `sync push --prune -e <env>` | Upload, delete remote-only vars |
 | `sync diff -e <env>` | Show differences without changes |
 
@@ -942,9 +954,6 @@ vaulter local diff
 
 # Check status
 vaulter local status
-
-# Reset all local overrides
-vaulter local reset
 ```
 
 ### Section-Aware .env Management

@@ -368,12 +368,17 @@ Download from backend to local .env file or output targets.
 | `service` | string | No | - | Service name |
 | `output` | string | No | auto | Output file path OR output target name (when config has `outputs`) |
 | `all` | boolean | No | `false` | Pull to ALL output targets defined in config |
+| `dir` | boolean | No | `false` | Pull to `.vaulter/{env}/` directory structure |
 
-**Output Targets Mode:**
+**Modes:**
 
-When config has `outputs` section:
-- `--all` → Pulls to all defined output targets
-- `--output <name>` → Pulls to specific output target (e.g., `web`, `api`)
+1. **Output Targets Mode** (default): Pull to app .env files
+   - `--all` → Pulls to all defined output targets
+   - `--output <name>` → Pulls to specific output target (e.g., `web`, `api`)
+
+2. **Directory Mode** (`--dir`): Pull to `.vaulter/{env}/` directory
+   - Creates `configs.env` + `secrets.env` for shared vars
+   - Creates `services/{svc}/` for service-specific vars
 
 ```bash
 # Pull to all outputs
@@ -381,10 +386,13 @@ vaulter sync pull --all -e dev
 
 # Pull to specific output
 vaulter sync pull --output web -e dev
+
+# Pull to directory structure
+vaulter sync pull --dir -e dev
 ```
 
 #### `vaulter_push`
-Upload local .env file to backend.
+Upload local .env file or directory to backend.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
@@ -392,6 +400,20 @@ Upload local .env file to backend.
 | `project` | string | No | auto | Project name |
 | `service` | string | No | - | Service name |
 | `file` | string | No | auto | Input file path |
+| `dir` | boolean | No | `false` | Push `.vaulter/{env}/` directory structure |
+
+**Modes:**
+
+1. **File Mode** (default): Push single .env file to backend
+2. **Directory Mode** (`--dir`): Push `.vaulter/{env}/` directory structure
+
+```bash
+# Push single file
+vaulter sync push -e dev
+
+# Push directory structure
+vaulter sync push --dir -e dev
+```
 
 ---
 

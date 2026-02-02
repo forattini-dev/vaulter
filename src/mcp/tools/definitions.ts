@@ -170,20 +170,23 @@ export function registerTools(): Tool[] {
     // === SYNC TOOLS ===
     {
       name: 'vaulter_pull',
-      description: 'Download variables from backend to local .env file. Overwrites local file.',
+      description: 'Download variables from backend. Use all=true for output targets, dir=true for .vaulter/{env}/ directory structure.',
       inputSchema: {
         type: 'object',
         properties: {
           environment: { type: 'string', description: 'Environment name', default: 'dev' },
           project: { type: 'string', description: 'Project name' },
           service: { type: 'string', description: 'Service name' },
-          output: { type: 'string', description: 'Output file path (default: auto-detected from config)' }
+          output: { type: 'string', description: 'Output target name (e.g., web, api)' },
+          all: { type: 'boolean', description: 'Pull to ALL output targets defined in config', default: false },
+          dir: { type: 'boolean', description: 'Pull to .vaulter/{env}/ directory structure', default: false },
+          dryRun: { type: 'boolean', description: 'Preview changes without applying', default: false }
         }
       }
     },
     {
       name: 'vaulter_push',
-      description: 'Upload local .env file to backend. Overwrites backend values. Use dryRun=true to preview changes first.',
+      description: 'Upload to backend. Use dir=true to push .vaulter/{env}/ directory structure.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -191,6 +194,8 @@ export function registerTools(): Tool[] {
           project: { type: 'string', description: 'Project name' },
           service: { type: 'string', description: 'Service name' },
           file: { type: 'string', description: 'Input file path (default: auto-detected from config)' },
+          dir: { type: 'boolean', description: 'Push .vaulter/{env}/ directory structure', default: false },
+          prune: { type: 'boolean', description: 'Delete remote vars not in local source', default: false },
           dryRun: { type: 'boolean', description: 'Preview changes without applying', default: false }
         }
       }
