@@ -1001,7 +1001,7 @@ Restore a snapshot to the backend. Verifies SHA256 integrity before restoring. I
 - ✅ **After environment changes** - Validate new environment
 - ✅ **User asks questions** - Get comprehensive status
 
-**Full Documentation:** See [docs/DOCTOR.md](DOCTOR.md) for complete guide with examples and troubleshooting.
+**Full Documentation:** See [DOCTOR.md](DOCTOR.md) for complete guide with examples and troubleshooting.
 
 #### `vaulter_clone_env`
 Clone ALL variables from one environment to another. Use `dryRun=true` to preview first.
