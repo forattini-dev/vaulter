@@ -12,12 +12,14 @@ import {
   createTheme,
   tokyoNightTheme,
 } from 'tuiuiu.js'
-import fs from 'node:fs'
-import path from 'node:path'
 import { DEFAULT_ENVIRONMENTS } from '../../../types.js'
 import type { VaulterConfig } from '../../../types.js'
 import { loadConfig, getValidEnvironments } from '../../../lib/config-loader.js'
-import { discoverServices, isMonorepo as checkIsMonorepo, findMonorepoRoot } from '../../../lib/monorepo.js'
+import {
+  discoverServicesWithFallback,
+  isMonorepo as checkIsMonorepo,
+  findMonorepoRoot
+} from '../../../lib/monorepo.js'
 
 import type { ServiceInfo } from './types.js'
 import {
@@ -124,40 +126,7 @@ export async function startSecretsExplorer(options: {
       updateLoadingStep('services', 'loading')
       await new Promise(r => setTimeout(r, 150))
 
-      const rootDir = monorepoRoot || process.cwd()
-      discoveredServices = monorepoRoot ? discoverServices(monorepoRoot) : []
-
-      // Try monorepo.services_pattern if no services found
-      if (discoveredServices.length === 0 && config.monorepo?.services_pattern) {
-        const pattern = config.monorepo.services_pattern
-        const baseDir = pattern.replace('/*', '').replace('/**', '')
-        const servicesDir = path.join(rootDir, baseDir)
-
-        if (fs.existsSync(servicesDir)) {
-          const entries = fs.readdirSync(servicesDir, { withFileTypes: true })
-          discoveredServices = entries
-            .filter(e => e.isDirectory() && !e.name.startsWith('.') && e.name !== 'node_modules')
-            .map(e => ({
-              name: e.name,
-              path: path.join(servicesDir, e.name),
-            }))
-          if (discoveredServices.length > 0) {
-            setIsMonorepo(true)
-          }
-        }
-      }
-
-      // Fallback: use outputs config as services
-      if (discoveredServices.length === 0 && config.outputs) {
-        const outputNames = Object.keys(config.outputs)
-        discoveredServices = outputNames.map(name => ({
-          name,
-          path: rootDir,
-        }))
-        if (outputNames.length > 1) {
-          setIsMonorepo(true)
-        }
-      }
+      discoveredServices = monorepoRoot && config ? discoverServicesWithFallback(config, monorepoRoot) : []
 
       // Add [SHARED] as first service
       if (discoveredServices.length > 0) {

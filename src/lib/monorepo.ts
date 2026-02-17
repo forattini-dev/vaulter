@@ -308,6 +308,71 @@ export function mergeServices(...serviceGroups: ServiceInfo[][]): ServiceInfo[] 
 }
 
 /**
+ * Build services list from outputs definitions when explicit service discovery
+ * is unavailable (fallback for legacy/legacy-generated monorepos).
+ */
+export function discoverServicesFromOutputs(
+  config: VaulterConfig,
+  rootDir: string = process.cwd()
+): ServiceInfo[] {
+  if (!config.outputs) {
+    return []
+  }
+
+  const normalizedRoot = path.resolve(rootDir)
+  const fallbackConfigDir = findConfigDir(normalizedRoot) || path.join(normalizedRoot, '.vaulter')
+
+  const services = new Map<string, string>()
+
+  for (const [name, output] of Object.entries(config.outputs)) {
+    const outputConfig = typeof output === 'object' ? output : null
+    const serviceName = outputConfig?.service || name
+
+    if (!serviceName || serviceName === '__shared__') {
+      continue
+    }
+
+    let servicePath = path.resolve(normalizedRoot, outputConfig?.path || name)
+    if (typeof output === 'string') {
+      servicePath = path.resolve(normalizedRoot, output)
+    } else if (outputConfig?.path) {
+      servicePath = path.resolve(normalizedRoot, outputConfig.path)
+    }
+
+    services.set(serviceName, servicePath)
+  }
+
+  return Array.from(services.entries()).map(([serviceName, servicePath]) => ({
+    name: serviceName,
+    path: servicePath,
+    configDir: fallbackConfigDir,
+    config: {
+      ...config,
+      service: serviceName
+    }
+  }))
+}
+
+/**
+ * Discover services using filesystem + config outputs fallback.
+ *
+ * Keeps monorepo service discovery behavior deterministic by always preferring
+ * discovered per-service configs and falling back to config.outputs when discovery
+ * is incomplete (legacy/output-driven monorepos).
+ */
+export function discoverServicesWithFallback(
+  config: VaulterConfig,
+  rootDir: string = process.cwd()
+): ServiceInfo[] {
+  const discoveredServices = discoverServices(rootDir)
+  if (discoveredServices.length > 0) {
+    return discoveredServices
+  }
+
+  return discoverServicesFromOutputs(config, rootDir)
+}
+
+/**
  * Infer monorepo mode from configuration hints when service discovery is not enough.
  */
 export function isMonorepoFromConfig(config: VaulterConfig | null | undefined): boolean {

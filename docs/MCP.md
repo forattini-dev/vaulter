@@ -657,6 +657,10 @@ List discovered services in monorepo.
 | `path` | string | No | `.` | Root directory to scan for services |
 | `detailed` | boolean | No | `false` | Show environments and backend URLs |
 
+Discovery sources:
+- `.vaulter/config.yaml` (per-service configs and `config.services`)
+- `config.outputs` (legacy/output-driven monorepos) as fallback when discovery is incomplete
+
 #### `vaulter_shared_list`
 List shared variables (apply to all services).
 
@@ -1055,7 +1059,7 @@ Resources provide static/cached data that doesn't require input parameters. They
 | `vaulter://tools-guide` | Which tool to use for each scenario | `text/markdown` | When unsure which tool to use |
 | `vaulter://mcp-config` | MCP settings with sources | `application/json` | Debugging configuration issues |
 | `vaulter://config` | Project configuration (YAML) | `application/yaml` | Understanding project setup |
-| `vaulter://services` | Monorepo services list | `application/json` | Working with monorepos |
+| `vaulter://services` | Monorepo services list (filesystem + outputs fallback) | `application/json` | Working with monorepos |
 
 ---
 

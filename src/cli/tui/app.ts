@@ -20,7 +20,12 @@ import {
 } from 'tuiuiu.js'
 import type { VaulterConfig } from '../../types.js'
 import { loadConfig, getProjectName, getValidEnvironments } from '../../lib/config-loader.js'
-import { discoverServices, isMonorepo, findMonorepoRoot, type ServiceInfo } from '../../lib/monorepo.js'
+import {
+  discoverServicesWithFallback,
+  isMonorepo,
+  findMonorepoRoot,
+  type ServiceInfo
+} from '../../lib/monorepo.js'
 import {
   SecretsExplorerTab, initSecretsExplorer,
   AuditTab, initAuditTab,
@@ -244,30 +249,7 @@ export async function startShell(options: {
     // Discover services
     let discoveredServices: ServiceInfo[] = []
     if (isMonorepoProject && monorepoRoot) {
-      discoveredServices = discoverServices(monorepoRoot)
-    }
-
-    // Check monorepo.services_pattern if no services found
-    if (discoveredServices.length === 0 && cfg.monorepo?.services_pattern) {
-      const pattern = cfg.monorepo.services_pattern
-      const baseDir = pattern.replace('/*', '').replace('/**', '')
-      const servicesDir = require('node:path').join(monorepoRoot || process.cwd(), baseDir)
-      const fs = require('node:fs')
-
-      if (fs.existsSync(servicesDir)) {
-        const entries = fs.readdirSync(servicesDir, { withFileTypes: true })
-        discoveredServices = entries
-          .filter((e: any) => e.isDirectory() && !e.name.startsWith('.') && e.name !== 'node_modules')
-          .map((e: any) => ({
-            name: e.name,
-            path: require('node:path').join(servicesDir, e.name),
-            configDir: '',
-            config: cfg,
-          }))
-        if (discoveredServices.length > 0) {
-          setIsMonorepoMode(true)
-        }
-      }
+      discoveredServices = discoverServicesWithFallback(cfg, monorepoRoot)
     }
 
     // Add [SHARED] as first service

@@ -24,8 +24,8 @@ import type { Resource } from '@modelcontextprotocol/sdk/types.js'
 import fs from 'node:fs'
 import path from 'node:path'
 import { resolveMcpConfigWithSources } from './tools.js'
-import { findConfigDir } from '../lib/config-loader.js'
-import { discoverServices, findMonorepoRoot } from '../lib/monorepo.js'
+import { findConfigDir, loadConfig } from '../lib/config-loader.js'
+import { discoverServicesWithFallback, findMonorepoRoot } from '../lib/monorepo.js'
 
 /**
  * Parse a vaulter:// URI
@@ -1725,7 +1725,8 @@ async function handleServicesRead(uri: string): Promise<{ contents: Array<{ uri:
   const configDir = findConfigDir()
   const rootHint = configDir ? path.dirname(configDir) : cwd
   const monorepoRoot = findMonorepoRoot(rootHint) || rootHint
-  const services = discoverServices(monorepoRoot)
+  const config = loadConfig(monorepoRoot)
+  const services = discoverServicesWithFallback(config, monorepoRoot)
 
   if (services.length === 0) {
     return {

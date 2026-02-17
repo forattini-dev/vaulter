@@ -11,6 +11,7 @@ import { c, symbols, print } from '../../lib/colors.js'
 import { maskValue } from '../../../lib/masking.js'
 import * as ui from '../../ui.js'
 import { SHARED_SERVICE } from '../../../lib/shared.js'
+import { discoverServicesWithFallback, findMonorepoRoot } from '../../../lib/monorepo.js'
 
 export interface DedupeContext {
   args: CLIArgs
@@ -77,14 +78,9 @@ export async function runDedupe(context: DedupeContext): Promise<void> {
     if (service) {
       // Single service specified
       servicesToCheck = [service]
-    } else if (config?.monorepo?.services_pattern) {
-      // Monorepo: get all services from outputs config
-      if (config.outputs) {
-        const outputServices = Object.values(config.outputs)
-          .map(o => typeof o === 'object' ? o.service : undefined)
-          .filter((s): s is string => !!s && s !== SHARED_SERVICE)
-        servicesToCheck = [...new Set(outputServices)]
-      }
+    } else if (config?.project) {
+      const monorepoRoot = findMonorepoRoot() || process.cwd()
+      servicesToCheck = discoverServicesWithFallback(config, monorepoRoot).map((serviceInfo) => serviceInfo.name)
     }
 
     if (servicesToCheck.length === 0) {
