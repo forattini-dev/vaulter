@@ -6,6 +6,7 @@ cd "$ROOT_DIR"
 
 ENVIRONMENT="${VAULTER_VERIFY_ENV:-dev}"
 SERVICE="${VAULTER_VERIFY_SERVICE:-}"
+REQUIRE_CONFIG="${VAULTER_VERIFY_REQUIRE_CONFIG:-0}"
 OUTDIR="${VAULTER_VERIFY_OUTDIR:-artifacts/vaulter-health}"
 
 mkdir -p "$OUTDIR"
@@ -33,6 +34,22 @@ echo "Vaulter verify started"
 echo "Environment: $ENVIRONMENT"
 echo "Service: ${SERVICE:-<all>}"
 echo "Report: $OUTFILE"
+echo "Require config: ${REQUIRE_CONFIG}"
+
+if [ ! -f "${ROOT_DIR}/.vaulter/config.yaml" ]; then
+  if [ "$REQUIRE_CONFIG" = "1" ] || [ "$REQUIRE_CONFIG" = "true" ] || [ "$REQUIRE_CONFIG" = "yes" ]; then
+    echo "[vaulter-verify] Falha: .vaulter/config.yaml não encontrado." >&2
+    echo "[vaulter-verify] Defina VAULTER_VERIFY_REQUIRE_CONFIG=false para ignorar em CI deste repositório." >&2
+    exit 1
+  fi
+
+  {
+    echo "[vaulter-verify] .vaulter/config.yaml não encontrado; pulando checks de vaulter para este repositório."
+    echo "[vaulter-verify] Nenhuma falha em validações específicas de Vaulter."
+  } | tee "$OUTFILE"
+  echo "[vaulter-verify] Concluído com sucesso (sem configuração de projeto Vaulter). Report: $OUTFILE"
+  exit 0
+fi
 
 {
   run_vaulter doctor -e "$ENVIRONMENT" -v
