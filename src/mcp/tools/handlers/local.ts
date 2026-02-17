@@ -391,7 +391,7 @@ export async function handleLocalSharedListCall(
  *
  * This pushes:
  * - .vaulter/local/configs.env + secrets.env → backend __shared__
- * - .vaulter/local/services/{svc}/*.env → backend {svc}
+ * - .vaulter/local/services/{svc}/configs.env + secrets.env → backend {svc}
  *
  * With overwrite=true, also DELETES backend vars that don't exist locally.
  */

@@ -5,7 +5,7 @@
  * - KEY=val  → secrets.env (sensitive=true)
  * - KEY::val → configs.env  (sensitive=false)
  *
- * Use --shared to set vars in .vaulter/local/shared/ (shared across all services)
+ * Use --shared to set vars in .vaulter/local/ (shared across all services)
  */
 
 import { findConfigDir } from '../../../lib/config-loader.js'

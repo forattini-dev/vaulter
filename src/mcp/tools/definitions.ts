@@ -250,6 +250,7 @@ export function registerTools(): Tool[] {
       inputSchema: {
         type: 'object',
         properties: {
+          path: { type: 'string', description: 'Root directory to scan for services (default: current directory)' },
           detailed: { type: 'boolean', description: 'Show detailed info (environments, backend URLs)', default: false }
         }
       }

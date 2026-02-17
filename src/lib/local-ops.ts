@@ -469,7 +469,7 @@ export interface LocalPushAllResult {
  *
  * This pushes:
  * - .vaulter/local/configs.env + secrets.env → backend __shared__
- * - .vaulter/local/services/{svc}/*.env → backend {svc}
+ * - .vaulter/local/services/{svc}/configs.env + secrets.env → backend {svc}
  *
  * With overwrite=true, also DELETES backend vars that don't exist locally.
  */
@@ -674,7 +674,7 @@ export interface LocalSyncResult {
  *
  * This pulls:
  * - backend __shared__ → .vaulter/local/configs.env + secrets.env
- * - backend {svc} → .vaulter/local/services/{svc}/*.env
+ * - backend {svc} → .vaulter/local/services/{svc}/configs.env + secrets.env
  */
 export async function runLocalSync(options: LocalSyncOptions): Promise<LocalSyncResult> {
   const {
@@ -752,4 +752,3 @@ export async function runLocalSync(options: LocalSyncOptions): Promise<LocalSync
 
   return result
 }
-

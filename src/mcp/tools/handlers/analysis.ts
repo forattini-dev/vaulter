@@ -6,7 +6,8 @@
 
 import { VaulterClient } from '../../../client.js'
 import { getValidEnvironments } from '../../../lib/config-loader.js'
-import { discoverServices } from '../../../lib/monorepo.js'
+import path from 'node:path'
+import { discoverServices, findMonorepoRoot } from '../../../lib/monorepo.js'
 import { scanMonorepo, formatScanResult } from '../../../lib/monorepo-detect.js'
 import type { VaulterConfig, Environment } from '../../../types.js'
 import { DEFAULT_ENVIRONMENTS } from '../../../types.js'
@@ -194,15 +195,18 @@ export async function handleServicesCall(
   args: Record<string, unknown>
 ): Promise<ToolResponse> {
   const detailed = args.detailed as boolean || false
+  const rawPath = (args.path as string) || process.cwd()
+  const rootPath = path.resolve(rawPath)
+  const monorepoRoot = findMonorepoRoot(rootPath) || rootPath
 
   try {
-    const services = await discoverServices()
+    const services = await discoverServices(monorepoRoot)
 
     if (services.length === 0) {
       return {
         content: [{
           type: 'text',
-          text: 'No services found. Run from a monorepo root with .vaulter directories in subdirectories.'
+          text: `No services found in ${rootPath}. Run from a Vaulter monorepo root or pass a different "path".`
         }]
       }
     }

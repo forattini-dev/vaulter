@@ -25,6 +25,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { resolveMcpConfigWithSources } from './tools.js'
 import { findConfigDir } from '../lib/config-loader.js'
+import { discoverServices, findMonorepoRoot } from '../lib/monorepo.js'
 
 /**
  * Parse a vaulter:// URI
@@ -85,50 +86,6 @@ function parseResourceUri(uri: string): ParsedUri {
   }
 
   return null
-}
-
-/**
- * Discover services in a monorepo
- * Looks for directories with .vaulter/config.yaml or deploy/configs or deploy/secrets
- */
-function discoverServices(rootDir: string): Array<{ name: string; path: string; hasVaulterConfig: boolean }> {
-  const services: Array<{ name: string; path: string; hasVaulterConfig: boolean }> = []
-
-  // Common monorepo patterns
-  const searchDirs = ['apps', 'services', 'packages', 'libs']
-
-  for (const dir of searchDirs) {
-    const fullPath = path.join(rootDir, dir)
-    if (!fs.existsSync(fullPath)) continue
-
-    try {
-      const entries = fs.readdirSync(fullPath, { withFileTypes: true })
-      for (const entry of entries) {
-        if (!entry.isDirectory()) continue
-
-        const servicePath = path.join(fullPath, entry.name)
-
-        // Check for vaulter config
-        const hasVaulterConfig = fs.existsSync(path.join(servicePath, '.vaulter', 'config.yaml'))
-
-        // Check for deploy/configs or deploy/secrets (split mode pattern)
-        const hasDeployConfigs = fs.existsSync(path.join(servicePath, 'deploy', 'configs'))
-        const hasDeploySecrets = fs.existsSync(path.join(servicePath, 'deploy', 'secrets'))
-
-        if (hasVaulterConfig || hasDeployConfigs || hasDeploySecrets) {
-          services.push({
-            name: entry.name,
-            path: servicePath,
-            hasVaulterConfig
-          })
-        }
-      }
-    } catch {
-      // Skip inaccessible directories
-    }
-  }
-
-  return services
 }
 
 /**
@@ -1765,7 +1722,10 @@ async function handleConfigRead(uri: string): Promise<{ contents: Array<{ uri: s
  */
 async function handleServicesRead(uri: string): Promise<{ contents: Array<{ uri: string; mimeType: string; text: string }> }> {
   const cwd = process.cwd()
-  const services = discoverServices(cwd)
+  const configDir = findConfigDir()
+  const rootHint = configDir ? path.dirname(configDir) : cwd
+  const monorepoRoot = findMonorepoRoot(rootHint) || rootHint
+  const services = discoverServices(monorepoRoot)
 
   if (services.length === 0) {
     return {
@@ -1774,9 +1734,8 @@ async function handleServicesRead(uri: string): Promise<{ contents: Array<{ uri:
         mimeType: 'application/json',
         text: JSON.stringify({
           discovered: false,
-          message: 'No services found. This may not be a monorepo or services are not configured.',
-          searchedDirs: ['apps', 'services', 'packages', 'libs'],
-          hint: 'Services are detected by .vaulter/config.yaml or deploy/configs or deploy/secrets directories'
+          message: `No services found in ${monorepoRoot}.`,
+          hint: 'Services are detected by .vaulter/config.yaml directories under monorepo roots'
         }, null, 2)
       }]
     }
@@ -1789,10 +1748,11 @@ async function handleServicesRead(uri: string): Promise<{ contents: Array<{ uri:
       text: JSON.stringify({
         discovered: true,
         count: services.length,
+        scannedRoot: monorepoRoot,
         services: services.map(s => ({
           name: s.name,
           path: s.path,
-          configured: s.hasVaulterConfig
+          configured: true
         }))
       }, null, 2)
     }]

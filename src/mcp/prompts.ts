@@ -1519,8 +1519,8 @@ ${action === 'status' ? `## Status: Current State
 Please use \`vaulter_local_status\`${service ? ` with service="${service}"` : ''} to show:
 
 1. **Base environment** (from config)
-2. **Shared/default configs:** \`.vaulter/local/[shared/]configs.env\`
-3. **Shared/default secrets:** \`.vaulter/local/[shared/]secrets.env\`
+2. **Shared/default configs:** \`.vaulter/local/configs.env\`
+3. **Shared/default secrets:** \`.vaulter/local/secrets.env\`
 4. **Service-specific** (monorepo): \`.vaulter/local/services/<svc>/{configs,secrets}.env\`
 5. **Snapshots:** X available
 
@@ -1543,7 +1543,7 @@ Please use \`vaulter_local_shared_set\`:
 }
 \`\`\`
 
-This creates/updates \`.vaulter/local/[shared/]configs.env\` or \`.vaulter/local/[shared/]secrets.env\` (based on sensitive flag) and will be merged when running \`vaulter local pull\`.
+This creates/updates \`.vaulter/local/configs.env\` or \`.vaulter/local/secrets.env\` (based on sensitive flag) and will be merged when running \`vaulter local pull\`.
 ` : ''}
 
 ${action === 'set-override' ? `## Set Service Override

@@ -654,6 +654,7 @@ List discovered services in monorepo.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
+| `path` | string | No | `.` | Root directory to scan for services |
 | `detailed` | boolean | No | `false` | Show environments and backend URLs |
 
 #### `vaulter_shared_list`
@@ -873,7 +874,8 @@ List all shared local overrides.
 
 **Pushes:**
 - `.vaulter/local/configs.env + secrets.env` → backend `__shared__`
-- `.vaulter/local/services/{svc}/*.env` → backend `{svc}`
+- `.vaulter/local/services/{svc}/configs.env`
+- `.vaulter/local/services/{svc}/secrets.env` → backend `{svc}`
 
 **With `overwrite=true`:** Also DELETES backend vars that don't exist locally. Use with caution!
 
@@ -1216,27 +1218,36 @@ outputs:
 
 ### `vaulter://services`
 
-Lists all services discovered in a monorepo. Services are detected by looking for:
-- `.vaulter/config.yaml` in subdirectories
-- `deploy/configs` or `deploy/secrets` directories
+Lists all services discovered in a monorepo, starting from the Vaulter project root.
+Services are detected by presence of `.vaulter/config.yaml` in service directories.
 
 **Example output:**
 ```json
 {
+  "discovered": true,
+  "count": 2,
+  "scannedRoot": "/home/user/project",
   "services": [
     {
       "name": "app-landing",
       "path": "apps/app-landing",
-      "hasVaulterConfig": false
+      "configured": true
     },
     {
       "name": "svc-auth",
       "path": "apps/svc-auth",
-      "hasVaulterConfig": true
+      "configured": true
     }
-  ],
-  "searchedDirs": ["apps", "services", "packages", "libs"],
-  "monorepoRoot": "/home/user/project"
+  ]
+}
+```
+
+**No services found:**
+```json
+{
+  "discovered": false,
+  "message": "No services found in /home/user/project",
+  "hint": "Services are detected by .vaulter/config.yaml directories under monorepo roots"
 }
 ```
 

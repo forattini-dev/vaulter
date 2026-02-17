@@ -196,6 +196,20 @@ export function isMonorepo(startDir: string = process.cwd()): boolean {
 }
 
 /**
+ * Infer monorepo mode from configuration hints when service discovery is not enough.
+ */
+export function isMonorepoFromConfig(config: VaulterConfig | null | undefined): boolean {
+  if (!config) return false
+
+  const hasServices = Boolean(config?.services && config.services.length > 0)
+  const hasMonorepoConfig = Boolean(config?.monorepo?.services_pattern || config?.monorepo?.root)
+  const hasMonorepoDeploy = Boolean(config?.deploy?.services?.configs || config?.deploy?.services?.secrets)
+  const hasMultipleOutputs = Boolean(config?.outputs && Object.keys(config.outputs).length > 1)
+
+  return hasServices || hasMonorepoConfig || hasMonorepoDeploy || hasMultipleOutputs
+}
+
+/**
  * Get service info for current directory
  */
 export function getCurrentService(startDir: string = process.cwd()): ServiceInfo | null {

@@ -17,10 +17,10 @@ import {
   isValidEnvironment,
   resolveBackendUrls
 } from '../../lib/config-loader.js'
+import { isMonorepoConfigMode, buildRootGitignoreDoctorCheck } from '../../lib/doctor-shared.js'
 import { loadKeyForEnv } from '../../lib/keys.js'
 import { normalizeOutputTargets, validateOutputsConfig } from '../../lib/outputs.js'
 import { createClientFromConfig } from '../lib/create-client.js'
-import { ensureRootGitignoreForVaulter } from '../../lib/init-generator.js'
 import * as ui from '../ui.js'
 import { c } from '../lib/colors.js'
 
@@ -118,7 +118,9 @@ export async function runDoctor(context: DoctorContext): Promise<void> {
     })
   }
 
-  const projectRoot = configDir ? getBaseDir(configDir) : process.cwd()
+  const projectRoot = configDir ? getBaseDir(configDir) : null
+  const isMonorepo = isMonorepoConfigMode(config)
+  const isDryRun = args['dry-run'] === true
 
   // Project name
   if (!project) {
@@ -161,16 +163,10 @@ export async function runDoctor(context: DoctorContext): Promise<void> {
   }
 
   // Monorepo service hints
-  const hasMonorepoConfig = Boolean(config?.services && config.services.length > 0)
-    || Boolean(config?.monorepo?.services_pattern || config?.monorepo?.root)
-    || Boolean(config?.deploy?.services?.configs || config?.deploy?.services?.secrets)
-    || Boolean(config?.outputs && Object.keys(config.outputs).length > 1)
-  const isMonorepo = hasMonorepoConfig && Boolean(config)
-
   if (config) {
     const configServices = config.services || []
     const serviceNames = configServices.map(s => (typeof s === 'string' ? s : s.name))
-    const hasMonorepoStructure = configServices.length > 0 || hasMonorepoConfig
+    const hasMonorepoStructure = configServices.length > 0 || isMonorepo
 
     if (hasMonorepoStructure) {
       if (!service) {
@@ -403,49 +399,14 @@ export async function runDoctor(context: DoctorContext): Promise<void> {
     }
   }
 
-  // Root .gitignore hygiene
-  try {
-    const rootGitignore = ensureRootGitignoreForVaulter(
-      projectRoot,
-      isMonorepo,
-      !applyFixes || args['dry-run'] === true
-    )
-
-    if (rootGitignore.missingEntries.length === 0) {
-      addCheck({
-        name: 'gitignore',
-        status: 'ok',
-        details: 'required Vaulter entries present in .gitignore'
-      })
-    } else if (applyFixes && rootGitignore.updated) {
-      addCheck({
-        name: 'gitignore',
-        status: 'ok',
-        details: `added ${rootGitignore.missingEntries.length} .gitignore ${rootGitignore.missingEntries.length === 1 ? 'entry' : 'entries'}`
-      })
-    } else if (args['dry-run'] === true) {
-      addCheck({
-        name: 'gitignore',
-        status: 'warn',
-        details: `missing ${rootGitignore.missingEntries.length} required .gitignore ${rootGitignore.missingEntries.length === 1 ? 'entry' : 'entries'} (would add with --fix)`,
-        hint: 'Run "vaulter doctor --fix" to update .gitignore'
-      })
-    } else {
-      addCheck({
-        name: 'gitignore',
-        status: 'warn',
-        details: `missing ${rootGitignore.missingEntries.length} required .gitignore ${rootGitignore.missingEntries.length === 1 ? 'entry' : 'entries'}`,
-        hint: 'Run "vaulter doctor --fix" to update .gitignore'
-      })
-    }
-  } catch (error) {
-    addCheck({
-      name: 'gitignore',
-      status: 'warn',
-      details: `failed to validate .gitignore: ${(error as Error).message}`,
-      hint: 'Check filesystem permissions and run in project root'
-    })
-  }
+  addCheck(buildRootGitignoreDoctorCheck({
+    projectRoot,
+    isMonorepo,
+    applyFixes,
+    dryRun: isDryRun,
+    fixHint: 'Run "vaulter doctor --fix" to update .gitignore',
+    skipHint: 'Initialize with vaulter init and rerun from the project root'
+  }))
 
   // Remote connection check
   let clientConnected = false

@@ -156,7 +156,7 @@ Testa se consegue escrever, ler e deletar no backend.
 ```
 
 **O que testa:**
-1. Escreve var `_vaulter_healthcheck` com timestamp
+1. Escreve uma chave temporária `vaulter-healthcheck-*` com timestamp
 2. Lê de volta para validar
 3. Deleta a var de teste
 4. Confirma que tudo funcionou
@@ -226,7 +226,7 @@ Detecta problemas de segurança.
 
 ```
 ✓ security: no security issues detected
-✗ security: 3 .env file(s) tracked in git: .vaulter/environments/dev.env, deploy/secrets/prd.env
+✗ security: 3 .env file(s) tracked in git: .vaulter/local/configs.env, deploy/secrets/prd.env
   → Add .env files to .gitignore immediately and remove from git history
 ⚠ security: weak encryption key (< 32 chars); .env file has weak permissions (644)
   → Fix security issues: generate stronger keys, fix permissions
@@ -246,15 +246,19 @@ git ls-files "*.env" ".vaulter/**/*.env"
 ```bash
 # 1. Adicionar ao .gitignore
 echo "*.env" >> .gitignore
-echo ".vaulter/environments/*.env" >> .gitignore
+echo ".vaulter/local/*.env" >> .gitignore
+echo ".vaulter/deploy/secrets/*.env" >> .gitignore
+echo ".vaulter/deploy/shared/secrets/*.env" >> .gitignore
+echo ".vaulter/deploy/services/*/secrets/*.env" >> .gitignore
 
 # 2. Remover do histórico do git
-git rm --cached .vaulter/environments/*.env
+git rm --cached .vaulter/local/{configs,secrets}.env
+git rm --cached .vaulter/deploy/secrets/*.env .vaulter/deploy/shared/secrets/*.env .vaulter/deploy/services/*/secrets/*.env
 git commit -m "Remove sensitive .env files from git"
 
 # 3. Se já foi pusheado, precisa limpar histórico
 git filter-branch --force --index-filter \
-  'git rm --cached --ignore-unmatch .vaulter/environments/*.env' \
+  'git rm --cached --ignore-unmatch .vaulter/local/{configs,secrets}.env .vaulter/deploy/secrets/*.env .vaulter/deploy/shared/secrets/*.env .vaulter/deploy/services/*/secrets/*.env' \
   --prune-empty --tag-name-filter cat -- --all
 ```
 
@@ -270,10 +274,10 @@ export VAULTER_KEY_DEV=$(openssl rand -base64 32)
 **3. Permissões de arquivo inseguras** (não 600 ou 400):
 ```bash
 # Corrigir permissões (somente owner pode ler/escrever)
-chmod 600 .vaulter/environments/dev.env
+chmod 600 .vaulter/local/configs.env
 
 # Ou read-only
-chmod 400 .vaulter/environments/prd.env
+chmod 400 .vaulter/local/secrets.env
 ```
 
 ---
@@ -321,7 +325,7 @@ Sugestões de tunning quando o ambiente permite:
 ✓ **encryption**: round-trip successful (encrypt → decrypt → match)
 ⚠ **sync-status**: 5 local-only, 3 remote-only, 2 conflicts
   → Run "vaulter sync diff -e dev --values" to see details
-✗ **security**: 2 .env file(s) tracked in git: .vaulter/environments/dev.env
+✗ **security**: 2 .env file(s) tracked in git: .vaulter/local/configs.env
   → Add .env files to .gitignore immediately and remove from git history
 
 ## Summary

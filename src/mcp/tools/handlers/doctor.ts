@@ -7,6 +7,7 @@
 
 import fs from 'node:fs'
 import path from 'node:path'
+import { randomBytes } from 'node:crypto'
 import { DEFAULT_ENVIRONMENTS } from '../../../types.js'
 import type { VaulterConfig, Environment } from '../../../types.js'
 import { maskValue } from '../../../lib/masking.js'
@@ -20,7 +21,7 @@ import {
   isValidEnvironment,
   resolveBackendUrls
 } from '../../../lib/config-loader.js'
-import { ensureRootGitignoreForVaulter } from '../../../lib/init-generator.js'
+import { buildRootGitignoreDoctorCheck, isMonorepoConfigMode } from '../../../lib/doctor-shared.js'
 import { loadKeyForEnv } from '../../../lib/keys.js'
 import { normalizeOutputTargets, validateOutputsConfig } from '../../../lib/outputs.js'
 import { parseEnvFile } from '../../../lib/env-parser.js'
@@ -87,6 +88,10 @@ function redactUrl(raw: string): string {
   }
 }
 
+function createTempDoctorKey(prefix: string): string {
+  return `${prefix}-${Date.now()}-${randomBytes(6).toString('hex')}`
+}
+
 /**
  * Doctor handler - diagnoses vaulter configuration health
  */
@@ -108,7 +113,7 @@ export async function handleDoctorCall(
   }
 
   const configDir = findConfigDir()
-  const projectRoot = configDir ? getBaseDir(configDir) : process.cwd()
+  const projectRoot = configDir ? getBaseDir(configDir) : null
   const configPath = configDir ? path.join(configDir, 'config.yaml') : null
 
   // Result object to build
@@ -183,11 +188,7 @@ export async function handleDoctorCall(
     }
   }
 
-  const hasMonorepoConfig = Boolean(config?.services && config.services.length > 0)
-    || Boolean(config?.monorepo?.services_pattern || config?.monorepo?.root)
-    || Boolean(config?.deploy?.services?.configs || config?.deploy?.services?.secrets)
-    || Boolean(config?.outputs && Object.keys(config.outputs).length > 1)
-  const isMonorepo = hasMonorepoConfig && Boolean(config)
+  const isMonorepo = isMonorepoConfigMode(config)
 
   // === CHECK 4: Monorepo service ===
   if (config?.services && config.services.length > 0) {
@@ -217,40 +218,13 @@ export async function handleDoctorCall(
     }
   }
 
-  // === CHECK 5: Root .gitignore hygiene ===
-  if (projectRoot) {
-    try {
-      const rootGitignore = ensureRootGitignoreForVaulter(projectRoot, isMonorepo, !applyFixes)
-
-      if (rootGitignore.missingEntries.length === 0) {
-        addCheck({
-          name: 'gitignore',
-          status: 'ok',
-          details: 'required Vaulter entries present in .gitignore'
-        })
-      } else if (applyFixes && rootGitignore.updated) {
-        addCheck({
-          name: 'gitignore',
-          status: 'ok',
-          details: `added ${rootGitignore.missingEntries.length} .gitignore ${rootGitignore.missingEntries.length === 1 ? 'entry' : 'entries'}`
-        })
-      } else {
-        addCheck({
-          name: 'gitignore',
-          status: 'warn',
-          details: `missing ${rootGitignore.missingEntries.length} required .gitignore ${rootGitignore.missingEntries.length === 1 ? 'entry' : 'entries'}`,
-          hint: 'Use vaulter_doctor with fix=true to update .gitignore'
-        })
-      }
-    } catch (error) {
-      addCheck({
-        name: 'gitignore',
-        status: 'warn',
-        details: `failed to validate .gitignore: ${(error as Error).message}`,
-        hint: 'Check filesystem permissions and rerun from repository root'
-      })
-    }
-  }
+  addCheck(buildRootGitignoreDoctorCheck({
+    projectRoot,
+    isMonorepo,
+    applyFixes,
+    fixHint: 'Use vaulter_doctor with fix=true to update .gitignore',
+    skipHint: 'Run vaulter_doctor in a Vaulter project root'
+  }))
 
   // === CHECK 5: Backend configuration ===
   let backendUrls: string[] = []
@@ -564,10 +538,10 @@ export async function handleDoctorCall(
 
   // === CHECK 12: Write Permissions ===
   if (connectionSucceeded && project && testClient) {
-    try {
-      const testKey = '_vaulter_healthcheck'
-      const testValue = `test-${Date.now()}`
+    const testKey = createTempDoctorKey('vaulter-healthcheck')
+    const testValue = `test-${Date.now()}-${randomBytes(6).toString('hex')}`
 
+    try {
       // Try to write
       await testClient.set({
         key: testKey,
@@ -589,9 +563,6 @@ export async function handleDoctorCall(
           hint: 'Check read permissions and encryption key'
         })
       } else {
-        // Try to delete
-        await testClient.delete(testKey, project, environment, service)
-
         addCheck({
           name: 'permissions',
           status: 'ok',
@@ -615,15 +586,21 @@ export async function handleDoctorCall(
           hint: 'Check backend permissions and credentials'
         })
       }
+    } finally {
+      try {
+        await testClient.delete(testKey, project, environment, service)
+      } catch {
+        // ignore cleanup failures
+      }
     }
   }
 
   // === CHECK 13: Encryption Round-Trip ===
   if (connectionSucceeded && project && testClient) {
-    try {
-      const testKey = '_vaulter_encryption_test'
-      const testValue = 'encryption-test-' + Math.random().toString(36).substring(7)
+    const testKey = createTempDoctorKey('vaulter-encryption-test')
+    const testValue = `encryption-test-${Date.now()}-${randomBytes(6).toString('hex')}`
 
+    try {
       await testClient.set({
         key: testKey,
         value: testValue,
@@ -634,9 +611,6 @@ export async function handleDoctorCall(
       })
 
       const retrieved = await testClient.get(testKey, project, environment, service)
-
-      // Cleanup
-      await testClient.delete(testKey, project, environment, service)
 
       if (!retrieved) {
         addCheck({
@@ -665,6 +639,12 @@ export async function handleDoctorCall(
         status: 'skip',
         details: 'cannot test (write failed)'
       })
+    } finally {
+      try {
+        await testClient.delete(testKey, project, environment, service)
+      } catch {
+        // ignore cleanup failures
+      }
     }
   }
 

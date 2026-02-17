@@ -140,7 +140,7 @@ export async function runInit(context: InitContext): Promise<void> {
 
   if (isMonorepo) {
     ui.log(`  ${yellow('1.')} Edit local secrets in:`)
-    ui.log(`     ${cyan('.vaulter/local/shared/secrets.env')}`)
+    ui.log(`     ${cyan('.vaulter/local/secrets.env')}`)
     ui.log('')
     ui.log(`  ${yellow('2.')} Configure backend in ${cyan('.vaulter/config.yaml')}`)
     ui.log('')

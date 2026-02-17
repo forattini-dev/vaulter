@@ -159,14 +159,14 @@ function deleteFromFile(filePath: string, key: string): boolean {
 // ============================================================================
 
 /**
- * Load local shared configs from .vaulter/local/shared/configs.env
+ * Load local shared configs from .vaulter/local/configs.env
  */
 export function loadLocalSharedConfigs(configDir: string): Record<string, string> {
   return readEnvFile(getSharedConfigPath(configDir))
 }
 
 /**
- * Load local shared secrets from .vaulter/local/shared/secrets.env
+ * Load local shared secrets from .vaulter/local/secrets.env
  */
 export function loadLocalSharedSecrets(configDir: string): Record<string, string> {
   return readEnvFile(getSharedSecretsPath(configDir))
@@ -286,12 +286,6 @@ export function resetShared(configDir: string): void {
   const secretsPath = getSharedSecretsPath(configDir)
   if (fs.existsSync(configPath)) fs.unlinkSync(configPath)
   if (fs.existsSync(secretsPath)) fs.unlinkSync(secretsPath)
-
-  // Clean up empty directory
-  const sharedDir = getSharedDir(configDir)
-  if (fs.existsSync(sharedDir) && fs.readdirSync(sharedDir).length === 0) {
-    fs.rmdirSync(sharedDir)
-  }
 }
 
 // ============================================================================
@@ -312,8 +306,8 @@ export function mergeWithOverrides(
 /**
  * Full merge for local pull:
  * 1. Backend vars (base)
- * 2. Local shared vars (from .vaulter/local/shared/)
- * 3. Service-specific overrides (from .vaulter/local/[default|services/<svc>]/)
+ * 2. Local shared vars (from .vaulter/local/configs.env + secrets.env)
+ * 3. Service-specific overrides (from .vaulter/local/services/<svc>/)
  *
  * Priority: overrides > localShared > backend
  */
@@ -444,4 +438,3 @@ export function getLocalStatus(
 export function resolveBaseEnvironment(config: VaulterConfig): string {
   return config.default_environment || 'dev'
 }
-

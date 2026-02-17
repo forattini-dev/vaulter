@@ -78,7 +78,7 @@ export async function handleInitCall(
 
   if (isMonorepo) {
     lines.push('  1. Edit local secrets in:')
-    lines.push('     .vaulter/local/shared/secrets.env')
+    lines.push('     .vaulter/local/secrets.env')
     lines.push('')
     lines.push('  2. Configure backend in .vaulter/config.yaml')
     lines.push('')
