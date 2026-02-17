@@ -7,7 +7,8 @@
 import { findConfigDir } from '../../../lib/config-loader.js'
 import {
   getServiceDir,
-  resolveBaseEnvironment
+  resolveBaseEnvironment,
+  validateLocalServiceScope
 } from '../../../lib/local.js'
 import { c, print } from '../../lib/colors.js'
 import * as ui from '../../ui.js'
@@ -25,6 +26,18 @@ export async function runLocalInit(context: LocalContext): Promise<void> {
   const configDir = findConfigDir()
   if (!configDir) {
     print.error('Could not find .vaulter/ directory')
+    process.exit(1)
+  }
+
+  const scopeCheck = validateLocalServiceScope({
+    config,
+    service,
+    shared: false,
+    command: 'vaulter local init'
+  })
+  if (!scopeCheck.ok) {
+    print.error(scopeCheck.error)
+    ui.log(`Hint: ${scopeCheck.hint}`)
     process.exit(1)
   }
 

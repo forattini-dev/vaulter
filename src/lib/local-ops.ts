@@ -336,10 +336,35 @@ export async function runLocalPush(options: LocalPushOptions): Promise<LocalPush
   const sourceEnvironment = resolveBaseEnvironment(config)
   const target = targetEnvironment || sourceEnvironment
 
-  // Load local vars based on shared flag
-  const localVars = shared
-    ? loadLocalShared(configDir)
-    : loadOverrides(configDir, service)
+  const localVarEntries: Array<{ key: string; value: string; sensitive: boolean }> = []
+
+  if (shared) {
+    const localConfigs = loadLocalSharedConfigs(configDir)
+    const localSecrets = loadLocalSharedSecrets(configDir)
+
+    for (const [key, value] of Object.entries(localConfigs)) {
+      localVarEntries.push({ key, value, sensitive: false })
+    }
+    for (const [key, value] of Object.entries(localSecrets)) {
+      localVarEntries.push({ key, value, sensitive: true })
+    }
+  } else {
+    const localConfigs = loadServiceConfigs(configDir, service)
+    const localSecrets = loadServiceSecrets(configDir, service)
+
+    for (const [key, value] of Object.entries(localConfigs)) {
+      localVarEntries.push({ key, value, sensitive: false })
+    }
+    for (const [key, value] of Object.entries(localSecrets)) {
+      localVarEntries.push({ key, value, sensitive: true })
+    }
+  }
+
+  const localVars = localVarEntries.reduce<Record<string, string>>((acc, item) => {
+    acc[item.key] = item.value
+    return acc
+  }, {})
+  const localSensitivity = new Map(localVarEntries.map(item => [item.key, item.sensitive]))
 
   if (Object.keys(localVars).length === 0) {
     return {
@@ -375,15 +400,20 @@ export async function runLocalPush(options: LocalPushOptions): Promise<LocalPush
   const unchanged: string[] = []
 
   for (const [key, value] of Object.entries(localVars)) {
-    // No inference - use existing sensitive flag for updates, false for new vars
-    const existingSensitive = existingSensitiveMap.get(key) ?? false
+    // Use local-sourced sensitivity for new vars, keep remote metadata for updates
+    const existingSensitive = existingSensitiveMap.get(key)
 
     if (!(key in remoteVars)) {
-      // New var - defaults to not sensitive (config), user must mark explicitly if needed
-      added.push({ key, value, sensitive: false })
+      // New var - infer from source file where key was defined.
+      added.push({ key, value, sensitive: localSensitivity.get(key) ?? false })
     } else if (remoteVars[key] !== value) {
-      // Update - preserve existing sensitive flag
-      updated.push({ key, oldValue: remoteVars[key], newValue: value, sensitive: existingSensitive })
+      // Update - preserve existing sensitive flag for minimal surprises.
+      updated.push({
+        key,
+        oldValue: remoteVars[key],
+        newValue: value,
+        sensitive: existingSensitive ?? (localSensitivity.get(key) ?? false)
+      })
     } else {
       unchanged.push(key)
     }

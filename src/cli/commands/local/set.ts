@@ -15,7 +15,8 @@ import {
   getServiceConfigPath,
   getServiceSecretsPath,
   getSharedConfigPath,
-  getSharedSecretsPath
+  getSharedSecretsPath,
+  validateLocalServiceScope
 } from '../../../lib/local.js'
 import { c, print } from '../../lib/colors.js'
 import * as ui from '../../ui.js'
@@ -42,6 +43,18 @@ export async function runLocalSet(context: LocalContext): Promise<void> {
   }
 
   const isShared = args.shared as boolean | undefined
+
+  const scopeCheck = validateLocalServiceScope({
+    config,
+    service,
+    shared: isShared,
+    command: 'vaulter local set'
+  })
+  if (!scopeCheck.ok) {
+    print.error(scopeCheck.error)
+    ui.log(`Hint: ${scopeCheck.hint}`)
+    process.exit(1)
+  }
 
   // Collect variables from separator buckets and positional args
   const vars: VarToSet[] = []

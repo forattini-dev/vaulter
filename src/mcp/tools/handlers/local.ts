@@ -16,7 +16,8 @@ import {
   getSharedConfigPath,
   getSharedSecretsPath,
   getServiceConfigPath,
-  getServiceSecretsPath
+  getServiceSecretsPath,
+  validateLocalServiceScope
 } from '../../../lib/local.js'
 import { runLocalPull, runLocalDiff, runLocalPush, runLocalPushAll, runLocalSync } from '../../../lib/local-ops.js'
 import { maskValue } from '../../../lib/masking.js'
@@ -110,6 +111,15 @@ export async function handleLocalPushCall(
     const shared = args.shared === true
     const dryRun = args.dryRun === true || args.dry_run === true
     const targetEnv = args.targetEnvironment as string | undefined
+    const scopeCheck = validateLocalServiceScope({
+      config,
+      service,
+      shared,
+      command: 'vaulter_local_push'
+    })
+    if (!scopeCheck.ok) {
+      return { content: [{ type: 'text', text: `Error: ${scopeCheck.error}\nHint: ${scopeCheck.hint}` }] }
+    }
 
     const pushResult = await runLocalPush({
       client,
@@ -172,7 +182,7 @@ export async function handleLocalPushCall(
  * - sensitive=false → configs.env (default)
  */
 export async function handleLocalSetCall(
-  _config: VaulterConfig,
+  config: VaulterConfig,
   args: Record<string, unknown>
 ): Promise<ToolResponse> {
   const result = getConfigDirOrError()
@@ -183,6 +193,16 @@ export async function handleLocalSetCall(
   const value = args.value as string
   const service = args.service as string | undefined
   const sensitive = args.sensitive === true
+
+  const scopeCheck = validateLocalServiceScope({
+    config,
+    service,
+    shared: false,
+    command: 'vaulter_local_set'
+  })
+  if (!scopeCheck.ok) {
+    return { content: [{ type: 'text', text: `Error: ${scopeCheck.error}\nHint: ${scopeCheck.hint}` }] }
+  }
 
   if (!key || value === undefined) {
     return { content: [{ type: 'text', text: 'Error: key and value are required' }] }
@@ -202,7 +222,7 @@ export async function handleLocalSetCall(
  * vaulter_local_delete - Remove a local override
  */
 export async function handleLocalDeleteCall(
-  _config: VaulterConfig,
+  config: VaulterConfig,
   args: Record<string, unknown>
 ): Promise<ToolResponse> {
   const result = getConfigDirOrError()
@@ -211,6 +231,16 @@ export async function handleLocalDeleteCall(
 
   const key = args.key as string
   const service = args.service as string | undefined
+
+  const scopeCheck = validateLocalServiceScope({
+    config,
+    service,
+    shared: false,
+    command: 'vaulter_local_delete'
+  })
+  if (!scopeCheck.ok) {
+    return { content: [{ type: 'text', text: `Error: ${scopeCheck.error}\nHint: ${scopeCheck.hint}` }] }
+  }
 
   if (!key) {
     return { content: [{ type: 'text', text: 'Error: key is required' }] }
@@ -237,6 +267,16 @@ export async function handleLocalDiffCall(
   const result = getConfigDirOrError()
   if ('error' in result) return result.error
   const { configDir } = result
+
+  const scopeCheck = validateLocalServiceScope({
+    config,
+    service,
+    shared: false,
+    command: 'vaulter_local_diff'
+  })
+  if (!scopeCheck.ok) {
+    return { content: [{ type: 'text', text: `Error: ${scopeCheck.error}\nHint: ${scopeCheck.hint}` }] }
+  }
 
   const { baseEnvironment, overrides, diff } = await runLocalDiff({
     client,

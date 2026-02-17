@@ -7,6 +7,7 @@
 import { findConfigDir } from '../../../lib/config-loader.js'
 import { runLocalDiff as runLocalDiffCore } from '../../../lib/local-ops.js'
 import { resolveBaseEnvironment } from '../../../lib/local.js'
+import { validateLocalServiceScope } from '../../../lib/local.js'
 import { createClientFromConfig } from '../../lib/create-client.js'
 import { c, symbols, box, colorEnv, print } from '../../lib/colors.js'
 import * as ui from '../../ui.js'
@@ -23,6 +24,18 @@ export async function runLocalDiff(context: LocalContext): Promise<void> {
   const configDir = findConfigDir()
   if (!configDir) {
     print.error('Could not find .vaulter/ directory')
+    process.exit(1)
+  }
+
+  const scopeCheck = validateLocalServiceScope({
+    config,
+    service,
+    shared: false,
+    command: 'vaulter local diff'
+  })
+  if (!scopeCheck.ok) {
+    print.error(scopeCheck.error)
+    ui.log(`Hint: ${scopeCheck.hint}`)
     process.exit(1)
   }
 

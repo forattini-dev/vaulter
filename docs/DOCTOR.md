@@ -228,7 +228,7 @@ Detecta problemas de segurança.
 ✓ security: no security issues detected
 ✗ security: 3 .env file(s) tracked in git: .vaulter/local/configs.env, deploy/secrets/prd.env
   → Add .env files to .gitignore immediately and remove from git history
-⚠ security: weak encryption key (< 32 chars); .env file has weak permissions (644)
+⚠ security: weak encryption key (< 32 chars); local override file has weak permissions (644)
   → Fix security issues: generate stronger keys, fix permissions
 ```
 
@@ -240,6 +240,8 @@ Detecta problemas de segurança.
 git ls-files "*.env" ".vaulter/**/*.env"
 
 # Se encontrar → FAIL
+# Para monorepo:
+git ls-files ".vaulter/local/services/*/configs.env" ".vaulter/local/services/*/secrets.env"
 ```
 
 **Como corrigir:**
@@ -247,6 +249,8 @@ git ls-files "*.env" ".vaulter/**/*.env"
 # 1. Adicionar ao .gitignore
 echo "*.env" >> .gitignore
 echo ".vaulter/local/*.env" >> .gitignore
+echo ".vaulter/local/services/*/configs.env" >> .gitignore
+echo ".vaulter/local/services/*/secrets.env" >> .gitignore
 echo ".vaulter/deploy/secrets/*.env" >> .gitignore
 echo ".vaulter/deploy/shared/secrets/*.env" >> .gitignore
 echo ".vaulter/deploy/services/*/secrets/*.env" >> .gitignore
@@ -254,11 +258,12 @@ echo ".vaulter/deploy/services/*/secrets/*.env" >> .gitignore
 # 2. Remover do histórico do git
 git rm --cached .vaulter/local/{configs,secrets}.env
 git rm --cached .vaulter/deploy/secrets/*.env .vaulter/deploy/shared/secrets/*.env .vaulter/deploy/services/*/secrets/*.env
+git rm --cached .vaulter/local/services/*/configs.env .vaulter/local/services/*/secrets.env
 git commit -m "Remove sensitive .env files from git"
 
 # 3. Se já foi pusheado, precisa limpar histórico
 git filter-branch --force --index-filter \
-  'git rm --cached --ignore-unmatch .vaulter/local/{configs,secrets}.env .vaulter/deploy/secrets/*.env .vaulter/deploy/shared/secrets/*.env .vaulter/deploy/services/*/secrets/*.env' \
+  'git rm --cached --ignore-unmatch .vaulter/local/{configs,secrets}.env .vaulter/local/services/*/configs.env .vaulter/local/services/*/secrets.env .vaulter/deploy/secrets/*.env .vaulter/deploy/shared/secrets/*.env .vaulter/deploy/services/*/secrets/*.env' \
   --prune-empty --tag-name-filter cat -- --all
 ```
 
@@ -275,9 +280,12 @@ export VAULTER_KEY_DEV=$(openssl rand -base64 32)
 ```bash
 # Corrigir permissões (somente owner pode ler/escrever)
 chmod 600 .vaulter/local/configs.env
+chmod 600 .vaulter/local/services/${SERVICE_NAME}/configs.env
+chmod 600 .vaulter/local/services/${SERVICE_NAME}/secrets.env
 
 # Ou read-only
 chmod 400 .vaulter/local/secrets.env
+chmod 400 .vaulter/local/services/${SERVICE_NAME}/secrets.env
 ```
 
 ---

@@ -14,6 +14,7 @@ import { findConfigDir } from '../../../lib/config-loader.js'
 import { withClient } from '../../lib/create-client.js'
 import { runLocalPush, runLocalPushAll } from '../../../lib/local-ops.js'
 import { maskValue } from '../../../lib/masking.js'
+import { validateLocalServiceScope } from '../../../lib/local.js'
 import { c, colorEnv, print } from '../../lib/colors.js'
 import * as ui from '../../ui.js'
 import type { LocalContext } from './index.js'
@@ -36,6 +37,18 @@ export async function runLocalPushCommand(context: LocalContext): Promise<void> 
   const isShared = args.shared as boolean | undefined
   const targetEnv = args.env as string | undefined
   const isOverwrite = args.overwrite as boolean | undefined
+
+  const scopeCheck = validateLocalServiceScope({
+    config,
+    service,
+    shared: isAll || isShared,
+    command: 'vaulter local push'
+  })
+  if (!scopeCheck.ok) {
+    print.error(scopeCheck.error)
+    ui.log(`Hint: ${scopeCheck.hint}`)
+    process.exit(1)
+  }
 
   // --all mode: push entire .vaulter/local/ structure
   if (isAll) {

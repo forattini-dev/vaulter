@@ -929,9 +929,9 @@ outputs:
 
 ## Local Overrides (Dev Environment) - OFFLINE FIRST
 
-**`vaulter local pull` is 100% OFFLINE** - no backend calls!
+**`vaulter local pull` and local `.env` generation are 100% OFFLINE** - no backend calls.
 
-Works entirely from local files in `.vaulter/local/`. Perfect for local development where you want to work offline and sync later.
+Works entirely from local files in `.vaulter/local/`. This is the primary workflow for day-to-day development: edit local overrides, run `vaulter local pull --all`, and only sync when needed.
 
 ### Quick Reference
 
@@ -940,6 +940,8 @@ Works entirely from local files in `.vaulter/local/`. Perfect for local developm
 | `vaulter local pull --all` | Generate .env files from local | ❌ OFFLINE |
 | `vaulter local push --all` | Send local → backend | ✅ Backend |
 | `vaulter local sync` | Download backend → local | ✅ Backend |
+| `vaulter local set` | Write local override to `.vaulter/local/` | ❌ OFFLINE |
+| `vaulter local diff` | Compare local overrides vs base env | ❌ OFFLINE |
 
 ### Workflow
 
@@ -963,6 +965,8 @@ Works entirely from local files in `.vaulter/local/`. Perfect for local developm
 │  3. vaulter local pull --all → Generate .env        │
 └─────────────────────────────────────────────────────┘
 ```
+
+For monorepos, use `--service <name>` on `local set`, `local delete`, `local diff`, and `local push` (without `--all`), so overrides are scoped to the intended service.
 
 ### File Structure
 
@@ -997,8 +1001,8 @@ For each output target, vaulter merges:
 # === EDIT LOCALLY ===
 vaulter local set --shared DEBUG::true     # shared config
 vaulter local set --shared API_KEY=xxx     # shared secret
-vaulter local set PORT::3001 -s web        # service config
-vaulter local set DB_URL=xxx -s api        # service secret
+vaulter local set PORT::3001 -s web        # service config (required in monorepo)
+vaulter local set DB_URL=xxx -s api        # service secret (required in monorepo)
 
 # === GENERATE .ENV FILES [OFFLINE] ===
 vaulter local pull --all

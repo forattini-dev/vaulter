@@ -620,7 +620,7 @@ export function registerTools(): Tool[] {
     },
     {
       name: 'vaulter_local_push',
-      description: 'Push local overrides to remote backend. This allows sharing local development configs with the team. Compares local vars with remote and pushes only changed values.',
+      description: 'Push local overrides to remote backend. This allows sharing local development configs with the team. In monorepos, service is required unless shared=true. Compares local vars with remote and pushes only changed values.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -633,7 +633,7 @@ export function registerTools(): Tool[] {
     },
     {
       name: 'vaulter_local_set',
-      description: 'Set a service-specific local override. Routes to configs.env (sensitive=false) or secrets.env (sensitive=true). Local files never touch the backend. Single repo: .vaulter/local/[configs|secrets].env. Monorepo: .vaulter/local/services/<svc>/[configs|secrets].env',
+      description: 'Set a service-specific local override. Routes to configs.env (sensitive=false) or secrets.env (sensitive=true). In monorepo, service is required. Local files never touch the backend. Single repo: .vaulter/local/[configs|secrets].env. Monorepo: .vaulter/local/services/<svc>/[configs|secrets].env',
       inputSchema: {
         type: 'object',
         properties: {
@@ -647,7 +647,7 @@ export function registerTools(): Tool[] {
     },
     {
       name: 'vaulter_local_delete',
-      description: 'Remove a service-specific local override (removes from both configs.env and secrets.env).',
+      description: 'Remove a service-specific local override (removes from both configs.env and secrets.env). In monorepo, service is required.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -714,7 +714,7 @@ export function registerTools(): Tool[] {
     },
     {
       name: 'vaulter_local_diff',
-      description: 'Show local overrides vs base environment. Shows which variables are added or modified locally (both shared and service-specific).',
+      description: 'Show local overrides vs base environment. Shows which variables are added or modified locally (both shared and service-specific). In monorepo, service is required.',
       inputSchema: {
         type: 'object',
         properties: {

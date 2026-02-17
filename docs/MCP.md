@@ -778,11 +778,15 @@ Demote a shared variable to a specific service.
 | `vaulter_local_pull` | Generate .env files from `.vaulter/local/` | ❌ OFFLINE |
 | `vaulter_local_push_all` | Send `.vaulter/local/` → backend | ✅ Uses backend |
 | `vaulter_local_sync` | Download backend → `.vaulter/local/` | ✅ Uses backend |
+| `vaulter_local_set` | Write service/local overrides to `.vaulter/local/` (shared via `vaulter_local_shared_set`) | ❌ OFFLINE |
+| `vaulter_local_delete` | Remove local override from `.vaulter/local/` | ❌ OFFLINE |
 
 **Workflow:**
 1. Edit files in `.vaulter/local/`
 2. `vaulter_local_pull all=true` → Generate .env files (OFFLINE)
 3. `vaulter_local_push_all` → Share with team (when ready)
+
+In monorepos, `vaulter_local_set`, `vaulter_local_delete`, `vaulter_local_diff`, and `vaulter_local_push` require `service` (unless `shared=true` on local push).
 
 New dev joins:
 1. `vaulter_local_sync` → Download from backend
@@ -809,7 +813,8 @@ New dev joins:
 | `service` | string | No | - | Service name (monorepo) |
 
 #### `vaulter_local_set`
-Set a local override for a service. Only modifies local file, never touches backend.
+Set a service-scoped local override. Only modifies local file, never touches backend.
+In monorepo mode, `service` is required.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
@@ -819,7 +824,8 @@ Set a local override for a service. Only modifies local file, never touches back
 | `sensitive` | boolean | No | `false` | If true, writes to secrets.env; if false, writes to configs.env |
 
 #### `vaulter_local_delete`
-Remove a local override.
+Remove a service-scoped local override.
+In monorepo mode, `service` is required.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
@@ -827,7 +833,8 @@ Remove a local override.
 | `service` | string | No | - | Service name (monorepo) |
 
 #### `vaulter_local_diff`
-Show local overrides vs base environment.
+Show service-scoped local overrides vs base environment.
+In monorepo mode, `service` is required.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
@@ -880,7 +887,7 @@ List all shared local overrides.
 **With `overwrite=true`:** Also DELETES backend vars that don't exist locally. Use with caution!
 
 #### `vaulter_local_sync`
-**[USES BACKEND]** Pull from backend to `.vaulter/local/`. Use to get team's shared variables.
+**[USES BACKEND]** Pull from backend to `.vaulter/local/`. This includes shared and service-specific vars and is the inverse of `vaulter_local_push_all`.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|

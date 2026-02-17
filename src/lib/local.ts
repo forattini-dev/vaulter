@@ -24,6 +24,7 @@ import { parseEnvString } from './env-parser.js'
 import { formatEnvFile } from './outputs.js'
 import { getSnapshotCount } from './snapshot.js'
 import type { VaulterConfig } from '../types.js'
+import { isMonorepoFromConfig } from './monorepo.js'
 
 // ============================================================================
 // Constants
@@ -31,6 +32,7 @@ import type { VaulterConfig } from '../types.js'
 
 const CONFIGS_FILE = 'configs.env'
 const SECRETS_FILE = 'secrets.env'
+const LOCAL_ENV_FILE_MODE = 0o600
 
 // ============================================================================
 // Path Helpers
@@ -122,6 +124,19 @@ function writeEnvFile(filePath: string, vars: Record<string, string>): void {
   }
   const content = formatEnvFile(vars)
   fs.writeFileSync(filePath, content, 'utf-8')
+  ensureLocalFilePermissions(filePath)
+}
+
+function ensureLocalFilePermissions(filePath: string): void {
+  if (process.platform === 'win32') {
+    return
+  }
+
+  try {
+    fs.chmodSync(filePath, LOCAL_ENV_FILE_MODE)
+  } catch {
+    // Ignore permission failures to keep CLI behavior non-blocking.
+  }
 }
 
 /**
@@ -152,6 +167,44 @@ function deleteFromFile(filePath: string, key: string): boolean {
     writeEnvFile(filePath, vars)
   }
   return true
+}
+
+/**
+ * Validate local scope usage in monorepo mode.
+ *
+ * In monorepo mode, service-specific operations should always be explicit
+ * unless the operation is targeting shared vars.
+ */
+export function validateLocalServiceScope(options: {
+  config: VaulterConfig | null | undefined
+  service?: string
+  shared?: boolean
+  command: string
+}): { ok: true } | { ok: false; error: string; hint: string } {
+  const { config, service, shared, command } = options
+
+  if (!isMonorepoFromConfig(config)) {
+    return { ok: true }
+  }
+
+  if (shared) {
+    return { ok: true }
+  }
+
+  if (service) {
+    return { ok: true }
+  }
+
+  const configuredService = config?.services?.[0]
+  const sampleService = typeof configuredService === 'string'
+    ? configuredService
+    : configuredService?.name || 'api'
+
+  return {
+    ok: false,
+    error: `${command} in monorepo mode requires a service.`,
+    hint: `Use --service ${sampleService} (or run in --shared mode when the var is global).`
+  }
 }
 
 // ============================================================================

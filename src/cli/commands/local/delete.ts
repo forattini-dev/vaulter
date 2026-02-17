@@ -5,7 +5,7 @@
  */
 
 import { findConfigDir } from '../../../lib/config-loader.js'
-import { deleteOverride, deleteLocalShared } from '../../../lib/local.js'
+import { deleteOverride, deleteLocalShared, validateLocalServiceScope } from '../../../lib/local.js'
 import { c, print } from '../../lib/colors.js'
 import * as ui from '../../ui.js'
 import type { LocalContext } from './index.js'
@@ -26,6 +26,18 @@ export async function runLocalDelete(context: LocalContext): Promise<void> {
 
   const isShared = args.shared as boolean | undefined
   const key = args._[2]
+
+  const scopeCheck = validateLocalServiceScope({
+    config,
+    service,
+    shared: isShared,
+    command: 'vaulter local delete'
+  })
+  if (!scopeCheck.ok) {
+    print.error(scopeCheck.error)
+    ui.log(`Hint: ${scopeCheck.hint}`)
+    process.exit(1)
+  }
 
   if (!key) {
     print.error('Key required')
