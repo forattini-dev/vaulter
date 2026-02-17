@@ -7,7 +7,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { loadConfig, findConfigDir } from './config-loader.js'
-import type { VaulterConfig } from '../types.js'
+import type { VaulterConfig, ServiceConfig } from '../types.js'
 
 const CONFIG_DIR = '.vaulter'
 const CONFIG_FILE = 'config.yaml'
@@ -20,12 +20,22 @@ export interface ServiceInfo {
   config: VaulterConfig
 }
 
+const DEFAULT_SERVICES_PATTERN = 'apps/*'
+
+interface DiscoverServicesOptions {
+  includeConfiguredServices?: boolean
+}
+
 /**
  * Find all services in a monorepo
  * Searches for .vaulter directories in subdirectories
  */
-export function discoverServices(rootDir: string = process.cwd()): ServiceInfo[] {
-  const services: ServiceInfo[] = []
+export function discoverServices(
+  rootDir: string = process.cwd(),
+  options: DiscoverServicesOptions = {}
+): ServiceInfo[] {
+  const { includeConfiguredServices = true } = options
+  const discovered: ServiceInfo[] = []
   const visited = new Set<string>()
 
   function searchDir(dir: string, depth: number): void {
@@ -55,7 +65,7 @@ export function discoverServices(rootDir: string = process.cwd()): ServiceInfo[]
             const config = loadConfig(subDir)
             const serviceName = config.service || entry.name
 
-            services.push({
+            discovered.push({
               name: serviceName,
               path: subDir,
               configDir,
@@ -76,6 +86,81 @@ export function discoverServices(rootDir: string = process.cwd()): ServiceInfo[]
 
   // Start search from root
   searchDir(rootDir, 0)
+
+  if (!includeConfiguredServices) {
+    return discovered
+  }
+
+  try {
+    const config = loadConfig(rootDir)
+    const configured = discoverConfiguredServices(config, rootDir)
+    return mergeServices(discovered, configured)
+  } catch {
+    return discovered
+  }
+}
+
+/**
+ * Discover services declared in config.services.
+ *
+ * Monorepo setups often model services in config only, without nested .vaulter dirs.
+ * This keeps discovery consistent for teams that use config-driven service lists.
+ */
+export function discoverConfiguredServices(
+  config: VaulterConfig,
+  rootDir: string = process.cwd()
+): ServiceInfo[] {
+  if (!config.services || config.services.length === 0) return []
+
+  const services: ServiceInfo[] = []
+  const normalizedRoot = path.resolve(rootDir)
+  const fallbackConfigDir = findConfigDir(normalizedRoot) || path.join(normalizedRoot, '.vaulter')
+  const monorepoServicesPattern = config.monorepo?.services_pattern || DEFAULT_SERVICES_PATTERN
+
+  const resolveServicePath = (serviceName: string, explicitPath?: string): string => {
+    if (explicitPath && explicitPath.trim()) {
+      return path.resolve(normalizedRoot, explicitPath)
+    }
+
+    const trimmedPattern = monorepoServicesPattern.trim()
+    if (!trimmedPattern) {
+      return path.resolve(normalizedRoot, DEFAULT_SERVICES_PATTERN.replace('*', serviceName))
+    }
+
+    const normalizedPattern = trimmedPattern.includes('*')
+      ? trimmedPattern.replace(/\*/g, serviceName)
+      : path.join(trimmedPattern, serviceName)
+
+    return path.resolve(normalizedRoot, normalizedPattern)
+  }
+
+  for (const entry of config.services) {
+    const serviceName = (typeof entry === 'string' ? entry : entry.name).trim()
+    if (!serviceName) continue
+
+    const servicePath = resolveServicePath(serviceName, (entry as ServiceConfig).path)
+    const configDir = path.join(servicePath, '.vaulter')
+    const configPath = path.join(configDir, 'config.yaml')
+    let serviceConfig: VaulterConfig | null = null
+
+    if (fs.existsSync(configPath)) {
+      try {
+        serviceConfig = loadConfig(servicePath)
+      } catch {
+        serviceConfig = null
+      }
+    }
+
+    services.push({
+      name: serviceName,
+      path: servicePath,
+      configDir: serviceConfig ? configDir : fallbackConfigDir,
+      config: serviceConfig || {
+        ...config,
+        service: serviceName
+      }
+    })
+  }
 
   return services
 }
@@ -192,7 +277,34 @@ export function isMonorepo(startDir: string = process.cwd()): boolean {
   if (!root) return false
 
   const services = discoverServices(root)
-  return services.length > 1
+  if (services.length > 0) return true
+
+  try {
+    const config = loadConfig(root)
+    return isMonorepoFromConfig(config)
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Merge service lists while de-duplicating by service name.
+ */
+export function mergeServices(...serviceGroups: ServiceInfo[][]): ServiceInfo[] {
+  const result: ServiceInfo[] = []
+  const seen = new Set<string>()
+
+  for (const services of serviceGroups) {
+    for (const service of services) {
+      if (seen.has(service.name)) {
+        continue
+      }
+      seen.add(service.name)
+      result.push(service)
+    }
+  }
+
+  return result
 }
 
 /**

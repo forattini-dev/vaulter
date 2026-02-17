@@ -246,7 +246,7 @@ export function registerTools(): Tool[] {
     },
     {
       name: 'vaulter_services',
-      description: 'List all services discovered in the monorepo (directories with .vaulter/config.yaml)',
+      description: 'List monorepo services discovered from local service configs and/or config.services declarations',
       inputSchema: {
         type: 'object',
         properties: {

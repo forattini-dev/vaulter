@@ -7,7 +7,10 @@
 import { VaulterClient } from '../../../client.js'
 import { getValidEnvironments } from '../../../lib/config-loader.js'
 import path from 'node:path'
-import { discoverServices, findMonorepoRoot } from '../../../lib/monorepo.js'
+import {
+  discoverServices,
+  findMonorepoRoot,
+} from '../../../lib/monorepo.js'
 import { scanMonorepo, formatScanResult } from '../../../lib/monorepo-detect.js'
 import type { VaulterConfig, Environment } from '../../../types.js'
 import { DEFAULT_ENVIRONMENTS } from '../../../types.js'
@@ -200,7 +203,7 @@ export async function handleServicesCall(
   const monorepoRoot = findMonorepoRoot(rootPath) || rootPath
 
   try {
-    const services = await discoverServices(monorepoRoot)
+    const services = discoverServices(monorepoRoot)
 
     if (services.length === 0) {
       return {

@@ -67,7 +67,7 @@ async function runServicesList(context: ServicesContext): Promise<void> {
     process.exit(1)
   }
 
-  // Discover services
+  // Discover services from filesystem + config declaration
   const services = discoverServices(root)
 
   if (jsonOutput) {
@@ -86,7 +86,7 @@ async function runServicesList(context: ServicesContext): Promise<void> {
     if (services.length === 0) {
       ui.log('No services found')
       ui.log('')
-      ui.log('This might be a single-project setup (no nested .vaulter directories)')
+      ui.log('This might be a single-project setup or config.services is not defined')
     } else {
       ui.log(`Found ${services.length} service(s) in monorepo:`)
       ui.log('')

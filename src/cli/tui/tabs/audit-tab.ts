@@ -10,17 +10,15 @@ import {
   Text,
   createSignal,
 } from 'tuiuiu.js'
-import type { VaulterConfig } from '../../../types.js'
 
 const [isInitialized, setIsInitialized] = createSignal(false)
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-const [_config, setConfig] = createSignal<VaulterConfig | null>(null)
 
 export async function initAuditTab(
-  cfg: VaulterConfig,
+  cfg: unknown,
   _options: { environment?: string } = {}
 ): Promise<void> {
-  setConfig(cfg)
+  void cfg
+  void _options
   setIsInitialized(true)
 }
 

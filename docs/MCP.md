@@ -1226,7 +1226,8 @@ outputs:
 ### `vaulter://services`
 
 Lists all services discovered in a monorepo, starting from the Vaulter project root.
-Services are detected by presence of `.vaulter/config.yaml` in service directories.
+Discovery checks both service directories containing `.vaulter/config.yaml` and services
+declared in `config.services`.
 
 **Example output:**
 ```json
@@ -1254,7 +1255,7 @@ Services are detected by presence of `.vaulter/config.yaml` in service directori
 {
   "discovered": false,
   "message": "No services found in /home/user/project",
-  "hint": "Services are detected by .vaulter/config.yaml directories under monorepo roots"
+  "hint": "Services are detected by .vaulter/config.yaml directories or `config.services` declarations"
 }
 ```
 

@@ -13,7 +13,13 @@ import { withClient } from '../lib/create-client.js'
 import { findConfigDir, getEnvFilePathForConfig } from '../../lib/config-loader.js'
 import { parseEnvFile, hasStdinData, parseEnvFromStdin, serializeEnv } from '../../lib/env-parser.js'
 import { compileGlobPatterns } from '../../lib/pattern-matcher.js'
-import { discoverServices, filterServices, findMonorepoRoot, formatServiceList, type ServiceInfo } from '../../lib/monorepo.js'
+import {
+  discoverServices,
+  filterServices,
+  findMonorepoRoot,
+  formatServiceList,
+  type ServiceInfo
+} from '../../lib/monorepo.js'
 import { runBatch, formatBatchResult, formatBatchResultJson } from '../../lib/batch-runner.js'
 import { createConnectedAuditLogger, logSyncOperation, disconnectAuditLogger } from '../lib/audit-helper.js'
 import * as ui from '../ui.js'
@@ -355,7 +361,7 @@ async function runBatchSync(context: SyncContext): Promise<void> {
   const root = findMonorepoRoot()
   if (!root) {
     print.error('Not inside a monorepo')
-    ui.log('Run this command from within a project that has nested .vaulter directories')
+    ui.log('Run this command from a Vaulter monorepo (service configs in .vaulter/config.yaml or config.services)')
     process.exit(1)
   }
 

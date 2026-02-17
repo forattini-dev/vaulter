@@ -1735,7 +1735,7 @@ async function handleServicesRead(uri: string): Promise<{ contents: Array<{ uri:
         text: JSON.stringify({
           discovered: false,
           message: `No services found in ${monorepoRoot}.`,
-          hint: 'Services are detected by .vaulter/config.yaml directories under monorepo roots'
+          hint: 'Services are detected by .vaulter/config.yaml directories or config.services declarations'
         }, null, 2)
       }]
     }

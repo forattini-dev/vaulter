@@ -413,8 +413,9 @@ export async function handleDoctorCall(
       })
     } else if (config.outputs) {
       const targets = normalizeOutputTargets(config, environment)
+      const outputsBaseDir = projectRoot || process.cwd()
       const missing = targets.filter(target => {
-        const fullPath = path.join(projectRoot, target.path, target.filename)
+        const fullPath = path.join(outputsBaseDir, target.path, target.filename)
         return !fs.existsSync(fullPath)
       })
 
