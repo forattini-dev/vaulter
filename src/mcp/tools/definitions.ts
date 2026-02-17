@@ -582,7 +582,8 @@ export function registerTools(): Tool[] {
         properties: {
           environment: { type: 'string', description: 'Environment to check (default: dev)', default: 'dev' },
           project: { type: 'string', description: 'Project name (auto-detected from config if omitted)' },
-          service: { type: 'string', description: 'Service name (for monorepos)' }
+          service: { type: 'string', description: 'Service name (for monorepos)' },
+          fix: { type: 'boolean', description: 'Apply safe repository fixes (currently .gitignore hygiene)', default: false }
         }
       }
     },

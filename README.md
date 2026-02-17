@@ -260,6 +260,22 @@ Doctor performs **16 comprehensive checks**:
 - 🚀 Pre-deploy - ensure everything is synced
 - 🔄 Routine - weekly health check
 
+### Runbook local (`scripts/vaulter-verify-dev.sh`)
+
+For a quick pre-deploy validation in local/dev workflows:
+
+```bash
+VAULTER_VERIFY_ENV=dev pnpm run verify:vaulter
+```
+
+The script runs:
+
+- `vaulter doctor -e <env> -v`
+- `vaulter sync diff -e <env> --values`
+- `vaulter list -e <env>`
+
+It writes an execution log under `artifacts/vaulter-health/` for auditability.
+
 **For AI Agents:** Call `vaulter_doctor` once at the start of a new session (or when operations fail / environments change) to understand the current state before performing sensitive operations.
 
 See [docs/DOCTOR.md](docs/DOCTOR.md) for complete guide.

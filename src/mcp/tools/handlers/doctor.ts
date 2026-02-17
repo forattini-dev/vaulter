@@ -20,6 +20,7 @@ import {
   isValidEnvironment,
   resolveBackendUrls
 } from '../../../lib/config-loader.js'
+import { ensureRootGitignoreForVaulter } from '../../../lib/init-generator.js'
 import { loadKeyForEnv } from '../../../lib/keys.js'
 import { normalizeOutputTargets, validateOutputsConfig } from '../../../lib/outputs.js'
 import { parseEnvFile } from '../../../lib/env-parser.js'
@@ -99,6 +100,7 @@ export async function handleDoctorCall(
 ): Promise<ToolResponse> {
   const checks: DoctorCheck[] = []
   const suggestions: string[] = []
+  const applyFixes = args.fix === true
 
   const addCheck = (check: DoctorCheck) => {
     checks.push(check)
@@ -106,6 +108,7 @@ export async function handleDoctorCall(
   }
 
   const configDir = findConfigDir()
+  const projectRoot = configDir ? getBaseDir(configDir) : process.cwd()
   const configPath = configDir ? path.join(configDir, 'config.yaml') : null
 
   // Result object to build
@@ -180,6 +183,12 @@ export async function handleDoctorCall(
     }
   }
 
+  const hasMonorepoConfig = Boolean(config?.services && config.services.length > 0)
+    || Boolean(config?.monorepo?.services_pattern || config?.monorepo?.root)
+    || Boolean(config?.deploy?.services?.configs || config?.deploy?.services?.secrets)
+    || Boolean(config?.outputs && Object.keys(config.outputs).length > 1)
+  const isMonorepo = hasMonorepoConfig && Boolean(config)
+
   // === CHECK 4: Monorepo service ===
   if (config?.services && config.services.length > 0) {
     const serviceNames = config.services.map(s => (typeof s === 'string' ? s : s.name))
@@ -204,6 +213,41 @@ export async function handleDoctorCall(
         name: 'service',
         status: 'ok',
         details: service
+      })
+    }
+  }
+
+  // === CHECK 5: Root .gitignore hygiene ===
+  if (projectRoot) {
+    try {
+      const rootGitignore = ensureRootGitignoreForVaulter(projectRoot, isMonorepo, !applyFixes)
+
+      if (rootGitignore.missingEntries.length === 0) {
+        addCheck({
+          name: 'gitignore',
+          status: 'ok',
+          details: 'required Vaulter entries present in .gitignore'
+        })
+      } else if (applyFixes && rootGitignore.updated) {
+        addCheck({
+          name: 'gitignore',
+          status: 'ok',
+          details: `added ${rootGitignore.missingEntries.length} .gitignore ${rootGitignore.missingEntries.length === 1 ? 'entry' : 'entries'}`
+        })
+      } else {
+        addCheck({
+          name: 'gitignore',
+          status: 'warn',
+          details: `missing ${rootGitignore.missingEntries.length} required .gitignore ${rootGitignore.missingEntries.length === 1 ? 'entry' : 'entries'}`,
+          hint: 'Use vaulter_doctor with fix=true to update .gitignore'
+        })
+      }
+    } catch (error) {
+      addCheck({
+        name: 'gitignore',
+        status: 'warn',
+        details: `failed to validate .gitignore: ${(error as Error).message}`,
+        hint: 'Check filesystem permissions and rerun from repository root'
       })
     }
   }
@@ -395,7 +439,6 @@ export async function handleDoctorCall(
       })
     } else if (config.outputs) {
       const targets = normalizeOutputTargets(config, environment)
-      const projectRoot = configDir ? getBaseDir(configDir) : process.cwd()
       const missing = targets.filter(target => {
         const fullPath = path.join(projectRoot, target.path, target.filename)
         return !fs.existsSync(fullPath)

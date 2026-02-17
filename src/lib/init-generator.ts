@@ -69,6 +69,15 @@ export interface InitResult {
   configPath: string
 }
 
+export interface RootGitignoreSyncResult {
+  /** Whether the file was actually changed */
+  updated: boolean
+  /** Entries that should be in root .gitignore for Vaulter */
+  missingEntries: string[]
+  /** Whether .gitignore was created */
+  created: boolean
+}
+
 export interface MonorepoDetection {
   isMonorepo: boolean
   tool?: string
@@ -211,6 +220,68 @@ function generateSecretsGitignore(): string {
 *
 !.gitignore
 `
+}
+
+export function getVaulterRootGitignoreEntries(isMonorepo: boolean): string[] {
+  const base = [
+    '.vaulter/local/configs.env',
+    '.vaulter/local/secrets.env',
+    '.vaulter/*.key',
+    '.vaulter/*.pem',
+    '.vaulter/.key'
+  ]
+
+  if (isMonorepo) {
+    return [
+      ...base,
+      '.vaulter/local/services/*/configs.env',
+      '.vaulter/local/services/*/secrets.env',
+      '.vaulter/deploy/shared/secrets/*.env',
+      '.vaulter/deploy/services/*/secrets/*.env'
+    ]
+  }
+
+  return [...base, '.vaulter/deploy/secrets/*.env']
+}
+
+export function ensureRootGitignoreForVaulter(
+  projectRoot: string,
+  isMonorepo: boolean,
+  dryRun: boolean
+): RootGitignoreSyncResult {
+  const gitignorePath = path.join(projectRoot, '.gitignore')
+  const requiredEntries = getVaulterRootGitignoreEntries(isMonorepo)
+  const existed = fs.existsSync(gitignorePath)
+  const existing = existed ? fs.readFileSync(gitignorePath, 'utf-8') : ''
+  const existingLines = new Set(existing.split(/\r?\n/).map(line => line.trim()))
+
+  const missingEntries = requiredEntries.filter(entry => !existingLines.has(entry))
+
+  if (missingEntries.length === 0 || dryRun) {
+    return {
+      updated: false,
+      created: false,
+      missingEntries
+    }
+  }
+
+  const normalizedEntries = missingEntries
+    .map(entry => entry.trim())
+    .filter(entry => entry.length > 0)
+    .join('\n')
+
+  const block = `\n# Vaulter - Gitignore (managed by Vaulter)\n${normalizedEntries}\n`
+  const toWrite = existing.length > 0
+    ? `${existing.replace(/\r?\n$/, '')}\n${block}`
+    : `# Vaulter - Gitignore (managed by Vaulter)\n${normalizedEntries}\n`
+
+  fs.writeFileSync(gitignorePath, toWrite)
+
+  return {
+    updated: true,
+    created: !existed,
+    missingEntries
+  }
 }
 
 function generateVaulterGitignore(isMonorepo: boolean): string {
@@ -441,6 +512,12 @@ export function generateVaulterStructure(baseDir: string, options: InitOptions):
   // .vaulter/.gitignore
   if (writeFile(path.join(vaulterDir, '.gitignore'), generateVaulterGitignore(isMonorepo), dryRun, force)) {
     createdFiles.push('.vaulter/.gitignore')
+  }
+
+  // Ensure target repo .gitignore has required Vaulter ignores
+  const rootGitignoreSync = ensureRootGitignoreForVaulter(baseDir, isMonorepo, dryRun)
+  if (rootGitignoreSync.missingEntries.length > 0) {
+    createdFiles.push('.gitignore')
   }
 
   // config.yaml

@@ -690,6 +690,7 @@ export interface CLIArgs {
   json?: boolean
   help?: boolean
   version?: boolean
+  fix?: boolean
   // Command-specific flags
   file?: string
   output?: string

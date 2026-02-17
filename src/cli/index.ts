@@ -230,7 +230,14 @@ const cliSchema: CLISchema = {
     },
 
     doctor: {
-      description: 'Check local and remote configuration health'
+      description: 'Check local and remote configuration health',
+      options: {
+        fix: {
+          type: 'boolean',
+          default: false,
+          description: 'Apply safe repository fixes (currently .gitignore hygiene)'
+        }
+      }
     },
 
     init: {

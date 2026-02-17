@@ -14,6 +14,13 @@ releases/
 .minienv/config.local.yaml
 **/config.local.yaml
 *.key
+.vaulter/local/
+.vaulter/deploy/
+.vaulter/environments/
+.vaulter/*/configs.env
+.vaulter/*/secrets.env
+.vaulter/**/*.env
+artifacts/vaulter-health/
 
 # IDE
 .idea/
