@@ -18,8 +18,15 @@ import {
   resolveBackendUrls
 } from '../../lib/config-loader.js'
 import { isMonorepoConfigMode, buildRootGitignoreDoctorCheck } from '../../lib/doctor-shared.js'
+import { SHARED_SERVICE } from '../../lib/shared.js'
 import { loadKeyForEnv } from '../../lib/keys.js'
+import { parseEnvFile } from '../../lib/env-parser.js'
 import { normalizeOutputTargets, validateOutputsConfig } from '../../lib/outputs.js'
+import {
+  collectScopePolicyIssues,
+  formatScopePolicySummary,
+  hasBlockingPolicyIssues
+} from '../../lib/scope-policy.js'
 import { createClientFromConfig } from '../lib/create-client.js'
 import * as ui from '../ui.js'
 import { c } from '../lib/colors.js'
@@ -82,6 +89,11 @@ function redactUrl(raw: string): string {
 function summarizeBackends(urls: string[]): string {
   if (urls.length === 0) return 'none'
   return urls.map(redactUrl).join(', ')
+}
+
+function truncate(text: string, maxLength: number): string {
+  if (text.length <= maxLength) return text
+  return `${text.slice(0, maxLength - 3)}...`
 }
 
 /**
@@ -399,6 +411,43 @@ export async function runDoctor(context: DoctorContext): Promise<void> {
     }
   }
 
+  // Scope policy checks on local files (always available, no backend needed)
+  const scopePolicyChecks: ReturnType<typeof collectScopePolicyIssues>[number][] = []
+  const collectScopePolicyFromKeys = (keys: string[], scope: 'shared' | 'service', targetService?: string) => {
+    if (keys.length === 0) return
+    scopePolicyChecks.push(
+      ...collectScopePolicyIssues(keys, {
+        scope,
+        service: targetService,
+        policyMode: process.env.VAULTER_SCOPE_POLICY
+      })
+    )
+  }
+
+  if (config && configDir && !isSplitMode(config) && fs.existsSync(getEnvFilePathForConfig(config, configDir, environment))) {
+    try {
+      const localEnvPath = getEnvFilePathForConfig(config, configDir, environment)
+      const localKeys = Object.keys(parseEnvFile(localEnvPath))
+      collectScopePolicyFromKeys(localKeys, 'shared')
+    } catch (error) {
+      hints.add(`Failed to parse local env file for scope policy checks: ${(error as Error).message}`)
+    }
+  }
+
+  if (config && configDir && isSplitMode(config)) {
+    try {
+      const secretsPath = getSecretsFilePath(config, configDir, environment)
+      const configsPath = getConfigsFilePath(config, configDir, environment)
+      const splitKeys = [
+        ...(fs.existsSync(secretsPath) ? Object.keys(parseEnvFile(secretsPath)) : []),
+        ...(fs.existsSync(configsPath) ? Object.keys(parseEnvFile(configsPath)) : [])
+      ]
+      collectScopePolicyFromKeys(splitKeys, 'shared')
+    } catch (error) {
+      hints.add(`Failed to parse split local files for scope policy checks: ${(error as Error).message}`)
+    }
+  }
+
   addCheck(buildRootGitignoreDoctorCheck({
     projectRoot,
     isMonorepo,
@@ -416,6 +465,16 @@ export async function runDoctor(context: DoctorContext): Promise<void> {
     client = await createClientFromConfig({ args, config, project, environment, verbose })
     await client.connect()
     clientConnected = true
+
+    if (project) {
+      const sharedVars = await client.list({ project, environment, service: SHARED_SERVICE })
+      collectScopePolicyFromKeys(sharedVars.map((value) => value.key), 'shared')
+
+      if (service) {
+        const serviceVars = await client.list({ project, environment, service })
+        collectScopePolicyFromKeys(serviceVars.map((value) => value.key), 'service', service)
+      }
+    }
   } catch (error) {
     clientError = (error as Error).message
   } finally {
@@ -426,6 +485,32 @@ export async function runDoctor(context: DoctorContext): Promise<void> {
         // ignore
       }
     }
+  }
+
+  const scopePolicyIssues = scopePolicyChecks.flatMap(item => item.issues)
+  const scopePolicyRequiresService = Boolean(isMonorepo && !service && config?.services && config.services.length > 0)
+  const isBlockingScopePolicy = hasBlockingPolicyIssues(scopePolicyChecks)
+  const scopePolicyHint = scopePolicyIssues.length > 0 ? truncate(formatScopePolicySummary(scopePolicyIssues), 900) : undefined
+  if (scopePolicyIssues.length > 0) {
+    addCheck({
+      name: 'scope-policy',
+      status: isBlockingScopePolicy ? 'fail' : 'warn',
+      details: `${scopePolicyIssues.length} scope-policy issue(s) detected`,
+      hint: scopePolicyHint
+    })
+  } else if (scopePolicyRequiresService) {
+    addCheck({
+      name: 'scope-policy',
+      status: 'warn',
+      details: 'shared scope policy validated, service scope was not evaluated',
+      hint: 'Run with --service <name> to validate service-specific scope policy'
+    })
+  } else {
+    addCheck({
+      name: 'scope-policy',
+      status: 'ok',
+      details: 'no scope-policy issues detected'
+    })
   }
 
   if (clientConnected) {

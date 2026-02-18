@@ -1,6 +1,6 @@
 # Vaulter Doctor - Health Checks
 
-O `vaulter doctor` é uma ferramenta de diagnóstico completa que executa **16 checks** para identificar problemas de configuração, performance e segurança.
+O `vaulter doctor` é uma ferramenta de diagnóstico completa que executa **17 checks** para identificar problemas de configuração, performance e segurança.
 
 ## Quick Start
 
@@ -15,7 +15,7 @@ vaulter_doctor environment="dev"
 vaulter doctor -e dev -s api
 ```
 
-## Os 16 Checks
+## Os 17 Checks
 
 ### ✅ Checks Básicos (1-9)
 
@@ -104,7 +104,7 @@ Valida configuração de outputs.
 
 ---
 
-### ⚡ Checks Avançados (10-16)
+### ⚡ Checks Avançados (10-17)
 
 #### 10. Backend Connection
 Testa conexão com o backend e lista variáveis.
@@ -290,7 +290,30 @@ chmod 400 .vaulter/local/services/${SERVICE_NAME}/secrets.env
 
 ---
 
-#### 16. Perf Config
+#### 16. Scope Policy Validation
+
+Valida políticas de escopo de variáveis (shared x service) com base em regras configuráveis de domínio.
+
+```
+✓ scope-policy: no scope-policy issues detected
+⚠ scope-policy: 2 scope-policy issue(s) detected
+  → MAILGUN_API_KEY: expected service svc-notifications (rule mailgun-service-owned); currently targeting __shared__. MAILGUN_* variables must stay service-owned (svc-notifications)
+  → APP_URL: expected shared scope (rule svc-url-shared-default); currently targeting svc-app
+✗ scope-policy: 1 scope-policy issue(s) detected
+  → GITHUB_TOKEN: expected service svc-repositories (rule github-service-owned); currently targeting __shared__. GITHUB_* variables should be service-owned (svc-repositories)
+```
+
+**Regras padrão:**
+- `MAILGUN_*` → `svc-notifications` (service)
+- `GITHUB_*` → `svc-repositories` (service)
+- `SVC_*_URL` → `shared` (por padrão)
+
+**Comportamento:**
+- `warn` (padrão): o check mostra os erros sem bloquear o `doctor`
+- `strict` ou `error`: o check falha se houver violações
+- `off`: desativa validação
+
+#### 17. Perf Config
 Sugestões de tunning quando o ambiente permite:
 
 ```
@@ -337,7 +360,7 @@ Sugestões de tunning quando o ambiente permite:
   → Add .env files to .gitignore immediately and remove from git history
 
 ## Summary
-✓ ok: 14 | ⚠ warn: 1 | ✗ fail: 1 | ○ skip: 0
+✓ ok: 15 | ⚠ warn: 1 | ✗ fail: 1 | ○ skip: 0
 
 ## Suggestions
 - ⚠️ Fix failing checks before proceeding
@@ -348,7 +371,7 @@ Sugestões de tunning quando o ambiente permite:
 ## Interpretando o Summary
 
 ```
-✓ ok: 14 | ⚠ warn: 1 | ✗ fail: 1 | ○ skip: 0
+✓ ok: 15 | ⚠ warn: 1 | ✗ fail: 1 | ○ skip: 0
 ```
 
 - **✓ ok:** Checks que passaram - tudo certo

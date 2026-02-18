@@ -57,7 +57,7 @@ Agent: [Calls vaulter_doctor environment="prd"] ← New env check
   vaulter_doctor (diagnose)
 ```
 
-### What Doctor Checks (16 comprehensive checks)
+### What Doctor Checks (17 comprehensive checks)
 
 | Check | What It Does | Why It Matters |
 |-------|--------------|----------------|
@@ -975,7 +975,7 @@ Restore a snapshot to the backend. Verifies SHA256 integrity before restoring. I
 ### Diagnostic Tools (3)
 
 #### `vaulter_doctor`
-**⭐ CRITICAL: Call this FIRST at the start of a new session (or when operations fail / environments change)** to diagnose vaulter health. Performs **16 comprehensive checks** and returns actionable diagnostics.
+**⭐ CRITICAL: Call this FIRST at the start of a new session (or when operations fail / environments change)** to diagnose vaulter health. Performs **17 comprehensive checks** and returns actionable diagnostics.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
@@ -984,7 +984,7 @@ Restore a snapshot to the backend. Verifies SHA256 integrity before restoring. I
 | `service` | string | No | - | Service name (monorepo) |
 | `timeout_ms` | number | No | 30000 | Override timeout (useful for slow backends) |
 
-**16 Checks Performed:**
+**17 Checks Performed:**
 
 **Basic Checks (1-9):**
 1. ✅ Config file exists
@@ -997,15 +997,15 @@ Restore a snapshot to the backend. Verifies SHA256 integrity before restoring. I
 8. ✅ Local `.env` files exist
 9. ✅ Outputs configuration valid
 
-**Advanced Checks (10-16):**
+**Advanced Checks (10-17):**
 10. ✅ **Backend connection** - Tests connectivity and lists vars
 11. ✅ **Performance/Latency** - Measures operation speed (read, list)
 12. ✅ **Write permissions** - Tests read/write/delete access
 13. ✅ **Encryption round-trip** - Validates encrypt → decrypt → match
 14. ✅ **Sync status** - Compares local vs remote (differences)
 15. ✅ **Security issues** - Detects .env in git, weak keys, bad permissions
-16. ✅ **Perf config** - Suggests cache/warmup/concurrency tuning
-16. ✅ **Perf config** - Suggests cache/warmup/concurrency tuning
+16. ✅ **Scope policy** - Validates expected scope ownership by variable domain
+17. ✅ **Perf config** - Suggests cache/warmup/concurrency tuning
 
 **Returns:**
 ```json

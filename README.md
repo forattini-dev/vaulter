@@ -227,7 +227,7 @@ That's it! For most local development, vaulter is just a structured dotenv.
 vaulter doctor -e dev
 ```
 
-Doctor performs **16 comprehensive checks**:
+Doctor performs **17 comprehensive checks**:
 
 | Check | What It Does |
 |-------|--------------|
@@ -237,13 +237,14 @@ Doctor performs **16 comprehensive checks**:
 | ✅ **Encryption** | Tests encrypt → decrypt round-trip |
 | ✅ **Sync Status** | Compares local vs remote |
 | ✅ **Security** | Detects .env in git, weak keys |
+| ✅ **Scope Policy** | Checks `shared` vs `service` assignment rules |
 | ✅ **Perf Config** | Suggests cache/warmup/concurrency tuning |
-| ✅ **+9 more** | Config, project, environment, backend, keys, etc. |
+| ✅ **+8 more** | Config, project, environment, backend, keys, etc. |
 
 **Example output:**
 
 ```
-✓ ok: 14 | ⚠ warn: 1 | ✗ fail: 1
+✓ ok: 15 | ⚠ warn: 1 | ✗ fail: 1
 
 ✓ connection: connected (24 vars in dev)
 ✓ latency: read=45ms, list=67ms
