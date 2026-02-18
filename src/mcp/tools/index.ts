@@ -278,6 +278,21 @@ export async function handleToolCall(
   // For shared vars, use the shared key environment
   let client: VaulterClient | undefined
   try {
+    const createConnectionCheck = async () => {
+      try {
+        const testClient = await getClientForEnvironment(environment, { config, connectionStrings, project })
+        await testClient.connect()
+        try {
+          const vars = await testClient.list({ project, environment, service })
+          return { connected: true, varsCount: vars.length }
+        } finally {
+          await testClient.disconnect()
+        }
+      } catch (error) {
+        return { connected: false, error: (error as Error).message }
+      }
+    }
+
     if (isSharedOperation) {
       const { client: sharedClient } = await getClientForSharedVars({ config, connectionStrings, project, timeoutMs })
       client = sharedClient
@@ -338,6 +353,100 @@ export async function handleToolCall(
 
       case 'vaulter_sync_plan':
         return await handleSyncPlanCall(client, config, project, environment, service, args)
+
+      case 'vaulter_release':
+        {
+          const operation = ((args.operation as string) || 'plan').toLowerCase()
+          const requestedAction = typeof args.action === 'string' ? args.action.toLowerCase() : undefined
+          const normalizeAction = (value: string | undefined, fallbackToMerge: boolean): 'merge' | 'push' | 'pull' | undefined => {
+            if (value === 'push' || value === 'pull' || value === 'merge') return value
+            if (fallbackToMerge) return 'merge'
+            return undefined
+          }
+          const actionError = (value: string): string => `Invalid action \"${value}\". Valid actions: merge, push, pull`
+
+          const validatedAction = (value: string | undefined): 'merge' | 'push' | 'pull' | undefined => {
+            const action = normalizeAction(value, false)
+            if (value && !action) {
+              return undefined
+            }
+            return action ?? 'merge'
+          }
+
+          switch (operation) {
+            case 'status':
+              return handleDoctorCall(
+                config,
+                project,
+                environment,
+                service,
+                args,
+                createConnectionCheck
+              )
+            case 'diff':
+              return handleDiffCall(client, config, project, environment, service, args)
+
+            case 'apply':
+              if (requestedAction && !normalizeAction(requestedAction, false)) {
+                return {
+                  content: [{ type: 'text', text: actionError(requestedAction) }]
+                }
+              }
+              return handleSyncPlanCall(
+                client,
+                config,
+                project,
+                environment,
+                service,
+                {
+                  ...args,
+                  action: validatedAction(requestedAction),
+                  apply: args.dryRun === true ? false : true
+                }
+              )
+            case 'plan':
+              if (requestedAction && !normalizeAction(requestedAction, false)) {
+                return {
+                  content: [{ type: 'text', text: actionError(requestedAction) }]
+                }
+              }
+              return handleSyncPlanCall(
+                client,
+                config,
+                project,
+                environment,
+                service,
+                {
+                  ...args,
+                  action: validatedAction(requestedAction),
+                  apply: false,
+                  dryRun: true
+                }
+              )
+            case 'push':
+            case 'pull':
+            case 'merge':
+              return handleSyncPlanCall(
+                client,
+                config,
+                project,
+                environment,
+                service,
+                {
+                  ...args,
+                  action: operation,
+                  apply: true
+                }
+              )
+            default:
+              return {
+                content: [{
+                  type: 'text',
+                  text: 'Error: operation must be one of: plan, apply, push, pull, merge, diff, status'
+                }]
+              }
+          }
+        }
 
       // === ANALYSIS TOOLS ===
       case 'vaulter_compare':

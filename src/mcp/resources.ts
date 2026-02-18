@@ -115,7 +115,7 @@ export async function listResources(): Promise<Resource[]> {
   resources.push({
     uri: 'vaulter://tools-guide',
     name: 'Tools Guide',
-    description: 'Comprehensive guide on which vaulter tool to use for each scenario. Includes 56 tools organized by category.',
+    description: 'Comprehensive guide on which vaulter tool to use for each scenario. Includes 58 tools organized by category.',
     mimeType: 'text/markdown'
   })
 
@@ -689,7 +689,7 @@ Since backend is source of truth:
  * Read tools guide resource - Which tool to use for each scenario
  */
 async function handleToolsGuideRead(uri: string): Promise<{ contents: Array<{ uri: string; mimeType: string; text: string }> }> {
-  const guide = `# Vaulter MCP Tools Guide (56 tools)
+  const guide = `# Vaulter MCP Tools Guide (58 tools)
 
 ## 🚨 FOR AI AGENTS: START HERE
 
@@ -730,6 +730,7 @@ This will tell you:
 | **Local: set override** | \`vaulter_local_set\` |
 | **Local: pull with overrides** | \`vaulter_local_pull\` |
 | **Local: diff vs base** | \`vaulter_local_diff\` |
+| **Release flow (recommended)** | \`vaulter_release\` |
 | **Snapshot: backup env** | \`vaulter_snapshot_create\` |
 | **Snapshot: restore env** | \`vaulter_snapshot_restore\` |
 
@@ -830,7 +831,7 @@ format: "json"
 
 ---
 
-## 🔄 Sync Operations (2 tools)
+## 🔄 Sync Operations (4 tools)
 
 ### \`vaulter_pull\`
 **Use for:** Download from backend to local .env
@@ -843,6 +844,23 @@ environment: "dev"
 \`\`\`
 environment: "dev"
 dryRun: true  # preview changes without applying
+\`\`\`
+
+### \`vaulter_sync_plan\`
+**Use for:** Plan or execute merge/push/pull with explicit action control
+\`\`\`
+action: "merge" # merge|push|pull
+environment: "dev"
+apply: true  # false = preview mode
+\`\`\`
+
+### \`vaulter_release\`
+**Use for:** AI-friendly release flow with plan/apply wrappers
+\`\`\`
+operation: "plan" # plan|apply|merge|push|pull|diff|status
+action: "push"    # optional with plan/apply
+environment: "dev"
+apply: true
 \`\`\`
 
 ---

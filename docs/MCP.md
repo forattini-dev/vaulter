@@ -2,7 +2,7 @@
 
 Complete reference for the Vaulter Model Context Protocol (MCP) server.
 
-**Stats:** 57 tools | 7 resources | 12 prompts
+**Stats:** 58 tools | 7 resources | 12 prompts
 
 ---
 
@@ -223,7 +223,7 @@ if (diagnosis.summary.warn > 0) {
 
 ---
 
-## Tools Reference (56)
+## Tools Reference (58)
 
 ### Core Operations (5)
 
@@ -358,7 +358,7 @@ Delete multiple variables in a single call.
 
 ---
 
-### Sync Operations (3)
+### Sync Operations (4)
 
 `vaulter_sync` is a CLI-only command and is not exposed in MCP tools.
 
@@ -446,6 +446,36 @@ vaulter_sync_plan action=push environment=dev apply=true
 # Plan a pull into target path
 vaulter_sync_plan action=pull environment=dev output=.vaulter/deploy/.env
 ```
+
+#### `vaulter_release`
+High-level workflow wrapper for release automation. Combines plan/apply and direct actions into one
+operation to reduce agent command noise.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `operation` | string | No | `plan` | One of `plan`, `apply`, `push`, `pull`, `merge`, `diff`, `status` |
+| `action` | string | No | `merge` | Used with `plan`/`apply`/`merge`/`push`/`pull` |
+| `apply` | boolean | No | `false` | Alias for executing a planned operation |
+| `environment` | string | No | `dev` | Environment name |
+| `project` | string | No | auto | Project name |
+| `service` | string | No | - | Service name |
+| `file` | string | No | auto | Input file path |
+| `output` | string | No | auto | Target file for pull |
+| `all` | boolean | No | `false` | Pull to all output targets |
+| `dir` | boolean | No | `false` | Use `.vaulter/{env}/` directory mode |
+| `prune` | boolean | No | `false` | Delete remote-only vars on push |
+| `strategy` | string | No | `local` | Merge conflict strategy |
+| `dryRun` | boolean | No | `false` | Force preview without applying |
+| `shared` | boolean | No | `false` | Push in shared scope for monorepo |
+| `values` | boolean | No | `false` | Show masked values (diff-like output) |
+
+**Common usage patterns:**
+
+- `vaulter_release operation=plan environment=dev` (preview merge)
+- `vaulter_release operation=apply action=merge environment=dev` (apply merge)
+- `vaulter_release operation=push environment=dev` (direct push)
+- `vaulter_release operation=diff environment=dev` (quick release diff)
+- `vaulter_release operation=status environment=dev` (health check before promotion)
 
 ### Analysis & Discovery (4)
 

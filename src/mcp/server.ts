@@ -4,9 +4,9 @@
  * Model Context Protocol server for Claude integration
  * Exposes vaulter tools, resources, and prompts via stdio transport
  *
- * Tools:     56 tools for managing secrets and configs
+ * Tools:     58 tools for managing secrets and configs
  * Resources: 7 resource types (instructions, workflow, tools-guide, monorepo-example, mcp-config, config, services)
- * Prompts:   10 workflow prompts (setup, migrate, deploy, compare, audit, rotation, shared, batch, copy, sync)
+ * Prompts:   12 workflow prompts (setup, migrate, deploy, compare, audit, rotation, shared, batch, copy, sync, monorepo_deploy, local_overrides)
  *
  * ═══════════════════════════════════════════════════════════════════════
  * CRITICAL: HOW VAULTER STORES DATA

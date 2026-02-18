@@ -225,6 +225,87 @@ export function registerTools(): Tool[] {
         required: ['action']
       }
     },
+    {
+      name: 'vaulter_release',
+      description: 'High-level release workflow (plan/apply + direct push/pull/merge/diff/status) for AI-friendly operations.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          operation: {
+            type: 'string',
+            description: 'Release operation: plan, apply, push, pull, merge, diff, status',
+            enum: ['plan', 'apply', 'push', 'pull', 'merge', 'diff', 'status'],
+            default: 'plan'
+          },
+          action: {
+            type: 'string',
+            description: 'Action used with plan/apply/push/pull/merge',
+            enum: ['merge', 'push', 'pull']
+          },
+          apply: {
+            type: 'boolean',
+            description: 'Alias for applying a plan when operation=plan (default: false).',
+            default: false
+          },
+          environment: {
+            type: 'string',
+            description: 'Environment name',
+            default: 'dev'
+          },
+          project: {
+            type: 'string',
+            description: 'Project name'
+          },
+          service: {
+            type: 'string',
+            description: 'Service name'
+          },
+          file: {
+            type: 'string',
+            description: 'Input file path (default: auto-detected from config)'
+          },
+          output: {
+            type: 'string',
+            description: 'Output path when pulling'
+          },
+          all: {
+            type: 'boolean',
+            description: 'For pull operations: pull to all output targets',
+            default: false
+          },
+          dir: {
+            type: 'boolean',
+            description: 'Push/pull using .vaulter/{env}/ directory structure',
+            default: false
+          },
+          prune: {
+            type: 'boolean',
+            description: 'For push: delete remote vars not present in local source',
+            default: false
+          },
+          strategy: {
+            type: 'string',
+            description: 'For merge conflict strategy: local, remote, error',
+            enum: ['local', 'remote', 'error']
+          },
+          dryRun: {
+            type: 'boolean',
+            description: 'Preview only (mainly for plan/status-driven flows)',
+            default: false
+          },
+          shared: {
+            type: 'boolean',
+            description: 'Target shared vars for push (monorepo)',
+            default: false
+          },
+          values: {
+            type: 'boolean',
+            description: 'Show masked values in diff output',
+            default: false
+          }
+        }
+      }
+    },
 
     // === ANALYSIS TOOLS ===
     {

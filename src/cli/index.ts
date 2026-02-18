@@ -67,6 +67,7 @@ import { runExportGroup } from './commands/export/index.js'
 import { runServiceGroup } from './commands/service/index.js'
 import { runLocalGroup } from './commands/local/index.js'
 import { runSnapshotGroup } from './commands/snapshot/index.js'
+import { runReleaseGroup } from './commands/release/index.js'
 
 // MCP is loaded dynamically (not available in standalone binaries)
 const IS_STANDALONE = process.env.VAULTER_STANDALONE === 'true'
@@ -455,6 +456,40 @@ const cliSchema: CLISchema = {
         },
         plan: {
           description: 'Plan/apply sync operation (merge, push, pull) without changing context'
+        }
+      }
+    },
+
+    // High-level release workflow for day-to-day operations
+    release: {
+      description: 'Plan/apply release-grade changes from local to backend',
+      options: {
+        action: {
+          type: 'string',
+          description: 'Used by plan/apply when action is passed without positional value (merge, push, pull)'
+        }
+      },
+      commands: {
+        plan: {
+          description: 'Plan release changes (preview first, safe by default)'
+        },
+        apply: {
+          description: 'Apply release plan'
+        },
+        push: {
+          description: 'Push local values to backend'
+        },
+        pull: {
+          description: 'Pull backend values (for diagnostics or snapshot capture)'
+        },
+        merge: {
+          description: 'Two-way merge local ↔ remote in release flow'
+        },
+        diff: {
+          description: 'Show environment-level differences'
+        },
+        status: {
+          description: 'Run health check before release'
         }
       }
     },
@@ -1062,6 +1097,10 @@ async function main(): Promise<void> {
 
       case 'sync':
         await runSyncGroup(context)
+        break
+
+      case 'release':
+        await runReleaseGroup(context)
         break
 
       case 'key':

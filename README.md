@@ -98,11 +98,13 @@ vaulter local set DEBUG::true                  # Shared override
 vaulter local set PORT::3001 -s api            # Service-specific
 
 # 3. Add new variable for team? Push to backend
-vaulter set NEW_VAR=value -e dev               # Add to backend
-vaulter sync push -e dev                       # Or push local .env
+vaulter local set NEW_VAR=value --shared        # Personal scratch pad
+vaulter local push                             # Share scratch locally with team
+vaulter release plan -e dev                    # Preview effective release (recommended)
+vaulter release apply -e dev                   # Apply after approval
 
 # 4. Check: See what's different
-vaulter diff -e dev                            # Local vs backend
+vaulter release diff -e dev                     # Local vs backend view for release
 
 # 5. Promote: Clone to staging/production
 vaulter clone dev stg --dry-run                # Preview
@@ -311,6 +313,7 @@ See [docs/DOCTOR.md](docs/DOCTOR.md) for complete guide.
 | Command | Description |
 |:--------|:------------|
 | `sync merge -e <env>` | Bidirectional merge (default) |
+| `sync merge` | Two-way local↔remote merge |
 | `sync pull -e <env>` | Download from backend to outputs |
 | `sync pull --dir -e <env>` | Download to `.vaulter/{env}/` directory |
 | `sync push -e <env>` | Upload .env file to backend |
@@ -318,6 +321,24 @@ See [docs/DOCTOR.md](docs/DOCTOR.md) for complete guide.
 | `sync push --prune -e <env>` | Upload, delete remote-only vars |
 | `sync plan <merge|push|pull> -e <env>` | Preview planned sync changes (use `--apply` to execute) |
 | `sync diff -e <env>` | Show differences without changes |
+
+### Release (AI-friendly workflow)
+
+| Command | Description |
+|:--------|:------------|
+| `release plan [merge\|push\|pull] -e <env>` | Preview changes before applying |
+| `release apply [merge\|push\|pull] -e <env>` | Execute a plan (recommended after review) |
+| `release merge -e <env>` | Shortcut for `release apply merge` |
+| `release push -e <env>` | Shortcut for `release apply push` |
+| `release pull -e <env>` | Shortcut for `release apply pull` |
+| `release diff -e <env>` | Quick diff/compatibility check |
+| `release status -e <env>` | Health check before deployment actions |
+
+### Recommended daily path
+
+- `vaulter local pull --all` → `vaulter local set` → `vaulter local push` (when ready)
+- `vaulter release plan -e <env>` → validate → `vaulter release apply -e <env>`
+- `vaulter release status -e <env>` before deploying or running high-impact changes
 
 ### Export
 
@@ -1292,7 +1313,7 @@ const result = await loadRuntime({
 
 ## MCP Server
 
-Claude AI integration via Model Context Protocol. **57 tools, 7 resources, 12 prompts.**
+Claude AI integration via Model Context Protocol. **58 tools, 7 resources, 12 prompts.**
 
 ```bash
 vaulter mcp
@@ -1311,13 +1332,13 @@ vaulter mcp
 }
 ```
 
-### Tools (57)
+### Tools (58)
 
 | Category | Tools |
 |:---------|:------|
 | **Core (5)** | `vaulter_get`, `vaulter_set`, `vaulter_delete`, `vaulter_list`, `vaulter_export` |
 | **Batch (3)** | `vaulter_multi_get`, `vaulter_multi_set`, `vaulter_multi_delete` |
-| **Sync (3)** | `vaulter_pull`, `vaulter_push`, `vaulter_sync_plan` |
+| **Sync (4)** | `vaulter_pull`, `vaulter_push`, `vaulter_sync_plan`, `vaulter_release` |
 | **Analysis (2)** | `vaulter_compare`, `vaulter_search` |
 | **Status (2)** | `vaulter_status`, `vaulter_audit_list` |
 | **K8s (2)** | `vaulter_k8s_secret`, `vaulter_k8s_configmap` |
