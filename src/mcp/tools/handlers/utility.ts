@@ -531,7 +531,7 @@ export async function handleMoveCall(
   client: VaulterClient,
   project: string,
   environment: Environment,
-  _service: string | undefined, // Not used - source is explicit via --from
+  service: string | undefined, // Optional fallback scope when only one side is explicit
   config: VaulterConfig | null,
   args: Record<string, unknown>
 ): Promise<ToolResponse> {
@@ -541,6 +541,7 @@ export async function handleMoveCall(
   const overwrite = args.overwrite === true
   const deleteOriginal = args.deleteOriginal !== false
   const dryRun = args.dryRun === true
+  const contextService = service?.split(',')[0]?.trim()
 
   if (!key) {
     return {
@@ -551,33 +552,63 @@ export async function handleMoveCall(
     }
   }
 
-  if (!fromRaw || !toRaw) {
+  if (!fromRaw && !toRaw) {
     return {
       content: [{
         type: 'text',
-        text: 'Error: both `from` and `to` are required (e.g., from="shared", to="service:api")'
+        text: contextService
+          ? `Error: both --from and --to are missing. Service context is ${contextService}; provide both when moving across scopes.`
+          : 'Error: both `from` and `to` are required (e.g., from="shared", to="service:api")'
       }]
     }
   }
 
-  const fromScope = parseScopeSpec(fromRaw)
-  const toScope = parseScopeSpec(toRaw)
+  const canInferScope = Boolean(contextService)
+  const inferredFrom = !fromRaw && canInferScope ? `service:${contextService}` : fromRaw
+  const inferredTo = !toRaw && canInferScope ? `service:${contextService}` : toRaw
 
-  if (!fromScope) {
+  if (!fromRaw && !canInferScope) {
     return {
       content: [{
         type: 'text',
-        text: `Error: invalid --from value "${fromRaw}". Use "shared", "service:<name>", or "<service>"`
+        text: 'Error: --from is required when service context is not available.'
       }]
     }
   }
 
-  if (!toScope) {
+  if (!toRaw && !canInferScope) {
     return {
       content: [{
         type: 'text',
-        text: `Error: invalid --to value "${toRaw}". Use "shared", "service:<name>", or "<service>"`
+        text: 'Error: --to is required when service context is not available.'
       }]
+    }
+  }
+
+  const fromScope = parseScopeSpec(inferredFrom)
+  const toScope = parseScopeSpec(inferredTo)
+
+  if (!fromScope || !toScope) {
+    if (!fromScope) {
+      return {
+        content: [{
+          type: 'text',
+          text: !fromRaw
+            ? `Error: invalid inferred --from value "${inferredFrom}". Provide --from explicitly.`
+            : `Error: invalid --from value "${inferredFrom}". Use shared or service:<name>.`
+        }]
+      }
+    }
+
+    if (!toScope) {
+      return {
+        content: [{
+          type: 'text',
+          text: !toRaw
+            ? `Error: invalid inferred --to value "${inferredTo}". Provide --to explicitly.`
+            : `Error: invalid --to value "${inferredTo}". Use shared or service:<name>.`
+        }]
+      }
     }
   }
 
@@ -778,18 +809,10 @@ export async function handleChangeCall(
   }
 
   if (action === 'move') {
-    const fromRaw = args.from as string | undefined
-    const toRaw = args.to as string | undefined
-    if (!fromRaw || !toRaw) {
-      return {
-        content: [{ type: 'text', text: 'Error: from and to are required for move action' }]
-      }
-    }
-
     return handleMoveCall(client, project, environment, service, config, {
       key,
-      from: fromRaw,
-      to: toRaw,
+      from: args.from as string | undefined,
+      to: args.to as string | undefined,
       overwrite: args.overwrite,
       deleteOriginal: args.deleteOriginal ?? true,
       dryRun: args.dryRun

@@ -57,7 +57,7 @@ Agent: [Calls vaulter_doctor environment="prd"] ← New env check
   vaulter_doctor (diagnose)
 ```
 
-### What Doctor Checks (17 comprehensive checks)
+### What Doctor Checks (18 checks, with offline mode available)
 
 | Check | What It Does | Why It Matters |
 |-------|--------------|----------------|
@@ -70,13 +70,17 @@ Agent: [Calls vaulter_doctor environment="prd"] ← New env check
 | **7. Shared Key** | Shared vars key exists | Needed for monorepo shared vars |
 | **8. Local Files** | `.env` files exist locally | For sync operations |
 | **9. Outputs** | Output files configured | For framework integration |
-| **10. Connection** | Backend responds | **Most important - tests connectivity** |
-| **11. Latency** | Operations are fast | Detects slow backends |
-| **12. Permissions** | Can read/write/delete | Tests full access |
-| **13. Encryption** | Round-trip works | Detects wrong keys |
-| **14. Sync Status** | Local vs remote diff | Shows out-of-sync vars |
-| **15. Security** | No leaked secrets | Finds .env in git, weak keys |
-| **16. Perf Config** | Tuning suggestions | Cache/warmup/concurrency tips |
+| **10. Gitignore** | Local-sensitive paths are ignored | Prevents secret leaks |
+| **11. Scope Policy** | Shared/service ownership is valid | Prevents ownership mistakes |
+| **12. Connection** | Backend responds | **Most important - tests connectivity** |
+| **13. Latency** | Operations are fast | Detects slow backends |
+| **14. Permissions** | Can read/write/delete | Tests full access |
+| **15. Encryption** | Round-trip works | Detects wrong keys |
+| **16. Sync Status** | Local vs remote diff | Shows out-of-sync vars |
+| **17. Security** | No leaked secrets | Finds .env in git, weak keys |
+| **18. Perf Config** | Tuning suggestions | Cache/warmup/concurrency tips |
+
+`offline: true` keeps checks 1-11 and skips 12-18 that depend on backend.
 
 ### Doctor Output Example
 
@@ -175,7 +179,7 @@ DONE
 
 ```typescript
 // ONLY at start of conversation (once)
-const diagnosis = await vaulter_doctor({ environment: "dev" })
+const diagnosis = await vaulter_doctor({ environment: "dev", offline: true })
 
 if (diagnosis.summary.fail > 0) {
   return "⚠️ Setup has critical issues:\n" + diagnosis.suggestions.join("\n")
@@ -266,8 +270,8 @@ High-level mutation helper for AI workflows (`set`, `delete`, `move`).
 | `action` | string | **Yes** | - | `set`, `delete`, or `move` |
 | `key` | string | **Yes** | - | Variable name |
 | `value` | string | No | - | Required when `action=set` |
-| `from` | string | No | - | Required when `action=move` (`shared` or `service:<name>`) |
-| `to` | string | No | - | Required when `action=move` (`shared` or `service:<name>`) |
+| `from` | string | No | - | Source scope (`shared` or `service:<name>`). Can be omitted when `service` is set and `to` is explicit. |
+| `to` | string | No | - | Destination scope (`shared` or `service:<name>`). Can be omitted when `service` is set and `from` is explicit. |
 | `overwrite` | boolean | No | `false` | Overwrite destination when moving |
 | `deleteOriginal` | boolean | No | `true` | Delete source after move |
 | `environment` | string | No | `dev` | Environment name |
@@ -284,8 +288,13 @@ Examples:
 { "action": "set", "key": "NODE_ENV", "value": "production", "environment": "prod" }
 { "action": "delete", "key": "OLD_TOKEN", "environment": "dev", "project": "my-app" }
 { "action": "move", "key": "MAILGUN_API_KEY", "from": "shared", "to": "service:api", "environment": "dev" }
+{ "action": "move", "key": "APP_SECRET", "from": "shared", "service": "api", "environment": "dev" }
 { "action": "set", "key": "SMTP_HOST", "value": "smtp.example.com", "environment": "dev", "dryRun": true }
 ```
+
+Notes:
+- In `vaulter_change`, `move` can infer a missing scope side from `service` (explicit or inferred from cwd in monorepo contexts).
+- Both `from` and `to` cannot be omitted together, even with service context.
 
 #### `vaulter_delete`
 Delete an environment variable.
@@ -847,8 +856,8 @@ Move/copy a variable between scopes (`shared` <-> `service` or service-to-servic
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `key` | string | **Yes** | - | Variable name to move |
-| `from` | string | **Yes** | - | Source scope (`shared` or `service:<name>`) |
-| `to` | string | **Yes** | - | Destination scope (`shared` or `service:<name>`) |
+| `from` | string | No | - | Source scope (`shared` or `service:<name>`). Can be inferred from service if omitted. |
+| `to` | string | No | - | Destination scope (`shared` or `service:<name>`). Can be inferred from service if omitted. |
 | `environment` | string | No | `dev` | Environment name |
 | `project` | string | No | auto | Project name |
 | `overwrite` | boolean | No | `false` | Overwrite destination when exists |
@@ -859,6 +868,7 @@ Notes:
 - Validates destination scope against `scope_policy` before mutation.
 - Uses atomic behavior: on any failure after write, tries to restore destination/source state to avoid half-moves.
 - Also validates destination-policy expectations and returns rollback details when needed.
+- If `service` is provided, one of `from`/`to` may be omitted and inferred as `service:<service>`.
 
 #### `vaulter_copy`
 Copy variables from one environment to another. Useful for promoting configs from dev to stg/prd.
@@ -1137,7 +1147,7 @@ Rollback a variable to a previous version.
 ### Diagnostic Tools (3)
 
 #### `vaulter_doctor`
-**⭐ CRITICAL: Call this FIRST at the start of a new session (or when operations fail / environments change)** to diagnose vaulter health. Performs **18 comprehensive checks** and returns actionable diagnostics.
+**⭐ CRITICAL: Call this FIRST at the start of a new session (or when operations fail / environments change)** to diagnose vaulter health. Performs **18 comprehensive checks** online, or local checks subset when `offline=true`.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
@@ -1145,6 +1155,7 @@ Rollback a variable to a previous version.
 | `project` | string | No | auto | Project name |
 | `service` | string | No | - | Service name (monorepo) |
 | `format` | string | No | `text` | Output format (`text` or `json`) |
+| `offline` | boolean | No | `false` | Run only local checks (skip backend connectivity/performance/sync checks) |
 | `timeout_ms` | number | No | 30000 | Override timeout (useful for slow backends) |
 
 **18 Checks Performed:**

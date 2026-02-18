@@ -44,11 +44,11 @@ export function registerTools(): Tool[] {
           },
           from: {
             type: 'string',
-            description: 'Source scope for move (shared or service:<name>)'
+            description: 'Source scope for move (shared or service:<name>). Optional if service is provided and only the destination is explicit.'
           },
           to: {
             type: 'string',
-            description: 'Destination scope for move (shared or service:<name>)'
+            description: 'Destination scope for move (shared or service:<name>). Optional if service is provided and only the source is explicit.'
           },
           overwrite: {
             type: 'boolean',
@@ -727,7 +727,7 @@ export function registerTools(): Tool[] {
           dryRun: { type: 'boolean', description: 'Preview action without applying', default: false },
           deleteOriginal: { type: 'boolean', description: 'Delete source variable after move (default: true). Set false to copy.', default: true }
         },
-        required: ['key', 'from', 'to']
+        required: ['key']
       }
     },
     {
@@ -788,6 +788,7 @@ export function registerTools(): Tool[] {
           service: { type: 'string', description: 'Service name (for monorepos)' },
           format: { type: 'string', description: 'Output format', enum: ['text', 'json'], default: 'text' },
           fix: { type: 'boolean', description: 'Apply safe repository fixes (currently .gitignore hygiene)', default: false },
+          offline: { type: 'boolean', description: 'Run local checks only (skip remote/backend checks)', default: false },
           timeout_ms: { type: 'number', description: 'Override timeout for this operation in milliseconds (default: 30000 = 30s)', minimum: 1000, maximum: 300000 }
         }
       }

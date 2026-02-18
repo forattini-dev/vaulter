@@ -32,7 +32,9 @@ vaulter key generate --name master                    # Generate encryption key
 vaulter var set DATABASE_URL="postgres://..." -e dev  # Set secret
 vaulter var set PORT::3000 -e dev                     # Set config (plain)
 vaulter change set NODE_ENV=local -e dev              # New high-level mutation path
+vaulter move API_KEY --from shared --to api -e dev    # Shorter move/copy path
 vaulter change move API_KEY --from shared --to api -e dev # Move variable to service
+vaulter change move API_KEY --from shared -e dev -s svc-notifications   # Infer destination service
 vaulter plan merge -e dev                             # Alias for release plan
 eval $(vaulter export shell -e dev)                   # Export to shell
 ```
@@ -230,13 +232,14 @@ That's it! For most local development, vaulter is just a structured dotenv.
 
 ```bash
 vaulter doctor -e dev
+vaulter doctor -e dev --offline
 ```
 
-Doctor performs **até 18 checks**:
+Doctor performs **até 18 checks** online, or a local-first subset in `--offline`.
 
 | Check | What It Does |
 |-------|--------------|
-| ✅ **Connection** | Tests backend connectivity |
+| ✅ **Connection** | Tests backend connectivity (skipped in `--offline`) |
 | ✅ **Latency** | Measures operation speed |
 | ✅ **Permissions** | Validates read/write/delete access |
 | ✅ **Encryption** | Tests encrypt → decrypt round-trip |
@@ -272,11 +275,12 @@ For a quick pre-deploy validation in local/dev workflows:
 
 ```bash
 VAULTER_VERIFY_ENV=dev pnpm run verify:vaulter
+VAULTER_VERIFY_OFFLINE=0 VAULTER_VERIFY_REQUIRE_CONFIG=1 pnpm run verify:vaulter
 ```
 
 The script runs:
 
-- `vaulter doctor -e <env> -v`
+- `vaulter doctor -e <env> -v [--offline]` (offline by default)
 - `vaulter sync diff -e <env> --values`
 - `vaulter list -e <env>`
 
@@ -311,6 +315,7 @@ See [docs/DOCTOR.md](docs/DOCTOR.md) for complete guide.
 | `change set KEY=val -e <env>` | Set variable (secret/config/typed) |
 | `change delete <key> -e <env>` | Delete variable |
 | `change move <key> --from <scope> --to <scope> -e <env>` | Move/copy variable between scopes |
+| `move <key> --from <scope> --to <scope> -e <env>` | Shortcut for `change move` |
 | `var get <key> -e <env>` | Get a variable |
 | `var set KEY=val -e <env>` | Set secret (encrypted) |
 | `var set KEY::val -e <env>` | Set config (plain text) |
@@ -320,6 +325,8 @@ See [docs/DOCTOR.md](docs/DOCTOR.md) for complete guide.
 | `var list -e <env>` | List all variables |
 
 **Set syntax**: `=` encrypted secret · `::` plain config · `:=` typed secret
+
+💡 In monorepo mode, when `--service` is resolved, one of `--from` or `--to` can be omitted and inferred from the active service.
 
 ### Sync
 

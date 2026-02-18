@@ -1,6 +1,7 @@
 # Vaulter Doctor - Health Checks
 
 O `vaulter doctor` é uma ferramenta de diagnóstico completa que executa **até 18 checks** para identificar problemas de configuração, performance e segurança.
+Em `--offline`, ele valida a estrutura local e segurança do projeto sem tocar backend (útil para rotina de desenvolvimento).
 `vaulter status` é um atalho de CLI para o mesmo fluxo de diagnóstico (texto + visão de risco) e mantém a saída em sintonia com `doctor`.
 
 ## Quick Start
@@ -8,6 +9,7 @@ O `vaulter doctor` é uma ferramenta de diagnóstico completa que executa **até
 ```bash
 # CLI
 vaulter doctor -e dev
+vaulter doctor -e dev --offline
 vaulter status -e dev
 
 # MCP Tool
@@ -122,6 +124,8 @@ Valida se entradas críticas do `.vaulter` estão no `.gitignore`.
 #### 11. Backend Connection
 Testa conexão com o backend e lista variáveis.
 
+No `--offline`, este check aparece como `skip` com sugestão para executar sem modo offline.
+
 ```
 ✓ connection: connected (15 vars in dev)
 ✗ connection: failed to connect
@@ -134,6 +138,8 @@ Testa conexão com o backend e lista variáveis.
 - Conecta ao backend (com retry automático)
 - Lista variáveis do environment
 - Valida que o backend está acessível
+
+No modo `--offline`, os checks `latency`, `permissions`, `encryption` round-trip, `sync-status` e `perf-config` também aparecem como `skip` automaticamente.
 
 #### 12. Performance & Latency
 Mede velocidade das operações no backend.
@@ -211,7 +217,7 @@ Compara variáveis locais vs remotas.
   → Run "vaulter sync diff -e dev --values" to see details
 ⚠ sync-status: 10 difference(s) detected
   → Run "vaulter sync diff -e dev" for details
-○ sync-status: no local file to compare
+○ sync-status: no local vars to compare
 ```
 
 **O que verifica:**
