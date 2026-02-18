@@ -24,8 +24,8 @@ importers:
         specifier: ^7.2.0
         version: 7.2.0
       s3db.js:
-        specifier: ^19.5.3
-        version: 19.5.3(@hono/node-server@1.19.9(hono@4.11.7))(express@5.2.1)(hono@4.11.7)(jose@6.1.3)(zod@4.3.6)
+        specifier: ^19.5.10
+        version: 19.5.10(@hono/node-server@1.19.9(hono@4.11.7))(express@5.2.1)(hono@4.11.7)(jose@6.1.3)(zod@4.3.6)
       tinyglobby:
         specifier: ^0.2.15
         version: 0.2.15
@@ -1672,8 +1672,8 @@ packages:
     resolution: {integrity: sha512-57frrGM/OCTLqLOAh0mhVA9VBMHd+9U7Zb2THMGdBUoZVOtGbJzjxsYGDJ3A9AYYCP4hn6y1TVbaOfzWtm5GFg==}
     engines: {node: '>= 12.13.0'}
 
-  recker@1.0.72:
-    resolution: {integrity: sha512-HshDMZyQPfjDln6sYz7BHe75mw5fCBo6lks730FkRqHBOsCXTnCAofsZHfOiLACo9u378aWsYcoH1cf3DWzKsw==}
+  recker@1.0.79:
+    resolution: {integrity: sha512-MLvQ47ruhwVl5bF76AZ11siH3jfOCilwUeBbQ8rGRv9VkzsJa94EPEnMZR0Zd2GVMlCcyKhQ95G6eJOjqnNWHA==}
     engines: {node: '>=18'}
     hasBin: true
     peerDependencies:
@@ -1716,8 +1716,8 @@ packages:
     resolution: {integrity: sha512-nLTrUKm2UyiL7rlhapu/Zl45FwNgkZGaCpZbIHajDYgwlJCOzLSk+cIPAnsEqV955GjILJnKbdQC1nVPz+gAYQ==}
     engines: {node: '>= 18'}
 
-  s3db.js@19.5.3:
-    resolution: {integrity: sha512-cGiu8lNANBLTMq5FZLGtQTqhkDUySsMFBwCaU5B6wPycO3hf0nB2t1r5HEU9MO0A2oL0BNHvGRmDFOi7xd0v2A==}
+  s3db.js@19.5.10:
+    resolution: {integrity: sha512-WDgNhgVj/lCMXfVGnuarYMog3ACssyCMLVqFGczxNBx1kKgSsXIT/Zce4KVeN+o6u6u8AAqglDn2h7aWbALl6A==}
     hasBin: true
     peerDependencies:
       '@aws-sdk/client-acm': ^3.0.0
@@ -4361,7 +4361,7 @@ snapshots:
 
   real-require@0.2.0: {}
 
-  recker@1.0.72:
+  recker@1.0.79:
     dependencies:
       '@maxmind/geoip2-node': 6.3.4
       cli-args-parser: 1.0.6
@@ -4424,7 +4424,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  s3db.js@19.5.3(@hono/node-server@1.19.9(hono@4.11.7))(express@5.2.1)(hono@4.11.7)(jose@6.1.3)(zod@4.3.6):
+  s3db.js@19.5.10(@hono/node-server@1.19.9(hono@4.11.7))(express@5.2.1)(hono@4.11.7)(jose@6.1.3)(zod@4.3.6):
     dependencies:
       '@aws-sdk/client-s3': 3.975.0
       '@aws-sdk/credential-providers': 3.975.0
@@ -4436,7 +4436,7 @@ snapshots:
       lodash-es: 4.17.23
       pino: 10.3.0
       pino-pretty: 13.1.3
-      recker: 1.0.72
+      recker: 1.0.79
       tuiuiu.js: 1.0.56
     optionalDependencies:
       '@hono/node-server': 1.19.9(hono@4.11.7)
