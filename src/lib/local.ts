@@ -24,7 +24,7 @@ import { parseEnvString } from './env-parser.js'
 import { formatEnvFile } from './outputs.js'
 import { getSnapshotCount } from './snapshot.js'
 import type { VaulterConfig } from '../types.js'
-import { isMonorepoFromConfig } from './monorepo.js'
+import { discoverServicesWithFallback, isMonorepoFromConfig } from './monorepo.js'
 
 // ============================================================================
 // Constants
@@ -195,15 +195,19 @@ export function validateLocalServiceScope(options: {
     return { ok: true }
   }
 
-  const configuredService = config?.services?.[0]
-  const sampleService = typeof configuredService === 'string'
-    ? configuredService
-    : configuredService?.name || 'api'
+  const services = config ? discoverServicesWithFallback(config) : []
+  const serviceNames = services.map(service => service.name)
+  const sampleService = serviceNames[0] || 'api'
+  const previewServices = serviceNames.length > 6
+    ? `${serviceNames.slice(0, 6).join(', ')}, ...`
+    : serviceNames.join(', ')
 
   return {
     ok: false,
     error: `${command} in monorepo mode requires a service.`,
-    hint: `Use --service ${sampleService} (or run in --shared mode when the var is global).`
+    hint: serviceNames.length > 1
+      ? `Use --service <name> (e.g., ${sampleService}). Available: ${previewServices}`
+      : `Use --service ${sampleService} (or run in --shared mode when the var is global).`
   }
 }
 

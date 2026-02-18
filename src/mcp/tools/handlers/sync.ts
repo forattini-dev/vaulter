@@ -18,8 +18,251 @@ import { parseEnvFile, serializeEnv } from '../../../lib/env-parser.js'
 import { evaluateWriteGuard, formatWriteGuardLines } from '../../../lib/write-guard.js'
 import { compileGlobPatterns } from '../../../lib/pattern-matcher.js'
 import { SHARED_SERVICE } from '../../../lib/shared.js'
+import { normalizePlanSummary, writeSyncPlanArtifact } from '../../../lib/sync-plan.js'
 import type { VaulterConfig, Environment } from '../../../types.js'
 import type { ToolResponse } from '../config.js'
+
+interface EnvDiff {
+  added: string[]
+  updated: string[]
+  deleted: string[]
+  unchanged: string[]
+}
+
+function getPlanOutputFromArgs(args: Record<string, unknown>): string | undefined {
+  const rawValue = (args['plan-output'] as string) || (args.planOutput as string)
+  if (typeof rawValue !== 'string') return undefined
+  const normalized = rawValue.trim()
+  return normalized.length > 0 ? normalized : undefined
+}
+
+function getEnvDiff(before: Record<string, string>, after: Record<string, string>): EnvDiff {
+  const keys = new Set<string>([
+    ...Object.keys(before),
+    ...Object.keys(after)
+  ])
+
+  const diff: EnvDiff = {
+    added: [],
+    updated: [],
+    deleted: [],
+    unchanged: []
+  }
+
+  for (const key of keys) {
+    const beforeValue = before[key]
+    const afterValue = after[key]
+
+    if (beforeValue === undefined) {
+      diff.added.push(key)
+      continue
+    }
+    if (afterValue === undefined) {
+      diff.deleted.push(key)
+      continue
+    }
+    if (beforeValue === afterValue) {
+      diff.unchanged.push(key)
+      continue
+    }
+    diff.updated.push(key)
+  }
+
+  return diff
+}
+
+async function emitPullPlanArtifact(
+  args: Record<string, unknown>,
+  project: string,
+  environment: Environment,
+  service: string | undefined,
+  payload: {
+    status: 'planned' | 'applied' | 'blocked' | 'failed'
+    localCount: number
+    remoteCount: number
+    sourcePath: string
+    changes: EnvDiff
+    notes?: string[]
+    guardWarnings?: string[]
+    encodingWarnings?: Array<{ key: string; message: string }>
+  }
+): Promise<void> {
+  const planOutput = getPlanOutputFromArgs(args)
+  if (!planOutput) return
+
+  const summary = normalizePlanSummary({
+    operation: 'pull',
+    project,
+    environment,
+    service,
+    apply: payload.status === 'applied',
+    dryRun: payload.status === 'planned',
+    status: payload.status,
+    source: {
+      inputPath: payload.sourcePath
+    },
+    counts: {
+      local: payload.localCount,
+      remote: payload.remoteCount,
+      plannedChangeCount: payload.changes.added.length + payload.changes.updated.length + payload.changes.deleted.length,
+      unchangedCount: payload.changes.unchanged.length
+    },
+    changes: {
+      added: payload.changes.added,
+      updated: payload.changes.updated,
+      deleted: payload.changes.deleted,
+      unchanged: payload.changes.unchanged,
+      localAdded: [],
+      localUpdated: [],
+      localDeleted: [],
+      conflicts: []
+    },
+    notes: payload.notes || [],
+    missingRequired: [],
+    guardWarnings: payload.guardWarnings || [],
+    encodingWarnings: payload.encodingWarnings || []
+  })
+
+  try {
+    writeSyncPlanArtifact(summary, {
+      operation: 'pull',
+      project,
+      environment,
+      service,
+      outputPath: planOutput
+    })
+  } catch {}
+}
+
+async function emitPushPlanArtifact(
+  args: Record<string, unknown>,
+  project: string,
+  environment: Environment,
+  service: string | undefined,
+  payload: {
+    status: 'planned' | 'applied' | 'blocked' | 'failed'
+    localCount: number
+    remoteCount: number
+    changes: EnvDiff
+    sourcePath: string
+    notes?: string[]
+    guardWarnings?: string[]
+    encodingWarnings?: Array<{ key: string; message: string }>
+    prune?: boolean
+  }
+): Promise<void> {
+  const planOutput = getPlanOutputFromArgs(args)
+  if (!planOutput) return
+
+  const summary = normalizePlanSummary({
+    operation: 'push',
+    project,
+    environment,
+    service,
+    apply: payload.status === 'applied',
+    dryRun: payload.status === 'planned',
+    status: payload.status,
+    prune: payload.prune || false,
+    notes: payload.notes || [],
+    source: {
+      inputPath: payload.sourcePath
+    },
+    counts: {
+      local: payload.localCount,
+      remote: payload.remoteCount,
+      plannedChangeCount: payload.changes.added.length + payload.changes.updated.length + payload.changes.deleted.length,
+      unchangedCount: payload.changes.unchanged.length
+    },
+    changes: {
+      added: payload.changes.added,
+      updated: payload.changes.updated,
+      deleted: payload.changes.deleted,
+      unchanged: payload.changes.unchanged,
+      localAdded: [],
+      localUpdated: [],
+      localDeleted: [],
+      conflicts: []
+    },
+    missingRequired: [],
+    guardWarnings: payload.guardWarnings || [],
+    encodingWarnings: payload.encodingWarnings || []
+  })
+
+  try {
+    writeSyncPlanArtifact(summary, {
+      operation: 'push',
+      project,
+      environment,
+      service,
+      outputPath: planOutput
+    })
+  } catch {}
+}
+
+async function emitSyncPlanArtifact(
+  args: Record<string, unknown>,
+  project: string,
+  environment: Environment,
+  service: string | undefined,
+  payload: {
+    status: 'planned' | 'applied' | 'blocked' | 'failed'
+    localCount: number
+    remoteCount: number
+    changes: {
+      added: string[]
+      updated: string[]
+      deleted: string[]
+      unchanged: string[]
+      localAdded: string[]
+      localUpdated: string[]
+      localDeleted: string[]
+      conflicts: string[]
+    }
+    sourcePath: string
+    notes?: string[]
+    guardWarnings?: string[]
+    encodingWarnings?: Array<{ key: string; message: string }>
+    strategy?: 'local' | 'remote' | 'error'
+  }
+): Promise<void> {
+  const planOutput = getPlanOutputFromArgs(args)
+  if (!planOutput) return
+
+  const summary = normalizePlanSummary({
+    operation: 'merge',
+    project,
+    environment,
+    service,
+    apply: payload.status === 'applied',
+    dryRun: payload.status === 'planned',
+    status: payload.status,
+    strategy: payload.strategy,
+    notes: payload.notes || [],
+    source: {
+      inputPath: payload.sourcePath
+    },
+    counts: {
+      local: payload.localCount,
+      remote: payload.remoteCount,
+      plannedChangeCount: payload.changes.added.length + payload.changes.updated.length + payload.changes.localAdded.length + payload.changes.localUpdated.length,
+      unchangedCount: payload.changes.unchanged.length
+    },
+    changes: payload.changes,
+    missingRequired: [],
+    guardWarnings: payload.guardWarnings || [],
+    encodingWarnings: payload.encodingWarnings || []
+  })
+
+  try {
+    writeSyncPlanArtifact(summary, {
+      operation: 'merge',
+      project,
+      environment,
+      service,
+      outputPath: planOutput
+    })
+  } catch {}
+}
 
 export async function handlePullCall(
   client: VaulterClient,
@@ -40,34 +283,27 @@ export async function handlePullCall(
 
   const vars = await client.export(project, environment, service)
   const dryRun = args.dryRun === true
+  const beforeVars = fs.existsSync(outputPath) ? parseEnvFile(outputPath) : {}
 
   if (dryRun) {
-    const existingVars = fs.existsSync(outputPath) ? parseEnvFile(outputPath) : {}
-    const toUpdate: string[] = []
-    const toAdd: string[] = []
-    const toRemove: string[] = []
-
-    for (const [key, value] of Object.entries(vars)) {
-      if (existingVars[key] === undefined) {
-        toAdd.push(key)
-      } else if (existingVars[key] !== value) {
-        toUpdate.push(key)
-      }
-    }
-
-    for (const key of Object.keys(existingVars)) {
-      if (!(key in vars)) {
-        toRemove.push(key)
-      }
-    }
+    const diff = getEnvDiff(beforeVars, vars)
 
     const lines = [
       `Dry run - pull plan for ${environment}`,
       `  Would write ${Object.keys(vars).length} variables to ${outputPath}`,
-      `  Add: ${toAdd.length}`,
-      `  Update: ${toUpdate.length}`,
-      `  Remove: ${toRemove.length}`
+      `  Add: ${diff.added.length}`,
+      `  Update: ${diff.updated.length}`,
+      `  Remove: ${diff.deleted.length}`
     ]
+
+    await emitPullPlanArtifact(args, project, environment, service, {
+      status: 'planned',
+      localCount: Object.keys(beforeVars).length,
+      remoteCount: Object.keys(vars).length,
+      sourcePath: outputPath,
+      changes: diff,
+      notes: ['mode=file']
+    })
 
     return {
       content: [{
@@ -86,6 +322,16 @@ export async function handlePullCall(
   }
 
   fs.writeFileSync(outputPath, content + '\n')
+  const diff = getEnvDiff(beforeVars, vars)
+
+  await emitPullPlanArtifact(args, project, environment, service, {
+    status: 'applied',
+    localCount: Object.keys(vars).length,
+    remoteCount: Object.keys(vars).length,
+    sourcePath: outputPath,
+    changes: diff,
+    notes: ['mode=file', 'write=success']
+  })
 
   return {
     content: [{
@@ -371,6 +617,29 @@ export async function handleSyncPlanCall(
   }
 
   if (strategy === 'error' && conflicts.length > 0) {
+    await emitSyncPlanArtifact(args, project, environment, effectiveService, {
+      status: 'blocked',
+      localCount: Object.keys(localVars).length,
+      remoteCount: Object.keys(remoteVars).length,
+      sourcePath: inputPath,
+      changes: {
+        added,
+        updated,
+        deleted: [],
+        unchanged,
+        localAdded,
+        localUpdated,
+        localDeleted: [],
+        conflicts: conflictNames
+      },
+      notes: [
+        'strategy=error',
+        `conflicts=${conflictNames.length}`
+      ],
+      guardWarnings: guard.warnings,
+      encodingWarnings: guard.encodingWarnings
+    })
+
     return {
       content: [{
         type: 'text',
@@ -380,6 +649,29 @@ export async function handleSyncPlanCall(
   }
 
   if (missingRequired.length > 0) {
+    await emitSyncPlanArtifact(args, project, environment, effectiveService, {
+      status: 'blocked',
+      localCount: Object.keys(localVars).length,
+      remoteCount: Object.keys(remoteVars).length,
+      sourcePath: inputPath,
+      changes: {
+        added,
+        updated,
+        deleted: [],
+        unchanged,
+        localAdded,
+        localUpdated,
+        localDeleted: [],
+        conflicts: []
+      },
+      notes: [
+        `missing-required=${missingRequired.length}`,
+        ...missingRequired
+      ],
+      guardWarnings: guard.warnings,
+      encodingWarnings: guard.encodingWarnings
+    })
+
     return {
       content: [{
         type: 'text',
@@ -389,6 +681,26 @@ export async function handleSyncPlanCall(
   }
 
   if (guard.blocked) {
+    await emitSyncPlanArtifact(args, project, environment, effectiveService, {
+      status: 'blocked',
+      localCount: Object.keys(localVars).length,
+      remoteCount: Object.keys(remoteVars).length,
+      sourcePath: inputPath,
+      changes: {
+        added,
+        updated,
+        deleted: [],
+        unchanged,
+        localAdded,
+        localUpdated,
+        localDeleted: [],
+        conflicts: []
+      },
+      notes: ['scope-policy-blocked'],
+      guardWarnings: guard.warnings,
+      encodingWarnings: guard.encodingWarnings
+    })
+
     return {
       content: [{
         type: 'text',
@@ -402,6 +714,31 @@ export async function handleSyncPlanCall(
     if (conflicts.length > 0) {
       output.push(`  Conflicts to resolve: ${conflictNames.join(', ')}`)
     }
+
+    await emitSyncPlanArtifact(args, project, environment, effectiveService, {
+      status: 'planned',
+      localCount: Object.keys(localVars).length,
+      remoteCount: Object.keys(remoteVars).length,
+      sourcePath: inputPath,
+      strategy,
+      changes: {
+        added,
+        updated,
+        deleted: localAdded.concat(localUpdated),
+        unchanged,
+        localAdded,
+        localUpdated,
+        localDeleted: [],
+        conflicts: conflictNames
+      },
+      notes: [
+        `mode=merge-${strategy}`,
+        `input=${inputPath}`
+      ],
+      guardWarnings: guard.warnings,
+      encodingWarnings: guard.encodingWarnings
+    })
+
     return {
       content: [{
         type: 'text',
@@ -426,6 +763,30 @@ export async function handleSyncPlanCall(
   const envContent = serializeEnv(mergedVars)
   fs.writeFileSync(inputPath, envContent + '\n')
 
+  await emitSyncPlanArtifact(args, project, environment, effectiveService, {
+    status: 'applied',
+    localCount: Object.keys(localVars).length,
+    remoteCount: Object.keys(remoteVars).length,
+    sourcePath: inputPath,
+    strategy,
+    changes: {
+      added,
+      updated,
+      deleted: localAdded.concat(localUpdated),
+      unchanged,
+      localAdded,
+      localUpdated,
+      localDeleted: [],
+      conflicts: []
+    },
+    notes: [
+      `mode=merge-${strategy}`,
+      `input=${inputPath}`
+    ],
+    guardWarnings: guard.warnings,
+    encodingWarnings: guard.encodingWarnings
+  })
+
   return {
     content: [{
       type: 'text',
@@ -443,6 +804,7 @@ export async function handlePushCall(
   args: Record<string, unknown>
 ): Promise<ToolResponse> {
   const dryRun = args.dryRun as boolean || false
+  const prune = args.prune === true
 
   const configDir = findConfigDir()
   if (!configDir) {
@@ -477,41 +839,19 @@ export async function handlePushCall(
     }
   }
 
-  // Dry run mode - preview changes without applying
-  if (dryRun) {
-    const toAdd: string[] = []
-    const toUpdate: string[] = []
-
-    for (const [key, value] of Object.entries(localVars)) {
-      if (!(key in remoteVars)) {
-        toAdd.push(key)
-      } else if (remoteVars[key] !== value) {
-        toUpdate.push(key)
-      }
-    }
-
-    const lines = ['Dry run - changes that would be made:']
-    if (toAdd.length > 0) lines.push(`  Add: ${toAdd.join(', ')}`)
-    if (toUpdate.length > 0) lines.push(`  Update: ${toUpdate.join(', ')}`)
-    if (toAdd.length === 0 && toUpdate.length === 0) {
-      lines.push('  No changes needed')
-    }
-
-    return { content: [{ type: 'text', text: lines.join('\n') }] }
-  }
-
   const writeInputs = localKeys.map((key) => ({
     key,
     value: localVars[key],
     sensitive: remoteSensitivity.get(key)
   }))
+
   const targetScope: 'shared' | 'service' = hasMonorepo && !effectiveService ? 'shared' : 'service'
   const scopeGuard = evaluateWriteGuard({
     variables: writeInputs,
     targetScope,
     targetService: targetScope === 'service' ? effectiveService : undefined,
-    config,
     environment,
+    config,
     policyMode: process.env.VAULTER_SCOPE_POLICY,
     guardrailMode: process.env.VAULTER_VALUE_GUARDRAILS
   })
@@ -522,7 +862,88 @@ export async function handlePushCall(
   }))
 
   if (scopeGuard.blocked) {
-    return { content: [{ type: 'text', text: ['Sync blocked by validation rules:', ...guardWarnings, '', 'Set VAULTER_SCOPE_POLICY=warn or VAULTER_SCOPE_POLICY=off to continue.', 'Set VAULTER_VALUE_GUARDRAILS=warn or VAULTER_VALUE_GUARDRAILS=off to continue.'].join('\n') }] }
+    if (dryRun) {
+      await emitPushPlanArtifact(args, project, environment, effectiveService, {
+        status: 'blocked',
+        localCount: localKeys.length,
+        remoteCount: Object.keys(remoteVars).length,
+        sourcePath: inputPath,
+        changes: {
+          added: [],
+          updated: [],
+          deleted: [],
+          unchanged: []
+        },
+        notes: ['scope-policy-blocked'],
+        guardWarnings,
+        encodingWarnings
+      })
+    }
+
+    return {
+      content: [{
+        type: 'text',
+        text: [
+          'Sync blocked by validation rules:',
+          ...guardWarnings,
+          '',
+          'Set VAULTER_SCOPE_POLICY=warn or VAULTER_SCOPE_POLICY=off to continue.',
+          'Set VAULTER_VALUE_GUARDRAILS=warn or VAULTER_VALUE_GUARDRAILS=off to continue.'
+        ].join('\n')
+      }]
+    }
+  }
+
+  // Dry run mode - preview changes without applying
+  if (dryRun) {
+    const toAdd: string[] = []
+    const toUpdate: string[] = []
+    const unchanged: string[] = []
+    const toDelete: string[] = []
+
+    for (const [key, value] of Object.entries(localVars)) {
+      if (!(key in remoteVars)) {
+        toAdd.push(key)
+      } else if (remoteVars[key] !== value) {
+        toUpdate.push(key)
+      } else {
+        unchanged.push(key)
+      }
+    }
+
+    if (prune) {
+      const localKeySet = new Set(localKeys)
+      for (const remoteKey of Object.keys(remoteVars)) {
+        if (!localKeySet.has(remoteKey)) {
+          toDelete.push(remoteKey)
+        }
+      }
+    }
+
+    await emitPushPlanArtifact(args, project, environment, effectiveService, {
+      status: 'planned',
+      localCount: localKeys.length,
+      remoteCount: Object.keys(remoteVars).length,
+      sourcePath: inputPath,
+      changes: {
+        added: toAdd,
+        updated: toUpdate,
+        deleted: toDelete,
+        unchanged
+      },
+      notes: [`mode=file`, `prune=${prune ? 'true' : 'false'}`],
+      guardWarnings,
+      encodingWarnings
+    })
+
+    const lines = ['Dry run - changes that would be made:']
+    if (toAdd.length > 0) lines.push(`  Add: ${toAdd.join(', ')}`)
+    if (toUpdate.length > 0) lines.push(`  Update: ${toUpdate.join(', ')}`)
+    if (toAdd.length === 0 && toUpdate.length === 0) {
+      lines.push('  No changes needed')
+    }
+
+    return { content: [{ type: 'text', text: lines.join('\n') }] }
   }
 
   const toSet = localKeys.map((key) => ({
@@ -535,7 +956,58 @@ export async function handlePushCall(
     metadata: { source: 'sync' }
   }))
 
+  const addedKeys: string[] = []
+  const updatedKeys: string[] = []
+  const unchanged: string[] = []
+  const toDelete: string[] = []
+  const deletedKeys: string[] = []
+
+  for (const [key, value] of Object.entries(localVars)) {
+    if (!(key in remoteVars)) {
+      addedKeys.push(key)
+    } else if (remoteVars[key] !== value) {
+      updatedKeys.push(key)
+    } else {
+      unchanged.push(key)
+    }
+  }
+
+  if (prune) {
+    const localKeySet = new Set(localKeys)
+    for (const remoteKey of Object.keys(remoteVars)) {
+      if (!localKeySet.has(remoteKey)) {
+        toDelete.push(remoteKey)
+      }
+    }
+  }
+
   await client.setMany(toSet, { preserveMetadata: true })
+
+  if (toDelete.length > 0) {
+    const deleteResult = await client.deleteManyByKeys(toDelete, project, environment, effectiveService)
+    const appliedDeleted = new Set(deleteResult.deleted)
+    if (appliedDeleted.size > 0) {
+      deletedKeys.push(...toDelete.filter((key) => appliedDeleted.has(key)))
+    }
+  }
+
+  const remoteCountAfter = Object.keys(remoteVars).length + addedKeys.length - deletedKeys.length
+
+  await emitPushPlanArtifact(args, project, environment, effectiveService, {
+    status: 'applied',
+    localCount: localKeys.length,
+    remoteCount: remoteCountAfter,
+    sourcePath: inputPath,
+    changes: {
+      added: addedKeys,
+      updated: updatedKeys,
+      deleted: deletedKeys,
+      unchanged
+    },
+    notes: [`mode=file`, `prune=${prune ? 'true' : 'false'}`],
+    guardWarnings,
+    encodingWarnings
+  })
 
   return {
     content: [{

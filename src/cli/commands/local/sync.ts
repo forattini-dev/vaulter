@@ -70,7 +70,7 @@ export async function runLocalSyncCommand(context: LocalContext): Promise<void> 
 
     if (!dryRun) {
       ui.log('')
-      ui.log(c.muted(`Run "${c.command('vaulter local pull --all')}" to generate .env files`))
+      ui.log(c.muted(`Run "${c.command('vaulter local pull')}" to generate .env files`))
     }
   })
 }

@@ -1555,12 +1555,11 @@ Please use \`vaulter_local_set\`:
 \`\`\`json
 {
   "key": "${key || 'PORT'}",
-  "value": "${value || '3001'}",
-  "service": "${service || 'web'}"
+  "value": "${value || '3001'}"${service ? `,\n  "service": "${service}"` : ''}
 }
 \`\`\`
 
-This creates/updates \`.vaulter/local/services/${service || 'web'}/{configs,secrets}.env\` (based on sensitive flag) and will be merged when running \`vaulter local pull\`.
+This creates/updates a service override file under \`.vaulter/local/services/\` (service inferred from cwd when omitted) and will be merged when running \`vaulter local pull\`.
 ` : ''}
 
 ${action === 'pull' ? `## Pull: Generate .env Files
@@ -1570,10 +1569,11 @@ Pull combines: **backend + local shared + service overrides** into output .env f
 Please use \`vaulter_local_pull\`:
 
 \`\`\`json
-{
-  "all": true${service ? `,\n  "service": "${service}"` : ''}
-}
+${service ? `{
+  "service": "${service}"
+}` : '{}'}
 \`\`\`
+` : ''}
 
 The output will show:
 - Number of output files generated
@@ -1677,7 +1677,7 @@ Please:
 
 3. **Pull and generate .env files**:
    \`\`\`json
-   { "all": true }
+   { }
    \`\`\`
 
 4. **Show local status** to confirm:
@@ -1726,13 +1726,13 @@ Please help me:
 4. **Example: Add service-specific override**:
    \`\`\`json
    // vaulter_local_set
-   { "key": "PORT", "value": "3001", "service": "${service || 'web'}" }
+   { "key": "PORT", "value": "3001"${service ? `, "service": "${service}"` : ''} }
    \`\`\`
 
 5. **Regenerate .env files with overrides**:
    \`\`\`json
    // vaulter_local_pull
-   { "all": true }
+   { }
    \`\`\`
 
 **Merge order:** backend < local shared < service overrides
@@ -1848,7 +1848,7 @@ Please guide them through:
 4. **Pull from backend**:
    \`\`\`json
    // vaulter_local_pull
-   { "all": true }
+   { }
    \`\`\`
 
 5. **Check generated .env files** in the output directories
@@ -1858,7 +1858,7 @@ Please guide them through:
 - Local overrides are personal (not shared)
 - Never commit .env files
 - If you add a new variable, push it to backend
-- Then notify team to pull: \`vaulter local pull --all\`
+- Then notify team to pull: \`vaulter local pull\`
 ` : ''}
 
 ---

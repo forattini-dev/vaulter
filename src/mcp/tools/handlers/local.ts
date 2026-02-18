@@ -57,10 +57,10 @@ export async function handleLocalPullCall(
   const { configDir } = result
 
   try {
-    const { all, output } = {
-      all: args.all === true,
-      output: args.output as string | undefined
-    }
+    const output = args.output as string | undefined
+    const all = output
+      ? args.all === true
+      : true
 
     const pullResult = await runLocalPull({
       config,
@@ -556,7 +556,7 @@ export async function handleLocalSyncCall(
 
     if (!dryRun) {
       lines.push('')
-      lines.push('Run vaulter_local_pull all=true to generate .env files')
+      lines.push('Run vaulter_local_pull to generate .env files')
     }
 
     return { content: [{ type: 'text', text: lines.join('\n') }] }

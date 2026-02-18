@@ -30,6 +30,8 @@ export interface SyncContext {
   strategy?: 'local' | 'remote' | 'error'
   // Show values in diff
   showValues?: boolean
+  // Optional sync plan artifact path
+  planOutput?: string
 }
 
 /**
@@ -39,6 +41,9 @@ export async function runSyncGroup(context: SyncContext): Promise<void> {
   const { args } = context
   const subcommand = args._[1]
   const apply = args.apply === true
+  const planOutput = typeof args['plan-output'] === 'string' && args['plan-output'].trim().length > 0
+    ? args['plan-output'].trim()
+    : undefined
 
   // Extract common flags
   const strategy = args.strategy as 'local' | 'remote' | 'error' | undefined
@@ -53,7 +58,7 @@ export async function runSyncGroup(context: SyncContext): Promise<void> {
         _: ['sync', ...args._.slice(2)]
       }
       // Pass strategy to override config
-      await runSync({ ...context, args: shiftedArgs, strategy })
+      await runSync({ ...context, args: shiftedArgs, strategy, planOutput })
       break
     }
 
@@ -66,7 +71,7 @@ export async function runSyncGroup(context: SyncContext): Promise<void> {
       // Pass prune and dir flags from args
       const prune = args.prune as boolean | undefined
       const dir = args.dir as boolean | undefined
-      await runPush({ ...context, args: shiftedArgs, prune, dir })
+      await runPush({ ...context, args: shiftedArgs, prune, dir, planOutput })
       break
     }
 
@@ -80,7 +85,7 @@ export async function runSyncGroup(context: SyncContext): Promise<void> {
       const all = args.all as boolean | undefined
       const target = args.output as string | undefined
       const dir = args.dir as boolean | undefined
-      await runPull({ ...context, args: shiftedArgs, all, target, dir })
+      await runPull({ ...context, args: shiftedArgs, all, target, dir, planOutput })
       break
     }
 
@@ -109,7 +114,7 @@ export async function runSyncGroup(context: SyncContext): Promise<void> {
           ...args,
           _: ['merge', ...args._.slice(3)]
         }
-        await runSync({ ...planContext, args: shiftedArgs, strategy })
+        await runSync({ ...planContext, args: shiftedArgs, strategy, planOutput })
       } else if (action === 'push') {
         const { runPush } = await import('../push.js')
         const shiftedArgs = {
@@ -119,7 +124,7 @@ export async function runSyncGroup(context: SyncContext): Promise<void> {
         const prune = args.prune as boolean | undefined
         const dir = args.dir as boolean | undefined
         const shared = args.shared as boolean | undefined
-        await runPush({ ...planContext, args: shiftedArgs, prune, dir, shared })
+        await runPush({ ...planContext, args: shiftedArgs, prune, dir, shared, planOutput })
       } else if (action === 'pull') {
         const { runPull } = await import('../pull.js')
         const shiftedArgs = {
@@ -129,7 +134,7 @@ export async function runSyncGroup(context: SyncContext): Promise<void> {
         const all = args.all as boolean | undefined
         const target = args.output as string | undefined
         const dir = args.dir as boolean | undefined
-        await runPull({ ...planContext, args: shiftedArgs, all, target, dir })
+        await runPull({ ...planContext, args: shiftedArgs, all, target, dir, planOutput })
       } else {
         print.error(`Unknown plan action: ${action}`)
         process.exit(1)

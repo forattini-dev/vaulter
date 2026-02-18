@@ -409,6 +409,49 @@ export function getCurrentService(startDir: string = process.cwd()): ServiceInfo
 }
 
 /**
+ * Infer service from current path in a monorepo.
+ *
+ * This supports offline workflows where developers commonly execute commands from inside
+ * a service directory without passing --service every time.
+ */
+export function inferServiceFromPath(
+  startDir: string = process.cwd(),
+  config?: VaulterConfig | null
+): string | undefined {
+  if (!config || !isMonorepoFromConfig(config)) {
+    return undefined
+  }
+
+  const normalizedStart = path.resolve(startDir)
+  const root = findMonorepoRoot(startDir) || startDir
+  const services = discoverServicesWithFallback(config, root)
+
+  if (!services.length) {
+    return undefined
+  }
+
+  const matching = services.filter(service => {
+    const servicePath = path.resolve(service.path)
+    return normalizedStart === servicePath || normalizedStart.startsWith(`${servicePath}${path.sep}`)
+  })
+
+  if (matching.length === 0) {
+    if (services.length === 1) {
+      return services[0].name
+    }
+    return undefined
+  }
+
+  if (matching.length === 1) {
+    return matching[0].name
+  }
+
+  // Choose the deepest path match when nested service directories exist.
+  matching.sort((a, b) => path.resolve(b.path).length - path.resolve(a.path).length)
+  return matching[0].name
+}
+
+/**
  * Print service list for user display
  */
 export function formatServiceList(services: ServiceInfo[]): string {

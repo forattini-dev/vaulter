@@ -19,6 +19,7 @@ import { c, colorEnv, print } from '../lib/colors.js'
 import { SHARED_SERVICE } from '../../lib/shared.js'
 import { checkValuesForEncoding } from '../../lib/encoding-detection.js'
 import { evaluateWriteGuard, formatWriteGuardLines } from '../../lib/write-guard.js'
+import { normalizePlanSummary, writeSyncPlanArtifact } from '../../lib/sync-plan.js'
 import * as ui from '../ui.js'
 
 export interface PushContext {
@@ -36,6 +37,86 @@ export interface PushContext {
   shared?: boolean
   /** Use directory mode: push .vaulter/{env}/ structure */
   dir?: boolean
+  /** Optional sync plan output path */
+  planOutput?: string
+}
+
+interface PushPlanResult {
+  operation: 'push'
+  localCount: number
+  remoteCount: number
+  added: string[]
+  updated: string[]
+  deleted: string[]
+  unchanged: string[]
+  sourcePath?: string
+  outputPath?: string
+  guardWarnings: string[]
+  encodingWarnings: Array<{ key: string; message: string }>
+  status: 'planned' | 'applied'
+  prune: boolean
+}
+
+function getPlanOutputFromContext(context: PushContext): string | undefined {
+  const rawValue = context.planOutput || context.args['plan-output']
+  if (typeof rawValue !== 'string') return undefined
+  const normalized = rawValue.trim()
+  return normalized.length > 0 ? normalized : undefined
+}
+
+async function emitPushPlanArtifact(context: PushContext, result: PushPlanResult): Promise<void> {
+  const planOutput = getPlanOutputFromContext(context)
+  if (!planOutput) return
+
+  const summary = normalizePlanSummary({
+    operation: 'push',
+    project: context.project,
+    environment: context.environment,
+    apply: result.status === 'applied',
+    dryRun: result.status === 'planned',
+    status: result.status === 'applied' ? 'applied' : 'planned',
+    source: {
+      inputPath: result.sourcePath,
+      outputPath: result.outputPath
+    },
+    counts: {
+      local: result.localCount,
+      remote: result.remoteCount,
+      plannedChangeCount: result.added.length + result.updated.length + result.deleted.length,
+      unchangedCount: result.unchanged.length
+    },
+    changes: {
+      added: result.added,
+      updated: result.updated,
+      deleted: result.deleted,
+      unchanged: result.unchanged,
+      localAdded: [],
+      localUpdated: [],
+      localDeleted: [],
+      conflicts: []
+    },
+    notes: [
+      `operation=push`,
+      `prune=${result.prune ? 'true' : 'false'}`
+    ],
+    missingRequired: [],
+    guardWarnings: result.guardWarnings,
+    encodingWarnings: result.encodingWarnings
+  })
+
+  try {
+    writeSyncPlanArtifact(summary, {
+      operation: 'push',
+      project: context.project,
+      environment: context.environment,
+      shared: context.shared,
+      outputPath: planOutput
+    })
+  } catch (error) {
+    if (context.verbose) {
+      ui.verbose(`Failed to write push plan artifact: ${(error as Error).message}`, true)
+    }
+  }
 }
 
 /**
@@ -96,12 +177,14 @@ export async function runPush(context: PushContext): Promise<void> {
   // Determine source of variables
   // Priority: explicit file (-f/--file) > stdin > default path
   let localVars: Record<string, string>
+  let sourcePath: string | undefined
 
   const explicitFilePath = args.file
 
   if (explicitFilePath) {
     // Explicit file specified - always use it
     const envFilePath = path.resolve(explicitFilePath)
+    sourcePath = envFilePath
 
     if (!fs.existsSync(envFilePath)) {
       print.error(`File not found: ${c.muted(envFilePath)}`)
@@ -125,6 +208,7 @@ export async function runPush(context: PushContext): Promise<void> {
       process.exit(1)
     }
     const envFilePath = getEnvFilePathForConfig(config, configDir, environment)
+    sourcePath = envFilePath
 
     if (!fs.existsSync(envFilePath)) {
       print.error(`File not found: ${c.muted(envFilePath)}`)
@@ -222,6 +306,20 @@ export async function runPush(context: PushContext): Promise<void> {
           }
         }
 
+        await emitPushPlanArtifact(context, {
+          localCount: varCount,
+          remoteCount: Object.keys(remoteVars).length,
+          added: toAdd,
+          updated: toUpdate,
+          deleted: toDelete,
+          unchanged,
+          sourcePath,
+          guardWarnings,
+          encodingWarnings: encodingWarnings.map(item => ({ key: item.key, message: item.result.message })),
+          status: 'planned',
+          prune: context.prune || false
+        })
+
         if (jsonOutput) {
           ui.output(JSON.stringify({
             dryRun: true,
@@ -279,6 +377,7 @@ export async function runPush(context: PushContext): Promise<void> {
       // Push all variables (insert/update)
       const addedKeys: string[] = []
       const updatedKeys: string[] = []
+      const unchangedKeys: string[] = []
       const deletedKeys: string[] = []
       const toSet: Array<{
         key: string
@@ -308,7 +407,11 @@ export async function runPush(context: PushContext): Promise<void> {
         })
 
         if (existing) {
-          updatedKeys.push(key)
+          if (remoteVars[key] === value) {
+            unchangedKeys.push(key)
+          } else {
+            updatedKeys.push(key)
+          }
         } else {
           addedKeys.push(key)
         }
@@ -332,6 +435,23 @@ export async function runPush(context: PushContext): Promise<void> {
         const deleteResult = await client.deleteManyByKeys(toDelete, project, environment, effectiveService)
         deletedKeys.push(...deleteResult.deleted)
       }
+
+      const remoteCountBefore = Object.keys(remoteVars).length
+      const remoteCountAfter = remoteCountBefore + addedKeys.length - deletedKeys.length
+
+      await emitPushPlanArtifact(context, {
+        localCount: varCount,
+        remoteCount: remoteCountAfter,
+        added: addedKeys,
+        updated: updatedKeys,
+        deleted: deletedKeys,
+        unchanged: unchangedKeys,
+        sourcePath,
+        guardWarnings,
+        encodingWarnings: encodingWarnings.map(item => ({ key: item.key, message: item.result.message })),
+        status: 'applied',
+        prune: context.prune || false
+      })
 
       // Log to audit trail
       await logPushOperation(auditLogger, {
@@ -399,6 +519,7 @@ export async function runPush(context: PushContext): Promise<void> {
  */
 async function runDirPush(context: PushContext, configDir: string): Promise<void> {
   const { args, config, project, environment, verbose, dryRun, jsonOutput } = context
+  const envDir = path.join(configDir, environment)
 
   // Show environment banner
   if (!jsonOutput && !dryRun) {
@@ -470,6 +591,25 @@ async function runDirPush(context: PushContext, configDir: string): Promise<void
         }
         ui.log(`  ${c.muted('Total:')} ${result.pushed} variables`)
       }
+
+      const localCount =
+        result.details.shared.configs +
+        result.details.shared.secrets +
+        Object.values(result.details.services).reduce((acc, values) => acc + values.configs + values.secrets, 0)
+
+      await emitPushPlanArtifact(context, {
+        localCount,
+        remoteCount: localCount,
+        added: [],
+        updated: [],
+        deleted: [],
+        unchanged: [],
+        sourcePath: envDir,
+        guardWarnings: result.guardWarnings,
+        encodingWarnings: [],
+        status: dryRun ? 'planned' : 'applied',
+        prune: false
+      })
     })
   } finally {
     await disconnectAuditLogger(auditLogger)

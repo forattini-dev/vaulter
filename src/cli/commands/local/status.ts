@@ -63,7 +63,7 @@ export async function runLocalStatus(context: LocalContext): Promise<void> {
     ui.log(`  ${c.command('vaulter local set --shared TOKEN=xxx')}     ${c.muted('# shared secret')}`)
     ui.log(`  ${c.command('vaulter local set PORT::3001')}             ${c.muted('# service config')}`)
     ui.log(`  ${c.command('vaulter local set API_KEY=xxx')}            ${c.muted('# service secret')}`)
-    ui.log(`  ${c.command('vaulter local pull --all')}                 ${c.muted('# generate .env files')}`)
+    ui.log(`  ${c.command('vaulter local pull')}                      ${c.muted('# generate .env files')}`)
   } else {
     ui.log(`Run ${c.command('vaulter local diff')} to see overrides vs base`)
   }

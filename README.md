@@ -95,7 +95,7 @@ vaulter local pull
 
 # 2. Work: Add personal overrides (not shared with team)
 vaulter local set DEBUG::true                  # Shared override
-vaulter local set PORT::3001 -s api            # Service-specific
+vaulter local set PORT::3001                   # Service-specific (inferred from cwd in monorepo)
 
 # 3. Add new variable for team? Push to backend
 vaulter local set NEW_VAR=value --shared        # Personal scratch pad
@@ -167,7 +167,7 @@ vaulter sync push --dir -e dev
 | Check health | `vaulter_doctor` |
 | Pull with overrides | `vaulter_local_pull` |
 | Set shared override | `vaulter_local_shared_set key="DEBUG" value="true"` |
-| Set service override | `vaulter_local_set key="PORT" value="3001" service="api"` |
+| Set service override | `vaulter_local_set key="PORT" value="3001"` |
 | See differences | `vaulter_local_diff` |
 | Clone environment | `vaulter_clone_env source="dev" target="stg"` |
 | Compare environments | `vaulter_compare source="dev" target="prd"` |
@@ -319,6 +319,7 @@ See [docs/DOCTOR.md](docs/DOCTOR.md) for complete guide.
 | `sync push -e <env>` | Upload .env file to backend |
 | `sync push --dir -e <env>` | Upload `.vaulter/{env}/` directory to backend |
 | `sync push --prune -e <env>` | Upload, delete remote-only vars |
+| `sync plan --plan-output <file> [--apply]` | Write plan artifact (`.json` + `.md`) for `merge|push|pull` |
 | `sync plan <merge|push|pull> -e <env>` | Preview planned sync changes (use `--apply` to execute) |
 | `sync diff -e <env>` | Show differences without changes |
 
@@ -331,6 +332,7 @@ See [docs/DOCTOR.md](docs/DOCTOR.md) for complete guide.
 | `release merge -e <env>` | Shortcut for `release apply merge` |
 | `release push -e <env>` | Shortcut for `release apply push` |
 | `release pull -e <env>` | Shortcut for `release apply pull` |
+| `release plan --plan-output <file>` | Write release plan artifact (`.json` + `.md`) |
 | `release diff -e <env>` | Quick diff/compatibility check |
 | `release status -e <env>` | Health check before deployment actions |
 
@@ -1004,7 +1006,7 @@ Works entirely from local files in `.vaulter/local/`. This is the primary workfl
 └─────────────────────────────────────────────────────┘
 ```
 
-For monorepos, use `--service <name>` on `local set`, `local delete`, `local diff`, and `local push` (without `--all`), so overrides are scoped to the intended service.
+For monorepos, use `--service <name>` on `local set`, `local delete`, `local diff`, and `local push` (without `--all`), unless the CLI can infer the service from your current directory (or the monorepo has only one service).
 
 ### File Structure
 
@@ -1039,9 +1041,10 @@ For each output target, vaulter merges:
 # === EDIT LOCALLY ===
 vaulter local set --shared DEBUG::true     # shared config
 vaulter local set --shared API_KEY=xxx     # shared secret
-vaulter local set PORT::3001 -s web        # service config
+vaulter local set PORT::3001                # service config (inferred from cwd in monorepo)
 vaulter local set DB_URL=xxx -s api        # service secret
-# In service directories, `-s` is usually auto-inferred
+# In service directories, `-s` is usually auto-inferred.
+# If the repo has only one service, `-s` is inferred automatically too.
 
 # === GENERATE .ENV FILES [OFFLINE] ===
 vaulter local pull

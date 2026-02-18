@@ -180,7 +180,11 @@ export function registerTools(): Tool[] {
           output: { type: 'string', description: 'Output target name (e.g., web, api)' },
           all: { type: 'boolean', description: 'Pull to ALL output targets defined in config', default: false },
           dir: { type: 'boolean', description: 'Pull to .vaulter/{env}/ directory structure', default: false },
-          dryRun: { type: 'boolean', description: 'Preview changes without applying', default: false }
+          dryRun: { type: 'boolean', description: 'Preview changes without applying', default: false },
+          'plan-output': {
+            type: 'string',
+            description: 'Base path for pull plan artifact (writes .json and .md)'
+          }
         }
       }
     },
@@ -196,7 +200,11 @@ export function registerTools(): Tool[] {
           file: { type: 'string', description: 'Input file path (default: auto-detected from config)' },
           dir: { type: 'boolean', description: 'Push .vaulter/{env}/ directory structure', default: false },
           prune: { type: 'boolean', description: 'Delete remote vars not in local source', default: false },
-          dryRun: { type: 'boolean', description: 'Preview changes without applying', default: false }
+          dryRun: { type: 'boolean', description: 'Preview changes without applying', default: false },
+          'plan-output': {
+            type: 'string',
+            description: 'Base path for push plan artifact (writes .json and .md)'
+          }
         }
       }
     },
@@ -220,7 +228,11 @@ export function registerTools(): Tool[] {
           prune: { type: 'boolean', description: 'For push: delete remote vars not present in local source', default: false },
           strategy: { type: 'string', description: 'For merge conflict strategy: local, remote, error', enum: ['local', 'remote', 'error'] },
           dryRun: { type: 'boolean', description: 'Explicit preview mode (default: true when apply=false)', default: false },
-          shared: { type: 'boolean', description: 'Target shared variables for push (monorepo)', default: false }
+          shared: { type: 'boolean', description: 'Target shared variables for push (monorepo)', default: false },
+          'plan-output': {
+            type: 'string',
+            description: 'Base path for sync plan artifact (writes .json and .md)'
+          }
         },
         required: ['action']
       }
@@ -297,6 +309,10 @@ export function registerTools(): Tool[] {
             type: 'boolean',
             description: 'Target shared vars for push (monorepo)',
             default: false
+          },
+          'plan-output': {
+            type: 'string',
+            description: 'Base path for release plan artifact (writes .json and .md)'
           },
           values: {
             type: 'boolean',
@@ -732,24 +748,24 @@ export function registerTools(): Tool[] {
     // === LOCAL OVERRIDES TOOLS ===
     {
       name: 'vaulter_local_pull',
-      description: 'Pull base environment + local shared vars + service overrides to output targets (.env files). Merge order: backend < local shared < service overrides. Local files never touch the backend. Single repo: configs.env/secrets.env at root. Monorepo: shared/ and services/<name>/ with configs.env/secrets.env.',
+      description: 'Pull base env + local shared vars + service overrides to output targets (.env files). If no output is provided, defaults to all outputs. Local files never touch the backend. Single repo: configs.env/secrets.env at root. Monorepo: shared/ and services/<name>/ with configs.env/secrets.env.',
       inputSchema: {
         type: 'object',
         properties: {
           output: { type: 'string', description: 'Specific output target name' },
-          all: { type: 'boolean', description: 'Pull to all output targets', default: false },
-          service: { type: 'string', description: 'Service name (for monorepos)' }
+          all: { type: 'boolean', description: 'Pull to all output targets', default: true },
+          service: { type: 'string', description: 'Service name (for monorepos; auto-inferred from cwd when omitted)' }
         }
       }
     },
     {
       name: 'vaulter_local_push',
-      description: 'Push local overrides to remote backend. This allows sharing local development configs with the team. In monorepos, service is required unless shared=true. Compares local vars with remote and pushes only changed values.',
+      description: 'Push local overrides to remote backend. This allows sharing local development configs with the team. In monorepos, service is usually inferred from cwd/metadata when available, otherwise required unless shared=true.',
       inputSchema: {
         type: 'object',
         properties: {
           shared: { type: 'boolean', description: 'Push shared vars instead of service-specific', default: false },
-          service: { type: 'string', description: 'Service name (for monorepos)' },
+          service: { type: 'string', description: 'Service name (for monorepos; auto-inferred from cwd when omitted)' },
           targetEnvironment: { type: 'string', description: 'Target environment (defaults to base env from config)' },
           dryRun: { type: 'boolean', description: 'Preview changes without applying', default: false }
         }
@@ -757,13 +773,13 @@ export function registerTools(): Tool[] {
     },
     {
       name: 'vaulter_local_set',
-      description: 'Set a service-specific local override. Routes to configs.env (sensitive=false) or secrets.env (sensitive=true). In monorepo, service is required. Local files never touch the backend. Single repo: .vaulter/local/[configs|secrets].env. Monorepo: .vaulter/local/services/<svc>/[configs|secrets].env',
+      description: 'Set a service-specific local override. Routes to configs.env (sensitive=false) or secrets.env (sensitive=true). In monorepo, service is usually inferred from the current path and required only when inference fails. Local files never touch the backend. Single repo: .vaulter/local/[configs|secrets].env. Monorepo: .vaulter/local/services/<svc>/[configs|secrets].env',
       inputSchema: {
         type: 'object',
         properties: {
           key: { type: 'string', description: 'Variable name' },
           value: { type: 'string', description: 'Value to set' },
-          service: { type: 'string', description: 'Service name (for monorepos)' },
+          service: { type: 'string', description: 'Service name (for monorepos; auto-inferred from cwd when omitted)' },
           sensitive: { type: 'boolean', description: 'If true, writes to secrets.env. If false (default), writes to configs.env', default: false }
         },
         required: ['key', 'value']
@@ -771,12 +787,12 @@ export function registerTools(): Tool[] {
     },
     {
       name: 'vaulter_local_delete',
-      description: 'Remove a service-specific local override (removes from both configs.env and secrets.env). In monorepo, service is required.',
+      description: 'Remove a service-specific local override (removes from both configs.env and secrets.env). In monorepo, service is usually inferred from the current path and required only when inference fails.',
       inputSchema: {
         type: 'object',
         properties: {
           key: { type: 'string', description: 'Variable name to remove' },
-          service: { type: 'string', description: 'Service name (for monorepos)' }
+          service: { type: 'string', description: 'Service name (for monorepos; auto-inferred from cwd when omitted)' }
         },
         required: ['key']
       }
@@ -827,7 +843,7 @@ export function registerTools(): Tool[] {
     },
     {
       name: 'vaulter_local_sync',
-      description: 'Pull from backend to .vaulter/local/. This syncs the team\'s shared variables to your local environment. The opposite of vaulter_local_push_all. After sync, run vaulter_local_pull all=true to generate .env files.',
+      description: 'Pull from backend to .vaulter/local/. This syncs the team\'s shared variables to your local environment. The opposite of vaulter_local_push_all. After sync, run vaulter_local_pull to generate .env files.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -838,7 +854,7 @@ export function registerTools(): Tool[] {
     },
     {
       name: 'vaulter_local_diff',
-      description: 'Show local overrides vs base environment. Shows which variables are added or modified locally (both shared and service-specific). In monorepo, service is required.',
+      description: 'Show local overrides vs base environment. Shows which variables are added or modified locally (both shared and service-specific). In monorepo, service is usually inferred (cwd/single-service), otherwise required.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -848,7 +864,7 @@ export function registerTools(): Tool[] {
     },
     {
       name: 'vaulter_local_status',
-      description: 'Show local status: base environment, shared vars count, service overrides count, snapshots count.',
+      description: 'Show local status: base environment, shared vars count, service overrides count, snapshots count. In monorepo, service is usually inferred (cwd/single-service), otherwise set explicitly.',
       inputSchema: {
         type: 'object',
         properties: {

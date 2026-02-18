@@ -740,6 +740,7 @@ export interface CLIArgs {
   values?: boolean
   action?: 'merge' | 'push' | 'pull'
   apply?: boolean
+  'plan-output'?: string
   // Local pull options
   overwrite?: boolean
   // Export options (inheritance control)

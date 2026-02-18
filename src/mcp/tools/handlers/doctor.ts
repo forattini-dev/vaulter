@@ -26,6 +26,7 @@ import { loadKeyForEnv } from '../../../lib/keys.js'
 import { normalizeOutputTargets, validateOutputsConfig } from '../../../lib/outputs.js'
 import { parseEnvFile } from '../../../lib/env-parser.js'
 import { SHARED_SERVICE } from '../../../lib/shared.js'
+import { calculateDoctorRisk } from '../../../lib/doctor-risk.js'
 import {
   collectScopePolicyIssues,
   formatScopePolicySummary,
@@ -74,6 +75,11 @@ interface DoctorResult {
     fail: number
     skip: number
     healthy: boolean
+  }
+  risk: {
+    score: number
+    level: 'low' | 'medium' | 'high'
+    reasons: string[]
   }
   suggestions: string[]
 }
@@ -997,12 +1003,14 @@ export async function handleDoctorCall(
     },
     { ok: 0, warn: 0, fail: 0, skip: 0 }
   )
+  const risk = calculateDoctorRisk(checks)
 
   result.checks = checks
   result.summary = {
     ...summary,
     healthy: summary.fail === 0
   }
+  result.risk = risk
   result.suggestions = suggestions
 
   // Add high-level suggestions based on state
@@ -1038,6 +1046,16 @@ export async function handleDoctorCall(
 
   lines.push('## Summary')
   lines.push(`✓ ok: ${summary.ok} | ⚠ warn: ${summary.warn} | ✗ fail: ${summary.fail} | ○ skip: ${summary.skip}`)
+  lines.push(`⚠ risk: ${risk.level.toUpperCase()} (${risk.score}/100)`)
+
+  if (risk.reasons.length > 0) {
+    lines.push('')
+    lines.push('### Top risk signals')
+    for (const reason of risk.reasons) {
+      lines.push(`- ${reason}`)
+    }
+  }
+
   lines.push('')
 
   if (result.suggestions.length > 0) {

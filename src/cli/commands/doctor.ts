@@ -29,6 +29,7 @@ import {
   resolveScopePolicy,
   hasBlockingPolicyIssues
 } from '../../lib/scope-policy.js'
+import { calculateDoctorRisk } from '../../lib/doctor-risk.js'
 import { createClientFromConfig } from '../lib/create-client.js'
 import * as ui from '../ui.js'
 import { c } from '../lib/colors.js'
@@ -893,6 +894,7 @@ export async function runDoctor(context: DoctorContext): Promise<void> {
     },
     { ok: 0, warn: 0, fail: 0, skip: 0 }
   )
+  const risk = calculateDoctorRisk(checks)
 
   if (jsonOutput) {
     ui.output(JSON.stringify({
@@ -902,6 +904,7 @@ export async function runDoctor(context: DoctorContext): Promise<void> {
       backend: backendUrls.map(redactUrl),
       checks,
       summary,
+      risk,
       hints: Array.from(hints)
     }, null, 2))
     process.exit(summary.fail > 0 ? 1 : 0)
@@ -924,6 +927,16 @@ export async function runDoctor(context: DoctorContext): Promise<void> {
 
   ui.log('')
   ui.log(`${c.label('Summary:')} ok=${summary.ok} warn=${summary.warn} fail=${summary.fail} skip=${summary.skip}`)
+  const riskLabel = risk.level === 'high' ? c.error(`high`) : risk.level === 'medium' ? c.warning('medium') : c.success('low')
+  ui.log(`${c.label('Risk:')} ${riskLabel} (${risk.score}/100)`)
+
+  if (risk.reasons.length > 0) {
+    ui.log('')
+    ui.log(c.header('Top risk reasons:'))
+    for (const reason of risk.reasons) {
+      ui.log(`- ${reason}`)
+    }
+  }
 
   if (hints.size > 0) {
     ui.log('')

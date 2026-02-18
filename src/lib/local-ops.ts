@@ -102,7 +102,7 @@ export async function runLocalPull(options: LocalPullOptions): Promise<LocalPull
   const {
     config,
     configDir,
-    all = false,
+    all = true,
     output: specificOutput,
     dryRun = false,
     verbose = false,
@@ -112,7 +112,7 @@ export async function runLocalPull(options: LocalPullOptions): Promise<LocalPull
   const sectionAware = !overwrite
 
   if (!all && !specificOutput) {
-    throw new Error('Requires all=true or output=<name>')
+    throw new Error('Missing output selection: pass output=<name> or all=true')
   }
 
   if (!config.outputs || Object.keys(config.outputs).length === 0) {

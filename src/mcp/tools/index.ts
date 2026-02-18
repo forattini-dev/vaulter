@@ -7,6 +7,7 @@
 import type { Environment } from '../../types.js'
 import type { VaulterClient } from '../../client.js'
 import { SHARED_SERVICE } from '../../lib/shared.js'
+import { inferServiceFromPath } from '../../lib/monorepo.js'
 import { withRetry } from '../../lib/timeout.js'
 import {
   getConfigAndDefaults,
@@ -139,7 +140,11 @@ export async function handleToolCall(
   // Step 2: Resolve project, environment, service from args/defaults
   const project = (args.project as string) || defaults.project
   const environment = (args.environment as Environment) || defaults.environment
-  const service = args.service as string | undefined
+  const explicitService = args.service as string | undefined
+  const service = explicitService || (config && inferServiceFromPath(process.cwd(), config)) || undefined
+  const argsWithInferredService = explicitService
+    ? args
+    : service ? { ...args, service } : args
   const timeoutMs = args.timeout_ms as number | undefined
 
   // Determine if this is a shared var operation
@@ -160,13 +165,13 @@ export async function handleToolCall(
 
   // Local tools that don't need backend
   if (name === 'vaulter_local_set' && config) {
-    return handleLocalSetCall(config, args)
+    return handleLocalSetCall(config, argsWithInferredService)
   }
   if (name === 'vaulter_local_delete' && config) {
-    return handleLocalDeleteCall(config, args)
+    return handleLocalDeleteCall(config, argsWithInferredService)
   }
   if (name === 'vaulter_local_status' && config) {
-    return handleLocalStatusCall(config, args)
+    return handleLocalStatusCall(config, argsWithInferredService)
   }
   // Local shared tools (don't need backend)
   if (name === 'vaulter_local_shared_set' && config) {

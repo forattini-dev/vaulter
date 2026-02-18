@@ -9,13 +9,16 @@
  * 2. Dir mode (--dir): Pull backend → .vaulter/{env}/ structure
  */
 
+import fs from 'node:fs'
 import path from 'node:path'
 import type { CLIArgs, VaulterConfig, Environment } from '../../types.js'
 import { withClient } from '../lib/create-client.js'
 import { findConfigDir } from '../../lib/config-loader.js'
+import { parseEnvFile } from '../../lib/env-parser.js'
 import { c, colorEnv, print } from '../lib/colors.js'
 import { pullToOutputs, validateOutputsConfig } from '../../lib/outputs.js'
 import { pullFromBackend } from '../../lib/backend-sync.js'
+import { normalizePlanSummary, writeSyncPlanArtifact } from '../../lib/sync-plan.js'
 import * as ui from '../ui.js'
 
 export interface PullContext {
@@ -33,6 +36,138 @@ export interface PullContext {
   target?: string
   /** Use directory mode: pull to .vaulter/{env}/ structure */
   dir?: boolean
+  /** Optional sync plan output path */
+  planOutput?: string
+}
+
+interface EnvDiff {
+  added: string[]
+  updated: string[]
+  deleted: string[]
+  unchanged: string[]
+}
+
+function getPlanOutputFromContext(context: PullContext): string | undefined {
+  const rawValue = context.planOutput || context.args['plan-output']
+  if (typeof rawValue !== 'string') return undefined
+  const trimmed = rawValue.trim()
+  return trimmed.length > 0 ? trimmed : undefined
+}
+
+function readEnvFileSafe(filePath: string): Record<string, string> {
+  if (!fs.existsSync(filePath)) return {}
+  try {
+    return parseEnvFile(filePath)
+  } catch {
+    return {}
+  }
+}
+
+function diffEnv(before: Record<string, string>, after: Record<string, string>): EnvDiff {
+  const keys = new Set<string>([...Object.keys(before), ...Object.keys(after)])
+  const result: EnvDiff = { added: [], updated: [], deleted: [], unchanged: [] }
+
+  for (const key of keys) {
+    const beforeValue = before[key]
+    const afterValue = after[key]
+
+    if (beforeValue === undefined) {
+      result.added.push(key)
+      continue
+    }
+
+    if (afterValue === undefined) {
+      result.deleted.push(key)
+      continue
+    }
+
+    if (beforeValue === afterValue) {
+      result.unchanged.push(key)
+    } else {
+      result.updated.push(key)
+    }
+  }
+
+  return result
+}
+
+async function emitPullPlanArtifact(context: PullContext, payload: {
+  localCount: number
+  remoteCount: number
+  status: 'planned' | 'applied' | 'failed'
+  changes: EnvDiff
+  notes: string[]
+  source: { inputPath?: string; outputPath?: string; isDirMode?: boolean }
+  guardWarnings?: string[]
+}): Promise<void> {
+  const planOutput = getPlanOutputFromContext(context)
+  if (!planOutput) return
+
+  const summary = normalizePlanSummary({
+    operation: 'pull',
+    project: context.project,
+    environment: context.environment,
+    apply: payload.status === 'applied',
+    dryRun: payload.status === 'planned',
+    status: payload.status,
+    source: {
+      inputPath: payload.source.inputPath,
+      outputPath: payload.source.outputPath,
+      isDirMode: payload.source.isDirMode
+    },
+    counts: {
+      local: payload.localCount,
+      remote: payload.remoteCount,
+      plannedChangeCount: payload.changes.added.length + payload.changes.updated.length + payload.changes.deleted.length,
+      unchangedCount: payload.changes.unchanged.length
+    },
+    changes: {
+      added: payload.changes.added,
+      updated: payload.changes.updated,
+      deleted: payload.changes.deleted,
+      unchanged: payload.changes.unchanged,
+      localAdded: [],
+      localUpdated: [],
+      localDeleted: [],
+      conflicts: []
+    },
+    notes: payload.notes,
+    missingRequired: [],
+    guardWarnings: payload.guardWarnings || [],
+    encodingWarnings: []
+  })
+
+  try {
+    writeSyncPlanArtifact(summary, {
+      operation: 'pull',
+      project: context.project,
+      environment: context.environment,
+      outputPath: planOutput
+    })
+  } catch (error) {
+    if (context.verbose) {
+      ui.verbose(`Failed to write pull plan artifact: ${(error as Error).message}`, true)
+    }
+  }
+}
+
+function listDirPullFiles(configDir: string, environment: Environment): string[] {
+  const envDir = path.join(configDir, environment)
+  const files = [
+    path.join(envDir, 'configs.env'),
+    path.join(envDir, 'secrets.env')
+  ]
+
+  if (!fs.existsSync(envDir)) return files
+
+  for (const dirent of fs.readdirSync(envDir, { withFileTypes: true })) {
+    if (!dirent.isDirectory()) continue
+    const serviceDir = path.join(envDir, dirent.name)
+    files.push(path.join(serviceDir, 'configs.env'))
+    files.push(path.join(serviceDir, 'secrets.env'))
+  }
+
+  return files
 }
 
 /**
@@ -137,6 +272,35 @@ async function runPullOutputs(context: PullContext): Promise<void> {
       verbose
     })
 
+    const outputChanges: EnvDiff = { added: [], updated: [], deleted: [], unchanged: [] }
+    let localCount = 0
+    let remoteCount = 0
+
+    for (const file of result.files) {
+      const before = readEnvFileSafe(file.fullPath)
+      const diff = diffEnv(before, file.vars)
+      outputChanges.added.push(...diff.added)
+      outputChanges.updated.push(...diff.updated)
+      outputChanges.deleted.push(...diff.deleted)
+      outputChanges.unchanged.push(...diff.unchanged)
+      localCount += Object.keys(before).length
+      remoteCount += Object.keys(file.vars).length
+    }
+
+    await emitPullPlanArtifact(context, {
+      localCount,
+      remoteCount,
+      status: dryRun ? 'planned' : 'applied',
+      changes: outputChanges,
+      notes: [
+        `mode=outputs`,
+        all ? 'all outputs' : `output=${target || 'default'}`
+      ],
+      source: {
+        outputPath: context.target || 'all'
+      }
+    })
+
     // Output results
     if (jsonOutput) {
       ui.output(JSON.stringify({
@@ -194,12 +358,58 @@ async function runDirPull(context: PullContext, configDir: string): Promise<void
   }
 
   await withClient({ args, config, project, verbose }, async (client) => {
+    const envDir = path.join(configDir, environment)
+    const trackedFiles = listDirPullFiles(configDir, environment)
+    const beforeFiles = trackedFiles.reduce<Record<string, Record<string, string>>>((acc, filePath) => {
+      acc[filePath] = readEnvFileSafe(filePath)
+      return acc
+    }, {})
+
     const result = await pullFromBackend({
       client,
       vaulterDir: configDir,
       project,
       environment,
       dryRun
+    })
+
+    const afterFiles = trackedFiles.reduce<Record<string, Record<string, string>>>((acc, filePath) => {
+      if (dryRun) {
+        acc[filePath] = beforeFiles[filePath] || {}
+      } else {
+        acc[filePath] = readEnvFileSafe(filePath)
+      }
+      return acc
+    }, {})
+
+    const dirChanges: EnvDiff = { added: [], updated: [], deleted: [], unchanged: [] }
+    let localCount = 0
+    let remoteCount = result.pulled
+
+    for (const filePath of trackedFiles) {
+      const before = beforeFiles[filePath] || {}
+      const after = afterFiles[filePath] || {}
+      const diff = diffEnv(before, after)
+      dirChanges.added.push(...diff.added)
+      dirChanges.updated.push(...diff.updated)
+      dirChanges.deleted.push(...diff.deleted)
+      dirChanges.unchanged.push(...diff.unchanged)
+      localCount += Object.keys(before).length
+    }
+
+    await emitPullPlanArtifact(context, {
+      localCount,
+      remoteCount,
+      status: dryRun ? 'planned' : 'applied',
+      changes: dirChanges,
+      notes: [
+        'mode=dir',
+        `path=${envDir}`
+      ],
+      source: {
+        outputPath: envDir,
+        isDirMode: true
+      }
     })
 
     if (jsonOutput) {

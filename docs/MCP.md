@@ -373,6 +373,7 @@ Download from backend to local .env file or output targets.
 | `output` | string | No | auto | Output file path OR output target name (when config has `outputs`) |
 | `all` | boolean | No | `false` | Pull to ALL output targets defined in config |
 | `dir` | boolean | No | `false` | Pull to `.vaulter/{env}/` directory structure |
+| `plan-output` | string | No | - | Base path for pull plan artifact (writes `.json` and `.md`) |
 
 **Modes:**
 
@@ -405,6 +406,7 @@ Upload local .env file or directory to backend.
 | `service` | string | No | - | Service name |
 | `file` | string | No | auto | Input file path |
 | `dir` | boolean | No | `false` | Push `.vaulter/{env}/` directory structure |
+| `plan-output` | string | No | - | Base path for push plan artifact (writes `.json` and `.md`) |
 
 **Modes:**
 
@@ -434,6 +436,7 @@ Plan/apply a sync operation (`merge`, `push`, `pull`) before execution.
 | `prune` | boolean | No | `false` | For push: delete remote vars not in source |
 | `strategy` | string | No | `local` | Conflict strategy: `local`, `remote`, `error` |
 | `dryRun` | boolean | No | `false` | Explicit preview mode |
+| `plan-output` | string | No | - | Base path for sync plan artifact (writes `.json` and `.md`) |
 | `shared` | boolean | No | `false` | Push to shared scope (`--shared`) |
 
 ```bash
@@ -464,6 +467,7 @@ operation to reduce agent command noise.
 | `all` | boolean | No | `false` | Pull to all output targets |
 | `dir` | boolean | No | `false` | Use `.vaulter/{env}/` directory mode |
 | `prune` | boolean | No | `false` | Delete remote-only vars on push |
+| `plan-output` | string | No | - | Base path for release plan artifact (writes `.json` and `.md`) |
 | `strategy` | string | No | `local` | Merge conflict strategy |
 | `dryRun` | boolean | No | `false` | Force preview without applying |
 | `shared` | boolean | No | `false` | Push in shared scope for monorepo |
@@ -893,14 +897,14 @@ Notes:
 
 **Workflow:**
 1. Edit files in `.vaulter/local/`
-2. `vaulter_local_pull all=true` → Generate .env files (OFFLINE)
+2. `vaulter_local_pull` → Generate .env files (OFFLINE)
 3. `vaulter_local_push_all` → Share with team (when ready)
 
-In monorepos, `vaulter_local_set`, `vaulter_local_delete`, `vaulter_local_diff`, and `vaulter_local_push` require `service` (unless `shared=true` on local push).
+In monorepos, `vaulter_local_set`, `vaulter_local_delete`, `vaulter_local_diff`, and `vaulter_local_push` usually require `service` unless it can be inferred from the current working directory (or from a single-service monorepo), or you pass it explicitly. If `shared=true` on local push, service is ignored.
 
 New dev joins:
 1. `vaulter_local_sync` → Download from backend
-2. `vaulter_local_pull all=true` → Generate .env files
+2. `vaulter_local_pull` → Generate .env files
 
 **File structure:**
 ```
@@ -919,18 +923,20 @@ New dev joins:
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `output` | string | No | - | Specific output target name |
-| `all` | boolean | No | `false` | Pull to all output targets |
-| `service` | string | No | - | Service name (monorepo) |
+| `all` | boolean | No | `true` | Pull to all output targets |
+| `service` | string | No | - | Service name (monorepo; auto-inferred from cwd when omitted) |
+
+`all` defaults to `true` when `output` is not set. Omit `service` when running from a service folder (or in a single-service monorepo).
 
 #### `vaulter_local_set`
 Set a service-scoped local override. Only modifies local file, never touches backend.
-In monorepo mode, `service` is required.
+In monorepo mode, `service` is inferred from the current path when omitted (e.g. running from a service directory), or you can pass it explicitly.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `key` | string | **Yes** | - | Variable name |
 | `value` | string | **Yes** | - | Value to set |
-| `service` | string | No | - | Service name (monorepo) |
+| `service` | string | No | - | Service name (monorepo; auto-inferred from cwd when omitted) |
 | `sensitive` | boolean | No | `false` | If true, writes to secrets.env; if false, writes to configs.env |
 
 #### `vaulter_local_push`
@@ -939,34 +945,34 @@ Push a single local override to backend (`configs.env` or `secrets.env`) for the
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `key` | string | **Yes** | - | Variable name |
-| `service` | string | No | - | Service name (monorepo) |
+| `service` | string | No | - | Service name (monorepo; auto-inferred from cwd when omitted) |
 | `shared` | boolean | No | `false` | Use `true` to target shared scope |
 | `targetEnvironment` | string | No | base env | Target environment in backend |
 | `dryRun` | boolean | No | `false` | Preview changes without applying |
 
 #### `vaulter_local_delete`
 Remove a service-scoped local override.
-In monorepo mode, `service` is required.
+In monorepo mode, `service` is inferred from the current path when possible, or pass it explicitly.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `key` | string | **Yes** | - | Variable name to remove |
-| `service` | string | No | - | Service name (monorepo) |
+| `service` | string | No | - | Service name (monorepo; auto-inferred from cwd when omitted) |
 
 #### `vaulter_local_diff`
 Show service-scoped local overrides vs base environment.
-In monorepo mode, `service` is required.
+In monorepo mode, `service` is inferred from the current path when possible.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
-| `service` | string | No | - | Service name (monorepo) |
+| `service` | string | No | - | Service name (monorepo; auto-inferred from cwd when omitted) |
 
 #### `vaulter_local_status`
 Show local overrides status: base environment, overrides count, snapshots count.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
-| `service` | string | No | - | Service name (monorepo) |
+| `service` | string | No | - | Service name (monorepo; auto-inferred from cwd when omitted) |
 
 #### `vaulter_local_shared_set`
 Set a shared local override (applies to all services).
@@ -1015,7 +1021,7 @@ List all shared local overrides.
 | `sourceEnvironment` | string | No | base env | Source environment to pull from |
 | `dryRun` | boolean | No | `false` | Preview changes without applying |
 
-**After sync, run:** `vaulter_local_pull all=true` to generate .env files.
+**After sync, run:** `vaulter_local_pull` to generate .env files.
 
 ---
 
@@ -1702,7 +1708,7 @@ Claude: I'll show you the differences...
 ```
 1. vaulter_local_set key=PORT value=3001      → Add local override
 2. vaulter_local_set key=DEBUG value=true      → Add another
-3. vaulter_local_pull all=true                 → Base + overrides → .env files
+3. vaulter_local_pull                          → Base + overrides → .env files
 4. vaulter_local_diff                          → See what's overridden
 5. vaulter_local_status                        → Check state
 ```

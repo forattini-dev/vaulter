@@ -59,6 +59,6 @@ export async function runLocalInit(context: LocalContext): Promise<void> {
   ui.log(c.header('Next steps:'))
   ui.log(`  ${c.command('vaulter local set PORT::3001')}     ${c.muted('# Add config')}`)
   ui.log(`  ${c.command('vaulter local set API_KEY=xxx')}    ${c.muted('# Add secret')}`)
-  ui.log(`  ${c.command('vaulter local pull --all')}         ${c.muted('# Generate .env files')}`)
+  ui.log(`  ${c.command('vaulter local pull')}              ${c.muted('# Generate .env files')}`)
   ui.log(`  ${c.command('vaulter local diff')}               ${c.muted('# See what\'s overridden')}`)
 }

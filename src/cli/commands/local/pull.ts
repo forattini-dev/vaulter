@@ -32,20 +32,10 @@ export async function runLocalPull(context: LocalContext): Promise<void> {
     process.exit(1)
   }
 
-  const all = args.all as boolean | undefined
+  const hasOutput = Boolean(args.output)
+  const all = hasOutput ? (args.all as boolean | undefined) : ((args.all as boolean | undefined) ?? true)
   const target = args.output as string | undefined
   const overwrite = args.overwrite as boolean | undefined
-
-  if (!all && !target) {
-    print.error('Requires --all or --output <name>')
-    ui.log('Examples:')
-    ui.log(`  ${c.command('vaulter local pull --all')}`)
-    ui.log(`  ${c.command('vaulter local pull --output web')}`)
-    ui.log('')
-    ui.log('Options:')
-    ui.log(`  ${c.muted('--overwrite')}  Overwrite entire .env file (default: preserve user vars)`)
-    process.exit(1)
-  }
 
   if (!config.outputs || Object.keys(config.outputs).length === 0) {
     print.error('No outputs defined in config')

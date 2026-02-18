@@ -327,10 +327,10 @@ NODE_ENV=production
 
 \`\`\`bash
 # Section-aware pull (default)
-vaulter local pull --all
+vaulter local pull
 
 # Overwrite entire file (ignores sections)
-vaulter local pull --all --overwrite
+vaulter local pull --overwrite
 \`\`\`
 
 ### MCP Tools
@@ -518,13 +518,13 @@ apps/api/.env           # Generated output (GITIGNORED)
 vaulter list -e dev
 
 # Pull and generate .env files
-vaulter local pull --all
+vaulter local pull
 \`\`\`
 
 **MCP Tools:**
 \`\`\`
 vaulter_list environment="dev"
-vaulter_local_pull all=true
+vaulter_local_pull
 \`\`\`
 
 ### 2. During Development: Add Local Overrides
@@ -537,14 +537,14 @@ vaulter local set DEBUG::true           # config (non-sensitive)
 vaulter local set API_KEY=test-key      # secret (sensitive)
 
 # Service-specific override (monorepo)
-vaulter local set PORT::3001 -s web
-vaulter local set DB_HOST::localhost -s api
+vaulter local set PORT::3001                # inferred from cwd when possible
+vaulter local set DB_HOST::localhost -s api   # explicit
 \`\`\`
 
 **MCP Tools:**
 \`\`\`
 vaulter_local_shared_set key="DEBUG" value="true"
-vaulter_local_set key="PORT" value="3001" service="web"
+vaulter_local_set key="PORT" value="3001"
 \`\`\`
 
 ### 3. Regenerate .env Files
@@ -552,7 +552,7 @@ vaulter_local_set key="PORT" value="3001" service="web"
 After adding overrides, regenerate your .env files:
 
 \`\`\`bash
-vaulter local pull --all
+vaulter local pull
 \`\`\`
 
 The merge order is: **backend < local shared < service overrides**
@@ -628,12 +628,12 @@ vaulter set LOG_LEVEL::info -e stg --shared
 1. Clone the repo (gets \`.vaulter/config.yaml\`)
 2. Get encryption key from team (securely, not via git!)
 3. Set environment variable: \`export VAULTER_KEY_DEV=...\`
-4. Pull from backend: \`vaulter local pull --all\`
+4. Pull from backend: \`vaulter local pull\`
 
 ### Sharing New Variables
 
 1. Add to backend: \`vaulter set NEW_VAR=value -e dev\`
-2. Notify team: "New var added, run \`vaulter local pull --all\`"
+2. Notify team: "New var added, run \`vaulter local pull\`"
 
 ### Everyone Gets Same Base
 
@@ -649,7 +649,7 @@ Since backend is source of truth:
 | Step | Command | MCP Tool |
 |------|---------|----------|
 | See backend vars | \`vaulter list -e dev\` | \`vaulter_list\` |
-| Pull to local | \`vaulter local pull --all\` | \`vaulter_local_pull\` |
+| Pull to local | \`vaulter local pull\` | \`vaulter_local_pull\` |
 | Add local override | \`vaulter local set KEY::value\` | \`vaulter_local_set\` |
 | Add shared override | \`vaulter local set KEY::value --shared\` | \`vaulter_local_shared_set\` |
 | See local diff | \`vaulter local diff\` | \`vaulter_local_diff\` |
@@ -1124,33 +1124,33 @@ key: "DEBUG"
 \`\`\`
 key: "PORT"
 value: "3001"
-service: "web"
 sensitive: false  # → services/web/configs.env (default)
 # or
 sensitive: true   # → services/web/secrets.env
 \`\`\`
+`service` is optional in monorepo: omitted service is inferred from cwd (or a single-service monorepo). Specify explicitly when needed.
 
 ### \`vaulter_local_delete\`
 **Use for:** Remove a service override (from both configs.env and secrets.env)
 \`\`\`
 key: "PORT"
-service: "web"
 \`\`\`
+`service` is optional in monorepo: omitted service is inferred from cwd (or a single-service monorepo). Specify explicitly when needed.
 
 ### \`vaulter_local_pull\`
 **Use for:** Generate .env files (backend + shared + overrides)
 \`\`\`
-all: true  # or output: "web"
+output: "web"  # optional; defaults to all outputs
 \`\`\`
 
 ### \`vaulter_local_push\`
 **Use for:** Push a single local override (`configs.env` or `secrets.env`) to backend.
 \`\`\`
 key: "PORT"
-service: "web"
 targetEnvironment: "dev" # optional
 dryRun: true # optional
 \`\`\`
+`service` is optional in monorepo (inferred from cwd, or single-service); explicit `service` works for cross-directory usage.
 
 ### \`vaulter_local_push_all\`
 **Use for:** Push entire `.vaulter/local/` structure (shared + services) to backend.
@@ -1186,8 +1186,8 @@ API_KEY=sk-xxx
 
 **CLI:**
 \`\`\`bash
-vaulter local pull --all           # Section-aware (default)
-vaulter local pull --all --overwrite  # Overwrite entire file
+vaulter local pull           # Section-aware (default)
+vaulter local pull --overwrite  # Overwrite entire file
 \`\`\`
 
 ### TUI SYNC Column
@@ -1289,7 +1289,7 @@ Use the official GitHub Action for automated deployments:
 ### 11. Local development with overrides
 1. \`vaulter_local_set key="PORT" value="3001"\` - Override port locally
 2. \`vaulter_local_set key="DEBUG" value="true"\` - Override debug
-3. \`vaulter_local_pull all=true\` - Generate .env files (base + overrides)
+3. \`vaulter_local_pull\` - Generate .env files (base + overrides)
 4. \`vaulter_local_diff\` - See what's overridden
 
 ### 12. Snapshot backup/restore

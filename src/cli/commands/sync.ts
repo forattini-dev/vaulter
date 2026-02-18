@@ -25,6 +25,7 @@ import { runBatch, formatBatchResult, formatBatchResultJson } from '../../lib/ba
 import { evaluateWriteGuard, formatWriteGuardLines } from '../../lib/write-guard.js'
 import { checkValuesForEncoding } from '../../lib/encoding-detection.js'
 import { createConnectedAuditLogger, logSyncOperation, disconnectAuditLogger } from '../lib/audit-helper.js'
+import { normalizePlanSummary, writeSyncPlanArtifact } from '../../lib/sync-plan.js'
 import * as ui from '../ui.js'
 import { c, print } from '../lib/colors.js'
 
@@ -39,6 +40,8 @@ interface SyncContext {
   jsonOutput: boolean
   /** Strategy override from CLI */
   strategy?: 'local' | 'remote' | 'error'
+  /** Optional sync plan output path */
+  planOutput?: string
 }
 
 /**
@@ -117,6 +120,197 @@ function evaluateSyncGuards(params: {
 interface GuardedSyncResult extends SyncResult {
   guardWarnings: string[]
   encodingWarnings: Array<{ key: string; message: string }>
+  localCount: number
+  remoteCount: number
+  sourcePath?: string
+}
+
+function getPlanOutputFromContext(context: SyncContext): string | undefined {
+  const rawValue = context.planOutput || context.args['plan-output']
+  if (typeof rawValue !== 'string') return undefined
+  const normalized = rawValue.trim()
+  return normalized.length > 0 ? normalized : undefined
+}
+
+async function emitMergePlanArtifact(
+  context: SyncContext,
+  result: GuardedSyncResult,
+  strategy: 'local' | 'remote' | 'error',
+  status: 'planned' | 'applied' | 'blocked' | 'failed' = context.dryRun ? 'planned' : 'applied'
+): Promise<void> {
+  const planOutput = getPlanOutputFromContext(context)
+  if (!planOutput) return
+
+  const summary = normalizePlanSummary({
+    operation: 'merge',
+    project: context.project,
+    environment: context.environment,
+    service: context.service,
+    apply: !context.dryRun,
+    dryRun: context.dryRun,
+    status,
+    strategy,
+    source: {
+      inputPath: result.sourcePath
+    },
+    counts: {
+      local: result.localCount,
+      remote: result.remoteCount,
+      plannedChangeCount: result.added.length + result.updated.length + result.localAdded.length + result.localUpdated.length,
+      unchangedCount: result.unchanged.length
+    },
+    changes: {
+      added: result.added,
+      updated: result.updated,
+      deleted: [],
+      unchanged: result.unchanged,
+      localAdded: result.localAdded || [],
+      localUpdated: result.localUpdated || [],
+      localDeleted: result.localDeleted || [],
+      conflicts: result.conflicts.map((item) => item.key)
+    },
+    notes: [
+      result.sourcePath ? `input=${result.sourcePath}` : 'input=local-vars'
+    ],
+    missingRequired: [],
+    guardWarnings: result.guardWarnings,
+    encodingWarnings: result.encodingWarnings
+  })
+
+  try {
+    writeSyncPlanArtifact(summary, {
+      operation: 'merge',
+      project: context.project,
+      environment: context.environment,
+      service: context.service,
+      outputPath: planOutput
+    })
+  } catch (error) {
+    ui.verbose(`Failed to write sync plan artifact: ${(error as Error).message}`, true)
+  }
+}
+
+async function emitBatchMergePlanArtifact(
+  context: SyncContext,
+  batchResult: {
+    total: number
+    successful: number
+    failed: number
+    operations: Array<{
+      service: { name: string }
+      result?: GuardedSyncResult
+      error?: Error
+    }>
+  },
+  strategy: 'local' | 'remote' | 'error'
+): Promise<void> {
+  const planOutput = getPlanOutputFromContext(context)
+  if (!planOutput) return
+
+  let localCount = 0
+  let remoteCount = 0
+  let plannedChangeCount = 0
+  let unchangedCount = 0
+  let remoteOnlyCount = 0
+  let localOnlyCount = 0
+  const guardWarnings: string[] = []
+  const encodingWarnings: Array<{ key: string; message: string }> = []
+
+  const services = batchResult.operations.map((op) => {
+    if (!op.result) {
+      return {
+        name: op.service.name,
+        status: 'failed' as const,
+        stats: {
+          added: 0,
+          updated: 0,
+          unchanged: 0,
+          conflicts: 0,
+          localOnly: 0,
+          remoteOnly: 0,
+          error: op.error?.message
+        }
+      }
+    }
+
+    const result = op.result
+    localCount += result.localCount
+    remoteCount += result.remoteCount
+    plannedChangeCount +=
+      result.added.length +
+      result.updated.length +
+      result.localAdded.length +
+      result.localUpdated.length
+    unchangedCount += result.unchanged.length
+    localOnlyCount += result.added.length + result.updated.length
+    remoteOnlyCount += result.localAdded.length + result.localUpdated.length
+    guardWarnings.push(...result.guardWarnings)
+    encodingWarnings.push(...result.encodingWarnings)
+
+    return {
+      name: op.service.name,
+      status: 'success' as const,
+      stats: {
+        added: result.added.length,
+        updated: result.updated.length,
+        unchanged: result.unchanged.length,
+        conflicts: result.conflicts.length,
+        localOnly: result.added.length + result.updated.length,
+        remoteOnly: result.localAdded.length + result.localUpdated.length
+      }
+    }
+  })
+
+  const summary = normalizePlanSummary({
+    operation: 'merge',
+    project: context.project,
+    environment: context.environment,
+    apply: !context.dryRun,
+    dryRun: context.dryRun,
+    status: batchResult.failed > 0 ? 'failed' : context.dryRun ? 'planned' : 'applied',
+    strategy,
+    source: {
+      outputPath: context.args.output
+    },
+    counts: {
+      local: localCount,
+      remote: remoteCount,
+      plannedChangeCount,
+      remoteOnlyCount,
+      localOnlyCount,
+      unchangedCount
+    },
+    changes: {
+      added: [],
+      updated: [],
+      deleted: [],
+      unchanged: [],
+      localAdded: [],
+      localUpdated: [],
+      localDeleted: [],
+      conflicts: []
+    },
+    notes: [
+      `services=${batchResult.total}`,
+      `successful=${batchResult.successful}`,
+      `failed=${batchResult.failed}`
+    ],
+    missingRequired: [],
+    guardWarnings,
+    encodingWarnings,
+    services
+  })
+
+  try {
+    writeSyncPlanArtifact(summary, {
+      operation: 'merge',
+      project: context.project,
+      environment: context.environment,
+      outputPath: planOutput
+    })
+  } catch (error) {
+    ui.verbose(`Failed to write batch sync plan artifact: ${(error as Error).message}`, true)
+  }
 }
 
 /**
@@ -349,6 +543,9 @@ async function syncSingleService(
         localAdded,
         localUpdated,
         localDeleted: [],
+        localCount: Object.keys(localVars).length,
+        remoteCount: Object.keys(remoteVars).length,
+        sourcePath: envFilePath || undefined,
         guardWarnings: guard.warnings,
         encodingWarnings: guard.encodingWarnings
       }
@@ -387,6 +584,8 @@ export async function runSync(context: SyncContext): Promise<void> {
 
   try {
     const result = await syncSingleService(context)
+    const strategy = context.strategy || context.config?.sync?.conflict || 'local'
+    await emitMergePlanArtifact(context, result, strategy)
 
     const warnLines = result.guardWarnings || []
     const encodingWarnings = result.encodingWarnings || []
@@ -559,6 +758,9 @@ async function runBatchSync(context: SyncContext): Promise<void> {
       } : undefined
     }
   )
+
+  const strategy = context.strategy || context.config?.sync?.conflict || 'local'
+  await emitBatchMergePlanArtifact(context, batchResult, strategy)
 
   // Output results
   if (jsonOutput) {

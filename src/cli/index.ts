@@ -10,6 +10,7 @@ import './preload.js'
 import { createCLI, type CommandParseResult, type CLISchema } from 'cli-args-parser'
 import type { CLIArgs, VaulterConfig, Environment } from '../types.js'
 import { loadConfig, getProjectName } from '../lib/config-loader.js'
+import { inferServiceFromPath } from '../lib/monorepo.js'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -439,6 +440,10 @@ const cliSchema: CLISchema = {
           type: 'boolean',
           default: false,
           description: 'Apply changes for sync plan (without this flag, plan is dry-run)'
+        },
+        'plan-output': {
+          type: 'string',
+          description: 'Base path for sync plan artifact (writes .json and .md)'
         }
       },
       commands: {
@@ -467,6 +472,10 @@ const cliSchema: CLISchema = {
         action: {
           type: 'string',
           description: 'Used by plan/apply when action is passed without positional value (merge, push, pull)'
+        },
+        'plan-output': {
+          type: 'string',
+          description: 'Base path for release plan artifact (writes .json and .md)'
         }
       },
       commands: {
@@ -987,7 +996,13 @@ function buildContext(result: CommandParseResult, config: VaulterConfig | null) 
   // Resolve options
   const environment = (opts.env || config?.default_environment || 'dev') as Environment
   const project = (opts.project || (config ? getProjectName(config) : '')) as string
-  const service = (opts.service || config?.service) as string | undefined
+  let service = (opts.service || config?.service) as string | undefined
+  if (!service && config) {
+    const inferred = inferServiceFromPath(process.cwd(), config)
+    if (inferred) {
+      service = inferred
+    }
+  }
   const verbose = (opts.verbose || false) as boolean
   const quiet = (opts.quiet || false) as boolean
   const dryRun = (opts['dry-run'] || false) as boolean
