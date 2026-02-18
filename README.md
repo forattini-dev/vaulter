@@ -316,6 +316,7 @@ See [docs/DOCTOR.md](docs/DOCTOR.md) for complete guide.
 | `sync push -e <env>` | Upload .env file to backend |
 | `sync push --dir -e <env>` | Upload `.vaulter/{env}/` directory to backend |
 | `sync push --prune -e <env>` | Upload, delete remote-only vars |
+| `sync plan <merge|push|pull> -e <env>` | Preview planned sync changes (use `--apply` to execute) |
 | `sync diff -e <env>` | Show differences without changes |
 
 ### Export
@@ -1291,7 +1292,7 @@ const result = await loadRuntime({
 
 ## MCP Server
 
-Claude AI integration via Model Context Protocol. **56 tools, 7 resources, 12 prompts.**
+Claude AI integration via Model Context Protocol. **57 tools, 7 resources, 12 prompts.**
 
 ```bash
 vaulter mcp
@@ -1310,13 +1311,13 @@ vaulter mcp
 }
 ```
 
-### Tools (56)
+### Tools (57)
 
 | Category | Tools |
 |:---------|:------|
 | **Core (5)** | `vaulter_get`, `vaulter_set`, `vaulter_delete`, `vaulter_list`, `vaulter_export` |
 | **Batch (3)** | `vaulter_multi_get`, `vaulter_multi_set`, `vaulter_multi_delete` |
-| **Sync (2)** | `vaulter_pull`, `vaulter_push` |
+| **Sync (3)** | `vaulter_pull`, `vaulter_push`, `vaulter_sync_plan` |
 | **Analysis (2)** | `vaulter_compare`, `vaulter_search` |
 | **Status (2)** | `vaulter_status`, `vaulter_audit_list` |
 | **K8s (2)** | `vaulter_k8s_secret`, `vaulter_k8s_configmap` |

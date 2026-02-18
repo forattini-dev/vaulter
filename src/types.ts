@@ -738,6 +738,8 @@ export interface CLIArgs {
   shared?: boolean
   strategy?: 'local' | 'remote' | 'error'
   values?: boolean
+  action?: 'merge' | 'push' | 'pull'
+  apply?: boolean
   // Local pull options
   overwrite?: boolean
   // Export options (inheritance control)

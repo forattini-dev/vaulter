@@ -22,6 +22,7 @@ export interface SyncContext {
   verbose: boolean
   dryRun: boolean
   jsonOutput: boolean
+  apply?: boolean
   // New: prune and shared support
   prune?: boolean
   shared?: boolean
@@ -37,6 +38,7 @@ export interface SyncContext {
 export async function runSyncGroup(context: SyncContext): Promise<void> {
   const { args } = context
   const subcommand = args._[1]
+  const apply = args.apply === true
 
   // Extract common flags
   const strategy = args.strategy as 'local' | 'remote' | 'error' | undefined
@@ -87,9 +89,57 @@ export async function runSyncGroup(context: SyncContext): Promise<void> {
       break
     }
 
+    case 'plan': {
+      const action = resolveSyncPlanAction(args)
+      if (!action) {
+        print.error('Plan requires action: vaulter sync plan <merge|push|pull> [options]')
+        ui.log('You can also use --action to pass it explicitly.')
+        process.exit(1)
+      }
+
+      const shouldDryRun = !apply
+      const planContext: SyncContext = {
+        ...context,
+        dryRun: shouldDryRun
+      }
+
+      if (action === 'merge') {
+        const { runSync } = await import('../sync.js')
+        const shiftedArgs = {
+          ...args,
+          _: ['merge', ...args._.slice(3)]
+        }
+        await runSync({ ...planContext, args: shiftedArgs, strategy })
+      } else if (action === 'push') {
+        const { runPush } = await import('../push.js')
+        const shiftedArgs = {
+          ...args,
+          _: ['push', ...args._.slice(3)]
+        }
+        const prune = args.prune as boolean | undefined
+        const dir = args.dir as boolean | undefined
+        const shared = args.shared as boolean | undefined
+        await runPush({ ...planContext, args: shiftedArgs, prune, dir, shared })
+      } else if (action === 'pull') {
+        const { runPull } = await import('../pull.js')
+        const shiftedArgs = {
+          ...args,
+          _: ['pull', ...args._.slice(3)]
+        }
+        const all = args.all as boolean | undefined
+        const target = args.output as string | undefined
+        const dir = args.dir as boolean | undefined
+        await runPull({ ...planContext, args: shiftedArgs, all, target, dir })
+      } else {
+        print.error(`Unknown plan action: ${action}`)
+        process.exit(1)
+      }
+      break
+    }
+
     default:
       if (!subcommand || subcommand.startsWith('-')) {
-        print.error('Sync subcommand required: merge, push, pull, diff')
+        print.error('Sync subcommand required: merge, push, pull, diff, plan')
         ui.log(`Run "${c.command('vaulter sync --help')}" for usage`)
         process.exit(1)
       }
@@ -98,6 +148,18 @@ export async function runSyncGroup(context: SyncContext): Promise<void> {
       ui.log(`Run "${c.command('vaulter sync --help')}" for usage`)
       process.exit(1)
   }
+}
+
+function resolveSyncPlanAction(args: CLIArgs): 'merge' | 'push' | 'pull' | undefined {
+  const positional = (args._[2] || '').toString().trim().toLowerCase()
+  const explicit = (typeof args.action === 'string' ? args.action : '').trim().toLowerCase()
+  const action = explicit || positional
+
+  if (action === 'merge' || action === 'push' || action === 'pull') {
+    return action
+  }
+
+  return undefined
 }
 
 /**
@@ -297,6 +359,7 @@ export function printSyncHelp(): void {
   ui.log(`  ${c.subcommand('push')} [${c.highlight('--prune')}]   Push local to remote`)
   ui.log(`  ${c.subcommand('pull')}             Pull remote to outputs`)
   ui.log(`  ${c.subcommand('merge')}            Two-way merge (local ${symbols.arrowBoth} remote)`)
+  ui.log(`  ${c.subcommand('plan')} <action>      Plan/apply sync operation`)
   ui.log('')
   ui.log(c.header('Options:'))
   ui.log(`  ${c.highlight('-e')}, ${c.highlight('--env')}        Environment (${colorEnv('dev')}, ${colorEnv('stg')}, ${colorEnv('prd')})`)
@@ -306,6 +369,7 @@ export function printSyncHelp(): void {
   ui.log(`  ${c.highlight('--prune')}          Delete variables not in source (push/pull)`)
   ui.log(`  ${c.highlight('--shared')}         Target shared variables (monorepo)`)
   ui.log(`  ${c.highlight('--dry-run')}        Preview without making changes`)
+  ui.log(`  ${c.highlight('--apply')}          Apply changes after plan`)
   ui.log(`  ${c.highlight('--json')}           Output in JSON format`)
   ui.log('')
   ui.log(c.header('Examples:'))
@@ -314,4 +378,7 @@ export function printSyncHelp(): void {
   ui.log(`  ${c.command('vaulter sync push -e prd')}                 ${c.muted('# Push local, keep remote-only')}`)
   ui.log(`  ${c.command('vaulter sync push -e prd --prune')}         ${c.muted('# Push local, DELETE remote-only')}`)
   ui.log(`  ${c.command('vaulter sync merge -e dev --strategy remote')} ${c.muted('# Remote wins on conflict')}`)
+  ui.log(`  ${c.command('vaulter sync plan push -e dev')}               ${c.muted('# Plan push without applying')}`)
+  ui.log(`  ${c.command('vaulter sync plan push -e dev --apply')}        ${c.muted('# Apply push')}`)
+  ui.log(`  ${c.command('vaulter sync plan merge -e dev --apply')}       ${c.muted('# Apply merge')}`)
 }

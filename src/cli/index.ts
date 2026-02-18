@@ -416,6 +416,10 @@ const cliSchema: CLISchema = {
     sync: {
       description: 'Synchronization commands',
       options: {
+        action: {
+          type: 'string',
+          description: 'For plan command: merge, push, pull'
+        },
         strategy: {
           type: 'string',
           description: 'Conflict strategy: local (default), remote, error'
@@ -429,6 +433,11 @@ const cliSchema: CLISchema = {
           type: 'boolean',
           default: false,
           description: 'Use directory mode: push/pull entire .vaulter/{env}/ structure'
+        },
+        apply: {
+          type: 'boolean',
+          default: false,
+          description: 'Apply changes for sync plan (without this flag, plan is dry-run)'
         }
       },
       commands: {
@@ -443,6 +452,9 @@ const cliSchema: CLISchema = {
         },
         diff: {
           description: 'Show differences between local and remote'
+        },
+        plan: {
+          description: 'Plan/apply sync operation (merge, push, pull) without changing context'
         }
       }
     },
@@ -907,6 +919,8 @@ function toCliArgs(result: CommandParseResult): CLIArgs {
     shared: opts.shared as boolean | undefined,
     strategy: opts.strategy as 'local' | 'remote' | 'error' | undefined,
     values: opts.values as boolean | undefined,
+    action: opts.action as 'merge' | 'push' | 'pull' | undefined,
+    apply: opts.apply as boolean | undefined,
     // Key command options
     scope: opts.scope as string | undefined,
     // Export options

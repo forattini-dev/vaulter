@@ -2,7 +2,7 @@
 
 Complete reference for the Vaulter Model Context Protocol (MCP) server.
 
-**Stats:** 56 tools | 7 resources | 12 prompts
+**Stats:** 57 tools | 7 resources | 12 prompts
 
 ---
 
@@ -358,7 +358,7 @@ Delete multiple variables in a single call.
 
 ---
 
-### Sync Operations (2)
+### Sync Operations (3)
 
 `vaulter_sync` is a CLI-only command and is not exposed in MCP tools.
 
@@ -419,7 +419,33 @@ vaulter sync push -e dev
 vaulter sync push --dir -e dev
 ```
 
----
+#### `vaulter_sync_plan`
+Plan/apply a sync operation (`merge`, `push`, `pull`) before execution.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `action` | string | **Yes** | - | One of `merge`, `push`, `pull` |
+| `apply` | boolean | No | `false` | Execute changes (when `false`, only preview) |
+| `environment` | string | No | `dev` | Environment name |
+| `project` | string | No | auto | Project name |
+| `service` | string | No | - | Service name |
+| `file` | string | No | auto | Input file for merge/push |
+| `output` | string | No | auto | Target file for pull |
+| `prune` | boolean | No | `false` | For push: delete remote vars not in source |
+| `strategy` | string | No | `local` | Conflict strategy: `local`, `remote`, `error` |
+| `dryRun` | boolean | No | `false` | Explicit preview mode |
+| `shared` | boolean | No | `false` | Push to shared scope (`--shared`) |
+
+```bash
+# Preview what merge would do
+vaulter_sync_plan action=merge environment=dev dryRun=true
+
+# Apply a push plan to backend
+vaulter_sync_plan action=push environment=dev apply=true
+
+# Plan a pull into target path
+vaulter_sync_plan action=pull environment=dev output=.vaulter/deploy/.env
+```
 
 ### Analysis & Discovery (4)
 
@@ -1173,7 +1199,7 @@ Comprehensive guide on which tool to use for each scenario. Includes:
 Also covers:
 - Core operations (5 tools)
 - Batch operations (3 tools)
-- Sync operations (2 tools)
+- Sync operations (3 tools)
 - Analysis & Discovery (4 tools)
 - Status & Audit (2 tools)
 - K8s/IaC Integration (4 tools)

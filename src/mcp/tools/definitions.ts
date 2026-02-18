@@ -200,6 +200,31 @@ export function registerTools(): Tool[] {
         }
       }
     },
+    {
+      name: 'vaulter_sync_plan',
+      description: 'Plan/apply a sync flow (merge/push/pull) with preview-first workflow.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          action: {
+            type: 'string',
+            description: 'Sync action to run',
+            enum: ['merge', 'push', 'pull']
+          },
+          apply: { type: 'boolean', description: 'Apply planned changes (default: false, preview only)', default: false },
+          environment: { type: 'string', description: 'Environment name', default: 'dev' },
+          project: { type: 'string', description: 'Project name' },
+          service: { type: 'string', description: 'Service name' },
+          file: { type: 'string', description: 'Input file path (default: auto-detected from config)' },
+          output: { type: 'string', description: 'Output path when pulling' },
+          prune: { type: 'boolean', description: 'For push: delete remote vars not present in local source', default: false },
+          strategy: { type: 'string', description: 'For merge conflict strategy: local, remote, error', enum: ['local', 'remote', 'error'] },
+          dryRun: { type: 'boolean', description: 'Explicit preview mode (default: true when apply=false)', default: false },
+          shared: { type: 'boolean', description: 'Target shared variables for push (monorepo)', default: false }
+        },
+        required: ['action']
+      }
+    },
 
     // === ANALYSIS TOOLS ===
     {

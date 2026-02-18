@@ -57,7 +57,8 @@ import {
 } from './handlers/batch.js'
 import {
   handlePullCall,
-  handlePushCall
+  handlePushCall,
+  handleSyncPlanCall
 } from './handlers/sync.js'
 import {
   handleCompareCall,
@@ -334,6 +335,9 @@ export async function handleToolCall(
 
       case 'vaulter_push':
         return await handlePushCall(client, config, project, environment, service, args)
+
+      case 'vaulter_sync_plan':
+        return await handleSyncPlanCall(client, config, project, environment, service, args)
 
       // === ANALYSIS TOOLS ===
       case 'vaulter_compare':
