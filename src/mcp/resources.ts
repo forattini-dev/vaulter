@@ -192,7 +192,7 @@ async function handleInstructionsRead(uri: string): Promise<{ contents: Array<{ 
 
 **Step 1: Call \`vaulter_doctor\` at start of conversation (ONCE)**
 \`\`\`
-vaulter_doctor environment="dev"
+vaulter_doctor environment="dev" format="json"
 \`\`\`
 This gives you initial context. Then proceed with normal operations.
 
@@ -696,7 +696,7 @@ async function handleToolsGuideRead(uri: string): Promise<{ contents: Array<{ ur
 Call \`vaulter_doctor\` once at the start of a new session (or when operations fail / environments change) to understand the current state:
 
 \`\`\`
-vaulter_doctor environment="dev"
+vaulter_doctor environment="dev" format="json"
 \`\`\`
 
 This will tell you:
