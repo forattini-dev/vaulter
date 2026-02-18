@@ -1,6 +1,6 @@
 # Vaulter Doctor - Health Checks
 
-O `vaulter doctor` é uma ferramenta de diagnóstico completa que executa **17 checks** para identificar problemas de configuração, performance e segurança.
+O `vaulter doctor` é uma ferramenta de diagnóstico completa que executa **até 18 checks** para identificar problemas de configuração, performance e segurança.
 
 ## Quick Start
 
@@ -15,9 +15,9 @@ vaulter_doctor environment="dev"
 vaulter doctor -e dev -s api
 ```
 
-## Os 17 Checks
+## Os Checks
 
-### ✅ Checks Básicos (1-9)
+### ✅ Checks Básicos (1-10)
 
 #### 1. Config File
 Verifica se `.vaulter/config.yaml` existe.
@@ -102,11 +102,21 @@ Valida configuração de outputs.
 ○ outputs: no outputs configured
 ```
 
+#### 10. Gitignore Coverage
+Valida se entradas críticas do `.vaulter` estão no `.gitignore`.
+
+```
+✓ gitignore: required Vaulter entries present in .gitignore
+⚠ gitignore: missing 2 required .gitignore entries (would add with --fix)
+  → Run "vaulter doctor --fix" to update .gitignore
+○ gitignore: project root not resolved for .gitignore checks
+```
+
 ---
 
-### ⚡ Checks Avançados (10-17)
+### ⚡ Checks Avançados (11-18)
 
-#### 10. Backend Connection
+#### 11. Backend Connection
 Testa conexão com o backend e lista variáveis.
 
 ```
@@ -122,7 +132,7 @@ Testa conexão com o backend e lista variáveis.
 - Lista variáveis do environment
 - Valida que o backend está acessível
 
-#### 11. Performance & Latency
+#### 12. Performance & Latency
 Mede velocidade das operações no backend.
 
 ```
@@ -144,7 +154,7 @@ Mede velocidade das operações no backend.
 - Backend sobrecarregado
 - Rate limiting
 
-#### 12. Write Permissions
+#### 13. Write Permissions
 Testa se consegue escrever, ler e deletar no backend.
 
 ```
@@ -166,7 +176,7 @@ Testa se consegue escrever, ler e deletar no backend.
 - MinIO policy sem `write` permission
 - Bucket read-only
 
-#### 13. Encryption Round-Trip
+#### 14. Encryption Round-Trip
 Valida que encriptação e descriptografia funcionam corretamente.
 
 ```
@@ -189,7 +199,7 @@ Valida que encriptação e descriptografia funcionam corretamente.
 - Dados corrompidos no backend
 - Modo de encriptação incompatível
 
-#### 14. Sync Status
+#### 15. Sync Status
 Compara variáveis locais vs remotas.
 
 ```
@@ -221,7 +231,7 @@ vaulter sync pull -e dev
 vaulter sync merge -e dev --strategy local
 ```
 
-#### 15. Security Issues
+#### 16. Security Issues
 Detecta problemas de segurança.
 
 ```
@@ -290,7 +300,7 @@ chmod 400 .vaulter/local/services/${SERVICE_NAME}/secrets.env
 
 ---
 
-#### 16. Scope Policy Validation
+#### 17. Scope Policy Validation
 
 Valida políticas de escopo de variáveis (shared x service) com base em regras configuráveis de domínio.
 
@@ -327,7 +337,7 @@ scope_policy:
       reason: 'API_* vars are service-owned'
 ```
 
-#### 17. Perf Config
+#### 18. Perf Config
 Sugestões de tunning quando o ambiente permite:
 
 ```
@@ -364,6 +374,7 @@ Sugestões de tunning quando o ambiente permite:
 ✓ **shared-key**: dev
 ✓ **local-files**: env file present
 ✓ **outputs**: 3 output file(s) present
+✓ **gitignore**: required Vaulter entries present in .gitignore
 ✓ **connection**: connected (24 vars in dev)
 ✓ **latency**: read=45ms, list=67ms
 ✓ **permissions**: read/write/delete OK

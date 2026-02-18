@@ -91,7 +91,7 @@ apps/api/.env                # ❌ Gitignored - Generated output
 
 ```bash
 # 1. Start: Pull latest from backend + apply your local overrides
-vaulter local pull --all
+vaulter local pull
 
 # 2. Work: Add personal overrides (not shared with team)
 vaulter local set DEBUG::true                  # Shared override
@@ -145,7 +145,7 @@ vaulter clone dev stg                          # Execute
 git clone <repo>                    # Gets .vaulter/config.yaml
 export VAULTER_KEY_DEV=<from-team>  # Get key securely from team
 vaulter sync pull --dir -e dev      # Pull from backend → .vaulter/local/
-vaulter local pull --all            # Generate .env files (offline)
+vaulter local pull                 # Generate .env files (offline)
 ```
 
 **Sharing a new variable:**
@@ -157,7 +157,7 @@ vaulter local set NEW_FEATURE::enabled  # Shared config
 vaulter sync push --dir -e dev
 
 # 3. Notify team
-# "New var added, run: vaulter sync pull --dir && vaulter local pull --all"
+# "New var added, run: vaulter sync pull --dir && vaulter local pull"
 ```
 
 ### MCP Tools for Workflow
@@ -165,7 +165,7 @@ vaulter sync push --dir -e dev
 | Task | Tool |
 |:-----|:-----|
 | Check health | `vaulter_doctor` |
-| Pull with overrides | `vaulter_local_pull all=true` |
+| Pull with overrides | `vaulter_local_pull` |
 | Set shared override | `vaulter_local_shared_set key="DEBUG" value="true"` |
 | Set service override | `vaulter_local_set key="PORT" value="3001" service="api"` |
 | See differences | `vaulter_local_diff` |
@@ -214,7 +214,7 @@ config() // Loads from .vaulter/local/ (configs.env + secrets.env)
 npx vaulter run -- pnpm dev
 
 # Or pull from backend first
-vaulter local pull --all
+vaulter local pull
 ```
 
 That's it! For most local development, vaulter is just a structured dotenv.
@@ -229,7 +229,7 @@ That's it! For most local development, vaulter is just a structured dotenv.
 vaulter doctor -e dev
 ```
 
-Doctor performs **17 comprehensive checks**:
+Doctor performs **até 18 checks**:
 
 | Check | What It Does |
 |-------|--------------|
@@ -336,7 +336,7 @@ See [docs/DOCTOR.md](docs/DOCTOR.md) for complete guide.
 
 ### Recommended daily path
 
-- `vaulter local pull --all` → `vaulter local set` → `vaulter local push` (when ready)
+- `vaulter local pull` → `vaulter local set` → `vaulter local push` (when ready)
 - `vaulter release plan -e <env>` → validate → `vaulter release apply -e <env>`
 - `vaulter release status -e <env>` before deploying or running high-impact changes
 
@@ -969,13 +969,13 @@ outputs:
 
 **`vaulter local pull` and local `.env` generation are 100% OFFLINE** - no backend calls.
 
-Works entirely from local files in `.vaulter/local/`. This is the primary workflow for day-to-day development: edit local overrides, run `vaulter local pull --all`, and only sync when needed.
+Works entirely from local files in `.vaulter/local/`. This is the primary workflow for day-to-day development: edit local overrides, run `vaulter local pull`, and only sync when needed.
 
 ### Quick Reference
 
 | Command | What it does | Backend? |
 |---------|--------------|----------|
-| `vaulter local pull --all` | Generate .env files from local | ❌ OFFLINE |
+| `vaulter local pull` | Generate .env files from local | ❌ OFFLINE |
 | `vaulter local push --all` | Send local → backend | ✅ Backend |
 | `vaulter local sync` | Download backend → local | ✅ Backend |
 | `vaulter local set` | Write local override to `.vaulter/local/` | ❌ OFFLINE |
@@ -987,7 +987,7 @@ Works entirely from local files in `.vaulter/local/`. This is the primary workfl
 ┌─────────────────────────────────────────────────────┐
 │              LOCAL DEVELOPMENT                       │
 │  1. Edit .vaulter/local/*.env                       │
-│  2. vaulter local pull --all  → Generate .env       │
+│  2. vaulter local pull       → Generate .env       │
 │  3. Develop...                                       │
 └─────────────────────────────────────────────────────┘
                          ↓
@@ -1000,7 +1000,7 @@ Works entirely from local files in `.vaulter/local/`. This is the primary workfl
 │              NEW TEAM MEMBER                         │
 │  1. git clone <repo>                                │
 │  2. vaulter local sync     → Download from backend  │
-│  3. vaulter local pull --all → Generate .env        │
+│  3. vaulter local pull      → Generate .env        │
 └─────────────────────────────────────────────────────┘
 ```
 
@@ -1039,11 +1039,12 @@ For each output target, vaulter merges:
 # === EDIT LOCALLY ===
 vaulter local set --shared DEBUG::true     # shared config
 vaulter local set --shared API_KEY=xxx     # shared secret
-vaulter local set PORT::3001 -s web        # service config (required in monorepo)
-vaulter local set DB_URL=xxx -s api        # service secret (required in monorepo)
+vaulter local set PORT::3001 -s web        # service config
+vaulter local set DB_URL=xxx -s api        # service secret
+# In service directories, `-s` is usually auto-inferred
 
 # === GENERATE .ENV FILES [OFFLINE] ===
-vaulter local pull --all
+vaulter local pull
 # Output: "svc-auth: 23 vars (21 shared + 2 service)"
 
 # === SHARE WITH TEAM ===
@@ -1051,7 +1052,7 @@ vaulter local push --all                   # Upload entire structure
 
 # === GET TEAM'S CHANGES ===
 vaulter local sync                         # Download from backend
-vaulter local pull --all                   # Generate .env files
+vaulter local pull                        # Generate .env files
 
 # === OTHER ===
 vaulter local diff                         # Show differences
@@ -1087,10 +1088,10 @@ NODE_ENV=production
 
 ```bash
 # Section-aware pull (default)
-vaulter local pull --all
+vaulter local pull
 
 # Overwrite entire file (ignores sections)
-vaulter local pull --all --overwrite
+vaulter local pull --overwrite
 ```
 
 **Programmatic API:**
