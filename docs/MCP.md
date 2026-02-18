@@ -1094,6 +1094,46 @@ Restore a snapshot to the backend. Verifies SHA256 integrity before restoring. I
 
 ---
 
+### Versioning Tools (3)
+
+Track variable history and rollback behavior when versioning is enabled (`encryption.versioning`).
+
+#### `vaulter_list_versions`
+List version history for a single variable.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `key` | string | **Yes** | - | Variable name |
+| `environment` | string | No | `dev` | Environment name |
+| `project` | string | No | auto | Project name |
+| `service` | string | No | - | Service name (monorepo) |
+| `showValues` | boolean | No | `false` | Show decrypted values (default: masked) |
+
+#### `vaulter_get_version`
+Get a specific historical version.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `key` | string | **Yes** | - | Variable name |
+| `version` | number | **Yes** | - | Version number to retrieve |
+| `environment` | string | No | `dev` | Environment name |
+| `project` | string | No | auto | Project name |
+| `service` | string | No | - | Service name (monorepo) |
+
+#### `vaulter_rollback`
+Rollback a variable to a previous version.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `key` | string | **Yes** | - | Variable name to rollback |
+| `version` | number | **Yes** | - | Target version number |
+| `environment` | string | No | `dev` | Environment name |
+| `project` | string | No | auto | Project name |
+| `service` | string | No | - | Service name (monorepo) |
+| `dryRun` | boolean | No | `false` | Preview rollback changes |
+
+---
+
 ### Diagnostic Tools (3)
 
 #### `vaulter_doctor`
@@ -1286,12 +1326,13 @@ Comprehensive guide on which tool to use for each scenario. Includes:
 | Batch delete multiple | `vaulter_multi_delete` |
 
 Also covers:
-- Core operations (5 tools)
+- Core operations (6 tools)
 - Batch operations (3 tools)
 - Sync operations (3 tools)
 - Analysis & Discovery (4 tools)
 - Status & Audit (2 tools)
 - K8s/IaC Integration (4 tools)
+- Versioning & history (3 tools)
 - Key Management (6 tools)
 - Monorepo support (5 tools)
 - Categorization (1 tool)
