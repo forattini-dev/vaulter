@@ -15,6 +15,7 @@ import {
   parseScopeSpec,
   resolveScopePolicy
 } from '../../../lib/scope-policy.js'
+import { handleDeleteCall, handleSetCall } from './core.js'
 import { compileGlobPatterns } from '../../../lib/pattern-matcher.js'
 import type { Environment, EnvVar, VaulterConfig } from '../../../types.js'
 import type { ToolResponse } from '../config.js'
@@ -696,6 +697,79 @@ export async function handleMoveCall(
     content: [{
       type: 'text',
       text: `✓ ${policyHint} ${key} from ${sourceLabel} to ${targetLabel} in ${project}/${environment}`
+    }]
+  }
+}
+
+export async function handleChangeCall(
+  client: VaulterClient,
+  project: string,
+  environment: Environment,
+  service: string | undefined,
+  config: VaulterConfig | null,
+  args: Record<string, unknown>
+): Promise<ToolResponse> {
+  const action = (args.action as string | undefined)?.toLowerCase()
+  const key = args.key as string | undefined
+
+  if (!action) {
+    return {
+      content: [{ type: 'text', text: 'Error: action is required (set, delete, move)' }]
+    }
+  }
+
+  if (!key) {
+    return {
+      content: [{ type: 'text', text: 'Error: key is required' }]
+    }
+  }
+
+  if (action === 'set') {
+    const value = args.value
+    if (typeof value !== 'string') {
+      return {
+        content: [{
+          type: 'text',
+          text: 'Error: value must be a string for set action'
+        }]
+      }
+    }
+
+    return handleSetCall(client, project, environment, service, config, {
+      key,
+      value,
+      tags: args.tags,
+      shared: args.shared,
+      sensitive: args.sensitive
+    })
+  }
+
+  if (action === 'delete') {
+    return handleDeleteCall(client, project, environment, service, { key })
+  }
+
+  if (action === 'move') {
+    const fromRaw = args.from as string | undefined
+    const toRaw = args.to as string | undefined
+    if (!fromRaw || !toRaw) {
+      return {
+        content: [{ type: 'text', text: 'Error: from and to are required for move action' }]
+      }
+    }
+
+    return handleMoveCall(client, project, environment, service, config, {
+      key,
+      from: fromRaw,
+      to: toRaw,
+      overwrite: args.overwrite,
+      deleteOriginal: args.deleteOriginal ?? true
+    })
+  }
+
+  return {
+    content: [{
+      type: 'text',
+      text: `Error: unsupported action "${action}". Supported: set, delete, move`
     }]
   }
 }

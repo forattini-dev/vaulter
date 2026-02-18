@@ -60,6 +60,7 @@ import { runRotation } from './commands/rotation.js'
 import { runRun } from './commands/run.js'
 import { runNuke } from './commands/nuke.js'
 import { runOutput } from './commands/output.js'
+import { runChange } from './commands/change.js'
 
 // Hierarchical command group routers
 import { runVar } from './commands/var/index.js'
@@ -368,6 +369,42 @@ const cliSchema: CLISchema = {
       }
     },
 
+    change: {
+      description: 'High-level mutation workflow (set/delete/move)',
+      options: {
+        from: {
+          type: 'string',
+          description: 'Source scope for move operations (shared or service:<name>)'
+        },
+        to: {
+          type: 'string',
+          description: 'Destination scope for move operations (shared or service:<name>)'
+        },
+        overwrite: {
+          type: 'boolean',
+          default: false,
+          description: 'Overwrite destination value when moving'
+        },
+        'delete-original': {
+          type: 'boolean',
+          default: true,
+          description: 'Delete source variable after move (set false to copy only)'
+        }
+      },
+      commands: {
+        set: {
+          description: 'Set variables'
+        },
+        delete: {
+          description: 'Delete a variable',
+          aliases: ['rm', 'remove']
+        },
+        move: {
+          description: 'Move/copy a variable between scopes'
+        }
+      }
+    },
+
     // Hierarchical export command group
     export: {
       description: 'Export variables to various formats',
@@ -466,6 +503,34 @@ const cliSchema: CLISchema = {
     },
 
     // High-level release workflow for day-to-day operations
+    plan: {
+      description: 'Plan release-grade changes (alias for release plan)',
+      options: {
+        action: {
+          type: 'string',
+          description: 'Plan action: merge, push, or pull'
+        },
+        'plan-output': {
+          type: 'string',
+          description: 'Base path for plan artifact (writes .json and .md)'
+        }
+      }
+    },
+
+    apply: {
+      description: 'Apply release-grade changes (alias for release apply)',
+      options: {
+        action: {
+          type: 'string',
+          description: 'Apply action: merge, push, or pull'
+        },
+        'plan-output': {
+          type: 'string',
+          description: 'Base path for plan artifact (writes .json and .md)'
+        }
+      }
+    },
+
     release: {
       description: 'Plan/apply release-grade changes from local to backend',
       options: {
@@ -1105,6 +1170,34 @@ async function main(): Promise<void> {
       case 'var':
         await runVar(context)
         break
+
+      case 'change':
+        await runChange(context)
+        break
+
+      case 'plan': {
+        const changedArgs = {
+          ...context.args,
+          _: ['release', 'plan', ...context.args._.slice(1)]
+        }
+        await runReleaseGroup({
+          ...context,
+          args: changedArgs
+        })
+        break
+      }
+
+      case 'apply': {
+        const changedArgs = {
+          ...context.args,
+          _: ['release', 'apply', ...context.args._.slice(1)]
+        }
+        await runReleaseGroup({
+          ...context,
+          args: changedArgs
+        })
+        break
+      }
 
       case 'export':
         await runExportGroup(context)

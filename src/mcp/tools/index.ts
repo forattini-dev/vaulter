@@ -91,6 +91,7 @@ import {
   handleStatusCall
 } from './handlers/monorepo.js'
 import {
+  handleChangeCall,
   handleCopyCall,
   handleMoveCall,
   handleRenameCall,
@@ -329,6 +330,9 @@ export async function handleToolCall(
 
       case 'vaulter_set':
         return await handleSetCall(client, project, environment, service, config, args)
+
+      case 'vaulter_change':
+        return await handleChangeCall(client, project, environment, service, config, args)
 
       case 'vaulter_delete':
         return await handleDeleteCall(client, project, environment, service, args)

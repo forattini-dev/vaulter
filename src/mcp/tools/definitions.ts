@@ -27,6 +27,66 @@ export function registerTools(): Tool[] {
       }
     },
     {
+      name: 'vaulter_change',
+      description: 'High-level mutation operation for AI workflows (set/delete/move)',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          action: {
+            type: 'string',
+            enum: ['set', 'delete', 'move'],
+            description: 'Mutation to perform'
+          },
+          key: { type: 'string', description: 'Variable name' },
+          value: {
+            type: 'string',
+            description: 'Value to set (required for action=set)'
+          },
+          from: {
+            type: 'string',
+            description: 'Source scope for move (shared or service:<name>)'
+          },
+          to: {
+            type: 'string',
+            description: 'Destination scope for move (shared or service:<name>)'
+          },
+          overwrite: {
+            type: 'boolean',
+            description: 'Overwrite destination value when moving',
+            default: false
+          },
+          deleteOriginal: {
+            type: 'boolean',
+            description: 'Delete source after move (set false to copy)',
+            default: true
+          },
+          tags: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'Tags for set action'
+          },
+          environment: { type: 'string', description: 'Environment name', default: 'dev' },
+          project: { type: 'string', description: 'Project name' },
+          service: { type: 'string', description: 'Service name for monorepo operations' },
+          shared: {
+            type: 'boolean',
+            description: 'Set as shared variable (applies to service-wide scope)',
+            default: false
+          },
+          sensitive: {
+            type: 'boolean',
+            description: 'Mark value as sensitive (secret)',
+            default: false
+          }
+        },
+        required: ['action', 'key']
+      }
+    },
+    {
+      name: 'vaulter_delete',
+      description: 'Delete an environment variable from the backend',
+      inputSchema: {
+    {
       name: 'vaulter_set',
       description: 'Set an environment variable in the backend (encrypted). Applies scope-policy checks and optional value guardrails before write.',
       inputSchema: {

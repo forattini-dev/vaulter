@@ -223,9 +223,9 @@ if (diagnosis.summary.warn > 0) {
 
 ---
 
-## Tools Reference (58)
+## Tools Reference (59)
 
-### Core Operations (5)
+### Core Operations (6)
 
 #### `vaulter_get`
 Get a single environment variable value.
@@ -255,6 +255,33 @@ Notes:
 - In `strict` policy mode, this command is blocked when policy is violated.
 - Validates value guardrails (URLs, placeholders, sensitive-key naming, encoding hints) before writing.
 - Set `VAULTER_VALUE_GUARDRAILS=warn` (default), `off`, or `strict` to change behavior.
+
+#### `vaulter_change`
+High-level mutation helper for AI workflows (`set`, `delete`, `move`).
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `action` | string | **Yes** | - | `set`, `delete`, or `move` |
+| `key` | string | **Yes** | - | Variable name |
+| `value` | string | No | - | Required when `action=set` |
+| `from` | string | No | - | Required when `action=move` (`shared` or `service:<name>`) |
+| `to` | string | No | - | Required when `action=move` (`shared` or `service:<name>`) |
+| `overwrite` | boolean | No | `false` | Overwrite destination when moving |
+| `deleteOriginal` | boolean | No | `true` | Delete source after move |
+| `environment` | string | No | `dev` | Environment name |
+| `project` | string | No | auto | Project name |
+| `service` | string | No | - | Service name |
+| `shared` | boolean | No | `false` | Set as shared variable |
+| `sensitive` | boolean | No | `false` | Mark value as sensitive |
+| `tags` | string[] | No | - | Tags for set |
+
+Examples:
+
+```json
+{ "action": "set", "key": "NODE_ENV", "value": "production", "environment": "prod" }
+{ "action": "delete", "key": "OLD_TOKEN", "environment": "dev", "project": "my-app" }
+{ "action": "move", "key": "MAILGUN_API_KEY", "from": "shared", "to": "service:api", "environment": "dev" }
+```
 
 #### `vaulter_delete`
 Delete an environment variable.

@@ -31,6 +31,9 @@ vaulter init                                          # Initialize project
 vaulter key generate --name master                    # Generate encryption key
 vaulter var set DATABASE_URL="postgres://..." -e dev  # Set secret
 vaulter var set PORT::3000 -e dev                     # Set config (plain)
+vaulter change set NODE_ENV=local -e dev              # New high-level mutation path
+vaulter change move API_KEY --from shared --to api -e dev # Move variable to service
+vaulter plan merge -e dev                             # Alias for release plan
 eval $(vaulter export shell -e dev)                   # Export to shell
 ```
 
@@ -298,6 +301,9 @@ See [docs/DOCTOR.md](docs/DOCTOR.md) for complete guide.
 
 | Command | Description |
 |:--------|:------------|
+| `change set KEY=val -e <env>` | Set variable (secret/config/typed) |
+| `change delete <key> -e <env>` | Delete variable |
+| `change move <key> --from <scope> --to <scope> -e <env>` | Move/copy variable between scopes |
 | `var get <key> -e <env>` | Get a variable |
 | `var set KEY=val -e <env>` | Set secret (encrypted) |
 | `var set KEY::val -e <env>` | Set config (plain text) |
@@ -327,6 +333,8 @@ See [docs/DOCTOR.md](docs/DOCTOR.md) for complete guide.
 
 | Command | Description |
 |:--------|:------------|
+| `plan [merge\|push\|pull] -e <env>` | Alias for `release plan` |
+| `apply [merge\|push\|pull] -e <env>` | Alias for `release apply` |
 | `release plan [merge\|push\|pull] -e <env>` | Preview changes before applying |
 | `release apply [merge\|push\|pull] -e <env>` | Execute a plan (recommended after review) |
 | `release merge -e <env>` | Shortcut for `release apply merge` |
@@ -339,6 +347,7 @@ See [docs/DOCTOR.md](docs/DOCTOR.md) for complete guide.
 ### Recommended daily path
 
 - `vaulter local pull` → `vaulter local set` → `vaulter local push` (when ready)
+- `vaulter change set` → `vaulter change move` → `vaulter release plan -e <env>` → `vaulter release apply -e <env>`
 - `vaulter release plan -e <env>` → validate → `vaulter release apply -e <env>`
 - `vaulter release status -e <env>` before deploying or running high-impact changes
 
@@ -1317,7 +1326,7 @@ const result = await loadRuntime({
 
 ## MCP Server
 
-Claude AI integration via Model Context Protocol. **58 tools, 7 resources, 12 prompts.**
+Claude AI integration via Model Context Protocol. **59 tools, 7 resources, 12 prompts.**
 
 ```bash
 vaulter mcp
@@ -1336,11 +1345,11 @@ vaulter mcp
 }
 ```
 
-### Tools (58)
+### Tools (59)
 
 | Category | Tools |
 |:---------|:------|
-| **Core (5)** | `vaulter_get`, `vaulter_set`, `vaulter_delete`, `vaulter_list`, `vaulter_export` |
+| **Core (6)** | `vaulter_get`, `vaulter_set`, `vaulter_change`, `vaulter_delete`, `vaulter_list`, `vaulter_export` |
 | **Batch (3)** | `vaulter_multi_get`, `vaulter_multi_set`, `vaulter_multi_delete` |
 | **Sync (4)** | `vaulter_pull`, `vaulter_push`, `vaulter_sync_plan`, `vaulter_release` |
 | **Analysis (2)** | `vaulter_compare`, `vaulter_search` |
