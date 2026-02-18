@@ -1095,7 +1095,7 @@ Restore a snapshot to the backend. Verifies SHA256 integrity before restoring. I
 ### Diagnostic Tools (3)
 
 #### `vaulter_doctor`
-**⭐ CRITICAL: Call this FIRST at the start of a new session (or when operations fail / environments change)** to diagnose vaulter health. Performs **17 comprehensive checks** and returns actionable diagnostics.
+**⭐ CRITICAL: Call this FIRST at the start of a new session (or when operations fail / environments change)** to diagnose vaulter health. Performs **18 comprehensive checks** and returns actionable diagnostics.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
@@ -1105,7 +1105,7 @@ Restore a snapshot to the backend. Verifies SHA256 integrity before restoring. I
 | `format` | string | No | `text` | Output format (`text` or `json`) |
 | `timeout_ms` | number | No | 30000 | Override timeout (useful for slow backends) |
 
-**17 Checks Performed:**
+**18 Checks Performed:**
 
 **Basic Checks (1-9):**
 1. ✅ Config file exists

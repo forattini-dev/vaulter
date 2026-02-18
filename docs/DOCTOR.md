@@ -9,7 +9,8 @@ O `vaulter doctor` é uma ferramenta de diagnóstico completa que executa **até
 vaulter doctor -e dev
 
 # MCP Tool
-vaulter_doctor environment="dev"
+vaulter_doctor environment="dev" format="text"
+vaulter_doctor environment="dev" format="json"  # saída estruturada para automação/IA
 
 # Com service (monorepo)
 vaulter doctor -e dev -s api
@@ -353,7 +354,29 @@ Sugestões de tunning quando o ambiente permite:
 
 ---
 
-## Output Completo - Exemplo
+## `format: "json"` (machine-readable)
+
+Com `format: "json"`, a saída retorna um objeto estruturado com:
+`project`, `service`, `environment`, `backend`, `encryption`, `environments`, `checks`, `summary`, `risk`, `suggestions`.
+
+```json
+{
+  "project": "myproject",
+  "service": "svc-api",
+  "environment": "dev",
+  "configPath": "/project/.vaulter/config.yaml",
+  "backend": { "urls": ["s3://..."], "type": "remote" },
+  "encryption": { "mode": "symmetric", "keyFound": true, "source": "env:VAULTER_KEY_DEV" },
+  "environments": { "dev": { "varsCount": 120, "isEmpty": false } },
+  "services": ["svc-api", "svc-web"],
+  "checks": [{ "name": "config", "status": "ok", "details": "found at /project/.vaulter/config.yaml" }],
+  "summary": { "ok": 13, "warn": 1, "fail": 1, "skip": 0, "healthy": false },
+  "risk": { "score": 30, "level": "medium", "reasons": ["sync-status mismatch"] },
+  "suggestions": ["Add .env files to .gitignore immediately", "Run \"vaulter sync diff -e dev --values\" to see details"]
+}
+```
+
+## Output Completo - Exemplo (texto)
 
 ```
 # Vaulter Doctor Report
