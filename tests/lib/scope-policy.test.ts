@@ -7,6 +7,7 @@ import {
   parseScopeSpec,
   getScopeLabelFromParsed,
   getScopePolicyMode,
+  resolveScopePolicy,
   resolveTargetScope,
   checkScopePolicy,
   formatScopePolicyMessage,
@@ -50,6 +51,48 @@ describe('scope-policy', () => {
     expect(getScopePolicyMode('1')).toBe('strict')
     expect(getScopePolicyMode('false')).toBe('off')
     expect(getScopePolicyMode(undefined)).toBe('warn')
+  })
+
+  it('should resolve default and custom scope policy rules', () => {
+    const policy = resolveScopePolicy({
+      mode: 'warn',
+      inherit_defaults: true,
+      rules: [
+        {
+          pattern: '^CUSTOM_SECRET_',
+          expected_scope: 'service',
+          expected_service: 'svc-secret-manager',
+          reason: 'custom secret policy'
+        }
+      ]
+    })
+
+    expect(policy.policyMode).toBe('warn')
+    expect(policy.rules).toHaveLength(4)
+    expect(policy.rules.map((rule) => rule.name)).toEqual(
+      expect.arrayContaining(['mailgun-service-owned', 'github-service-owned', 'svc-url-shared-default', 'custom-CUSTOM_SECRET_'])
+    )
+  })
+
+  it('should invalidate bad custom policy rules and report warnings', () => {
+    const policy = resolveScopePolicy({
+      mode: 'warn',
+      rules: [
+        {
+          pattern: '(',
+          expected_scope: 'service',
+          expected_service: 'svc-x'
+        },
+        {
+          pattern: '^BROKEN_',
+          expected_scope: 'service',
+          // expected_service intentionally omitted on purpose to validate warning path
+        } as unknown as { pattern: string; expected_scope: string }
+      ]
+    })
+
+    expect(policy.warnings).toHaveLength(2)
+    expect(policy.rules).toHaveLength(0)
   })
 
   it('should detect off mode with no warnings', () => {

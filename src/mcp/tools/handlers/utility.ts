@@ -12,11 +12,57 @@ import {
   formatScopePolicySummary,
   getScopeLabelFromParsed,
   hasBlockingPolicyIssues,
-  parseScopeSpec
+  parseScopeSpec,
+  resolveScopePolicy
 } from '../../../lib/scope-policy.js'
 import { compileGlobPatterns } from '../../../lib/pattern-matcher.js'
-import type { Environment } from '../../../types.js'
+import type { Environment, EnvVar, VaulterConfig } from '../../../types.js'
 import type { ToolResponse } from '../config.js'
+
+interface VariableSnapshot {
+  existed: boolean
+  value: string
+  tags?: string[]
+  sensitive?: boolean
+  metadata?: EnvVar['metadata']
+}
+
+function snapshotVariable(variable: EnvVar | null): VariableSnapshot | undefined {
+  if (!variable) return undefined
+
+  return {
+    existed: true,
+    value: variable.value,
+    tags: variable.tags ? [...variable.tags] : undefined,
+    sensitive: variable.sensitive,
+    metadata: variable.metadata ? { ...variable.metadata } : undefined
+  }
+}
+
+async function restoreVariable(
+  client: VaulterClient,
+  key: string,
+  project: string,
+  environment: Environment,
+  service: string,
+  snapshot: VariableSnapshot | undefined
+): Promise<void> {
+  if (!snapshot || !snapshot.existed) {
+    await client.delete(key, project, environment, service)
+    return
+  }
+
+  await client.set({
+    key,
+    value: snapshot.value,
+    project,
+    environment,
+    service,
+    tags: snapshot.tags,
+    sensitive: snapshot.sensitive,
+    metadata: snapshot.metadata
+  })
+}
 
 /**
  * Copy variables from one environment to another
@@ -146,23 +192,51 @@ export async function handleRenameCall(
     }
   }
 
-  // Set the new key with same value and metadata
-  await client.set({
-    key: newKey,
-    value: existing.value,
-    project,
-    environment,
-    service,
-    tags: existing.tags,
-    metadata: {
-      ...existing.metadata,
-      source: 'rename',
-      renamedFrom: oldKey
-    }
-  })
+  const sourceState = snapshotVariable(existing)
+  const targetState = snapshotVariable(newExists)
 
-  // Delete the old key
-  await client.delete(oldKey, project, environment, service)
+  try {
+    // Set the new key with same value and metadata
+    await client.set({
+      key: newKey,
+      value: existing.value,
+      project,
+      environment,
+      service: service || SHARED_SERVICE,
+      tags: existing.tags,
+      metadata: {
+        ...existing.metadata,
+        source: 'rename',
+        renamedFrom: oldKey
+      }
+    })
+
+    // Delete the old key
+    await client.delete(oldKey, project, environment, service || SHARED_SERVICE)
+  } catch (error) {
+    const rollbackErrors: string[] = []
+
+    try {
+      await restoreVariable(client, newKey, project, environment, service || SHARED_SERVICE, targetState)
+    } catch (rollbackError) {
+      rollbackErrors.push(`Destination rollback failed: ${(rollbackError as Error).message}`)
+    }
+
+    try {
+      await restoreVariable(client, oldKey, project, environment, service || SHARED_SERVICE, sourceState)
+    } catch (rollbackError) {
+      rollbackErrors.push(`Source rollback failed: ${(rollbackError as Error).message}`)
+    }
+
+    return {
+      content: [{
+        type: 'text',
+        text: rollbackErrors.length === 0
+          ? `Rename failed for ${oldKey}. Rolled back successfully.`
+          : `Rename failed for ${oldKey}. Rollback issues: ${rollbackErrors.join(' | ')}`
+      }]
+    }
+  }
 
   return {
     content: [{
@@ -180,6 +254,7 @@ export async function handlePromoteSharedCall(
   project: string,
   environment: Environment,
   _service: string | undefined, // Not used - we use fromService
+  config: VaulterConfig | null,
   args: Record<string, unknown>
 ): Promise<ToolResponse> {
   const key = args.key as string
@@ -208,24 +283,86 @@ export async function handlePromoteSharedCall(
     }
   }
 
-  // Set in shared scope
-  await client.set({
-    key,
-    value: existing.value,
-    project,
-    environment,
-    service: SHARED_SERVICE,
-    tags: existing.tags,
-    metadata: {
-      ...existing.metadata,
-      source: 'promote',
-      promotedFrom: fromService
-    }
+  const policy = resolveScopePolicy(config?.scope_policy)
+  const policyChecks = collectScopePolicyIssues([key], {
+    scope: 'shared',
+    service: undefined,
+    policyMode: policy.policyMode,
+    rules: policy.rules
   })
+  const policyIssues = policyChecks.flatMap((check) => check.issues)
 
-  // Delete from service scope if requested
-  if (deleteOriginal) {
-    await client.delete(key, project, environment, fromService)
+  if (policyIssues.length > 0) {
+    const policyBlocked = hasBlockingPolicyIssues(policyChecks)
+    const lines = ['⚠️ Scope policy check:']
+    lines.push(formatScopePolicySummary(policyIssues))
+    for (const warning of policy.warnings) {
+      lines.push(`⚠️ ${warning}`)
+    }
+
+    if (policyBlocked) {
+      lines.push('')
+      lines.push('Scope policy blocked this change.')
+      lines.push('Set VAULTER_SCOPE_POLICY=warn or VAULTER_SCOPE_POLICY=off to continue.')
+
+      return {
+        content: [{
+          type: 'text',
+          text: lines.join('\n')
+        }]
+      }
+    }
+  }
+
+  const sourceState = snapshotVariable(existing)
+  const targetState = snapshotVariable(sharedExists)
+
+  try {
+    // Set in shared scope
+    await client.set({
+      key,
+      value: existing.value,
+      project,
+      environment,
+      service: SHARED_SERVICE,
+      tags: existing.tags,
+      sensitive: existing.sensitive,
+      metadata: {
+        ...existing.metadata,
+        source: 'promote',
+        promotedFrom: fromService
+      }
+    })
+
+    // Delete from service scope if requested
+    if (deleteOriginal) {
+      await client.delete(key, project, environment, fromService)
+    }
+  } catch (error) {
+    const rollbackErrors: string[] = []
+
+    try {
+      await restoreVariable(client, key, project, environment, SHARED_SERVICE, targetState)
+    } catch (rollbackError) {
+      rollbackErrors.push(`Shared rollback failed: ${(rollbackError as Error).message}`)
+    }
+
+    if (deleteOriginal) {
+      try {
+        await restoreVariable(client, key, project, environment, fromService, sourceState)
+      } catch (rollbackError) {
+        rollbackErrors.push(`Service rollback failed: ${(rollbackError as Error).message}`)
+      }
+    }
+
+    return {
+      content: [{
+        type: 'text',
+        text: rollbackErrors.length === 0
+          ? `Promote failed for ${key}. Rolled back successfully.`
+          : `Promote failed for ${key}. Rollback issues: ${rollbackErrors.join(' | ')}`
+      }]
+    }
   }
 
   const action = deleteOriginal ? 'Promoted (moved)' : 'Promoted (copied)'
@@ -245,6 +382,7 @@ export async function handleDemoteSharedCall(
   project: string,
   environment: Environment,
   _service: string | undefined, // Not used - we use toService
+  config: VaulterConfig | null,
   args: Record<string, unknown>
 ): Promise<ToolResponse> {
   const key = args.key as string
@@ -273,24 +411,86 @@ export async function handleDemoteSharedCall(
     }
   }
 
-  // Set in service scope
-  await client.set({
-    key,
-    value: existing.value,
-    project,
-    environment,
+  const policy = resolveScopePolicy(config?.scope_policy)
+  const policyChecks = collectScopePolicyIssues([key], {
+    scope: 'service',
     service: toService,
-    tags: existing.tags,
-    metadata: {
-      ...existing.metadata,
-      source: 'demote',
-      demotedTo: toService
-    }
+    policyMode: policy.policyMode,
+    rules: policy.rules
   })
+  const policyIssues = policyChecks.flatMap((check) => check.issues)
 
-  // Delete from shared scope if requested
-  if (deleteShared) {
-    await client.delete(key, project, environment, SHARED_SERVICE)
+  if (policyIssues.length > 0) {
+    const policyBlocked = hasBlockingPolicyIssues(policyChecks)
+    const lines = ['⚠️ Scope policy check:']
+    lines.push(formatScopePolicySummary(policyIssues))
+    for (const warning of policy.warnings) {
+      lines.push(`⚠️ ${warning}`)
+    }
+
+    if (policyBlocked) {
+      lines.push('')
+      lines.push('Scope policy blocked this change.')
+      lines.push('Set VAULTER_SCOPE_POLICY=warn or VAULTER_SCOPE_POLICY=off to continue.')
+
+      return {
+        content: [{
+          type: 'text',
+          text: lines.join('\n')
+        }]
+      }
+    }
+  }
+
+  const sourceState = snapshotVariable(existing)
+  const targetState = snapshotVariable(serviceExists)
+
+  try {
+    // Set in service scope
+    await client.set({
+      key,
+      value: existing.value,
+      project,
+      environment,
+      service: toService,
+      tags: existing.tags,
+      sensitive: existing.sensitive,
+      metadata: {
+        ...existing.metadata,
+        source: 'demote',
+        demotedTo: toService
+      }
+    })
+
+    // Delete from shared scope if requested
+    if (deleteShared) {
+      await client.delete(key, project, environment, SHARED_SERVICE)
+    }
+  } catch (error) {
+    const rollbackErrors: string[] = []
+
+    try {
+      await restoreVariable(client, key, project, environment, toService, targetState)
+    } catch (rollbackError) {
+      rollbackErrors.push(`Service rollback failed: ${(rollbackError as Error).message}`)
+    }
+
+    if (deleteShared) {
+      try {
+        await restoreVariable(client, key, project, environment, SHARED_SERVICE, sourceState)
+      } catch (rollbackError) {
+        rollbackErrors.push(`Shared rollback failed: ${(rollbackError as Error).message}`)
+      }
+    }
+
+    return {
+      content: [{
+        type: 'text',
+        text: rollbackErrors.length === 0
+          ? `Demote failed for ${key}. Rolled back successfully.`
+          : `Demote failed for ${key}. Rollback issues: ${rollbackErrors.join(' | ')}`
+      }]
+    }
   }
 
   const action = deleteShared ? 'Demoted (moved)' : 'Demoted (copied)'
@@ -310,6 +510,7 @@ export async function handleMoveCall(
   project: string,
   environment: Environment,
   _service: string | undefined, // Not used - source is explicit via --from
+  config: VaulterConfig | null,
   args: Record<string, unknown>
 ): Promise<ToolResponse> {
   const key = args.key as string
@@ -373,11 +574,14 @@ export async function handleMoveCall(
   const targetService = toScope.mode === 'shared' ? SHARED_SERVICE : toScope.service
   const sourceLabel = getScopeLabelFromParsed(fromScope)
   const targetLabel = getScopeLabelFromParsed(toScope)
+  const policy = resolveScopePolicy(config?.scope_policy)
 
   // Validate destination scope policy before mutating
   const policyChecks = collectScopePolicyIssues([key], {
     scope: toScope.mode,
-    service: toScope.service
+    service: toScope.service,
+    policyMode: policy.policyMode,
+    rules: policy.rules
   })
   const policyIssues = policyChecks.flatMap((check) => check.issues)
   if (policyIssues.length > 0) {
@@ -386,6 +590,9 @@ export async function handleMoveCall(
       `⚠️ Scope policy check for ${key}:`,
       formatScopePolicySummary(policyIssues)
     ]
+    for (const warning of policy.warnings) {
+      lines.push(`⚠️ ${warning}`)
+    }
 
     if (policyBlocked) {
       lines.push('')
@@ -432,28 +639,57 @@ export async function handleMoveCall(
     }
   }
 
-  const destinationVar = sourceVar
   const policyHint = deleteOriginal ? 'Moved' : 'Copied'
+  const sourceState = snapshotVariable(sourceVar)
+  const targetState = snapshotVariable(existingTarget)
+  const now = new Date().toISOString()
 
-  await client.set({
-    key,
-    value: destinationVar.value,
-    project,
-    environment,
-    service: targetService,
-    tags: destinationVar.tags,
-    sensitive: destinationVar.sensitive,
-    metadata: {
-      ...(destinationVar.metadata || {}),
-      source: 'mcp',
-      movedFrom: sourceLabel,
-      movedTo: targetLabel,
-      movedAt: new Date().toISOString()
+  try {
+    await client.set({
+      key,
+      value: sourceVar.value,
+      project,
+      environment,
+      service: targetService,
+      tags: sourceVar.tags,
+      sensitive: sourceVar.sensitive,
+      metadata: {
+        ...(sourceVar.metadata || {}),
+        source: 'mcp',
+        movedFrom: sourceLabel,
+        movedTo: targetLabel,
+        movedAt: now
+      }
+    })
+
+    if (deleteOriginal) {
+      await client.delete(key, project, environment, sourceService)
     }
-  })
+  } catch (error) {
+    const rollbackErrors: string[] = []
 
-  if (deleteOriginal) {
-    await client.delete(key, project, environment, sourceService)
+    try {
+      await restoreVariable(client, key, project, environment, targetService, targetState)
+    } catch (rollbackError) {
+      rollbackErrors.push(`Destination rollback failed: ${(rollbackError as Error).message}`)
+    }
+
+    try {
+      await restoreVariable(client, key, project, environment, sourceService, sourceState)
+    } catch (rollbackError) {
+      rollbackErrors.push(`Source restore failed: ${(rollbackError as Error).message}`)
+    }
+
+    const message = rollbackErrors.length > 0
+      ? `Move failed for ${key}: ${(error as Error).message}. Rollback issues: ${rollbackErrors.join(' | ')}`
+      : `Move failed for ${key}: ${(error as Error).message}`
+
+    return {
+      content: [{
+        type: 'text',
+        text: message
+      }]
+    }
   }
 
   return {

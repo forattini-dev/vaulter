@@ -12,7 +12,10 @@ import {
   getEnvFilePath,
   getEnvFilePathForConfig
 } from '../../../lib/config-loader.js'
+import { isMonorepoFromConfig } from '../../../lib/monorepo.js'
+import { checkValuesForEncoding } from '../../../lib/encoding-detection.js'
 import { parseEnvFile, serializeEnv } from '../../../lib/env-parser.js'
+import { evaluateWriteGuard, formatWriteGuardLines } from '../../../lib/write-guard.js'
 import type { VaulterConfig, Environment } from '../../../types.js'
 import type { ToolResponse } from '../config.js'
 
@@ -76,10 +79,27 @@ export async function handlePushCall(
   }
 
   const localVars = parseEnvFile(inputPath)
+  const localKeys = Object.keys(localVars)
+  const effectiveService = service
+  const hasMonorepo = isMonorepoFromConfig(config)
+
+  const remoteList = await client.list({
+    project,
+    environment,
+    service: effectiveService
+  })
+
+  const remoteVars: Record<string, string> = {}
+  const remoteSensitivity = new Map<string, boolean>()
+  for (const item of remoteList) {
+    remoteVars[item.key] = item.value
+    if (item.sensitive !== undefined) {
+      remoteSensitivity.set(item.key, !!item.sensitive)
+    }
+  }
 
   // Dry run mode - preview changes without applying
   if (dryRun) {
-    const remoteVars = await client.export(project, environment, service)
     const toAdd: string[] = []
     const toUpdate: string[] = []
 
@@ -101,12 +121,55 @@ export async function handlePushCall(
     return { content: [{ type: 'text', text: lines.join('\n') }] }
   }
 
-  const result = await client.sync(localVars, project, environment, service, { source: 'sync' })
+  const writeInputs = localKeys.map((key) => ({
+    key,
+    value: localVars[key],
+    sensitive: remoteSensitivity.get(key)
+  }))
+  const targetScope: 'shared' | 'service' = hasMonorepo && !effectiveService ? 'shared' : 'service'
+  const scopeGuard = evaluateWriteGuard({
+    variables: writeInputs,
+    targetScope,
+    targetService: targetScope === 'service' ? effectiveService : undefined,
+    config,
+    environment,
+    policyMode: process.env.VAULTER_SCOPE_POLICY,
+    guardrailMode: process.env.VAULTER_VALUE_GUARDRAILS
+  })
+  const guardWarnings = formatWriteGuardLines(scopeGuard)
+  const encodingWarnings = checkValuesForEncoding(writeInputs).map((item) => ({
+    key: item.key,
+    message: item.result.message
+  }))
+
+  if (scopeGuard.blocked) {
+    return { content: [{ type: 'text', text: ['Sync blocked by validation rules:', ...guardWarnings, '', 'Set VAULTER_SCOPE_POLICY=warn or VAULTER_SCOPE_POLICY=off to continue.', 'Set VAULTER_VALUE_GUARDRAILS=warn or VAULTER_VALUE_GUARDRAILS=off to continue.'].join('\n') }] }
+  }
+
+  const toSet = localKeys.map((key) => ({
+    key,
+    value: localVars[key],
+    project,
+    environment,
+    service: effectiveService,
+    sensitive: remoteSensitivity.get(key),
+    metadata: { source: 'sync' }
+  }))
+
+  await client.setMany(toSet, { preserveMetadata: true })
 
   return {
     content: [{
       type: 'text',
-      text: `✓ Pushed ${Object.keys(localVars).length} variables from ${inputPath}\n  Added: ${result.added.length}, Updated: ${result.updated.length}`
+      text: [
+        `✓ Synced ${localKeys.length} variables from ${inputPath}`,
+        ...(guardWarnings.length > 0
+          ? ['⚠ Validation warnings:', ...guardWarnings.map((line) => `- ${line}`)]
+          : []),
+        ...(encodingWarnings.length > 0
+          ? ['⚠ Encoding warnings:', ...encodingWarnings.map((item) => `- ${item.key}: ${item.message}`)]
+          : [])
+      ].join('\n')
     }]
   }
 }

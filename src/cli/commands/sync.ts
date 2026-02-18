@@ -13,6 +13,7 @@ import { withClient } from '../lib/create-client.js'
 import { findConfigDir, getEnvFilePathForConfig } from '../../lib/config-loader.js'
 import { parseEnvFile, hasStdinData, parseEnvFromStdin, serializeEnv } from '../../lib/env-parser.js'
 import { compileGlobPatterns } from '../../lib/pattern-matcher.js'
+import { isMonorepoFromConfig } from '../../lib/monorepo.js'
 import {
   discoverServices,
   filterServices,
@@ -21,6 +22,8 @@ import {
   type ServiceInfo
 } from '../../lib/monorepo.js'
 import { runBatch, formatBatchResult, formatBatchResultJson } from '../../lib/batch-runner.js'
+import { evaluateWriteGuard, formatWriteGuardLines } from '../../lib/write-guard.js'
+import { checkValuesForEncoding } from '../../lib/encoding-detection.js'
 import { createConnectedAuditLogger, logSyncOperation, disconnectAuditLogger } from '../lib/audit-helper.js'
 import * as ui from '../ui.js'
 import { c, print } from '../lib/colors.js'
@@ -45,18 +48,88 @@ function isProdEnvironment(env: Environment): boolean {
   return env === 'prd' || env === 'dr'
 }
 
+interface SyncGuardResult {
+  warnings: string[]
+  encodingWarnings: Array<{ key: string; message: string }>
+  blocked: boolean
+  blockedMessage?: string
+}
+
+function evaluateSyncGuards(params: {
+  keys: string[]
+  values: Record<string, string>
+  targetService: string | undefined
+  environment: Environment
+  config: VaulterConfig | null
+  remoteSensitivity: Map<string, boolean>
+  hasMonorepo: boolean
+}): SyncGuardResult {
+  const { keys, values, targetService, environment, config, remoteSensitivity, hasMonorepo } = params
+
+  if (keys.length === 0) {
+    return { warnings: [], encodingWarnings: [], blocked: false }
+  }
+
+  const writeInputs = keys.map((key) => ({
+    key,
+    value: values[key],
+    sensitive: remoteSensitivity.get(key)
+  }))
+
+  const targetScope: 'shared' | 'service' = hasMonorepo && !targetService ? 'shared' : 'service'
+
+  const guard = evaluateWriteGuard({
+    variables: writeInputs,
+    targetScope,
+    targetService: targetScope === 'service' ? targetService : undefined,
+    environment,
+    config,
+    policyMode: process.env.VAULTER_SCOPE_POLICY,
+    guardrailMode: process.env.VAULTER_VALUE_GUARDRAILS
+  })
+
+  const warnings = formatWriteGuardLines(guard)
+  const encodingWarnings = checkValuesForEncoding(writeInputs).map((item) => ({
+    key: item.key,
+    message: item.result.message
+  }))
+
+  if (!guard.blocked) {
+    return { warnings, encodingWarnings, blocked: false }
+  }
+
+  const blockedMessage = [
+    'Sync blocked by validation rules.',
+    ...warnings,
+    '',
+    'Set VAULTER_SCOPE_POLICY=warn or VAULTER_SCOPE_POLICY=off to continue.',
+    'Set VAULTER_VALUE_GUARDRAILS=warn or VAULTER_VALUE_GUARDRAILS=off to continue.'
+  ].join('\n')
+
+  return {
+    warnings,
+    encodingWarnings,
+    blocked: true,
+    blockedMessage
+  }
+}
+
+interface GuardedSyncResult extends SyncResult {
+  guardWarnings: string[]
+  encodingWarnings: Array<{ key: string; message: string }>
+}
+
 /**
  * Run sync for a single service
  */
 async function syncSingleService(
   context: SyncContext,
   serviceInfo?: ServiceInfo
-): Promise<SyncResult> {
+): Promise<GuardedSyncResult> {
   const { args, config, project, service, environment, verbose, dryRun, strategy } = context
 
   // Use service info if provided (batch mode)
   const effectiveConfig = serviceInfo?.config || config
-  const effectiveProject = serviceInfo?.config.project || project
   const effectiveService = serviceInfo?.name || service
   const syncConfig = effectiveConfig?.sync
   // CLI --strategy overrides config
@@ -64,6 +137,7 @@ async function syncSingleService(
   const ignorePatterns = syncConfig?.ignore || []
   const requiredKeys = syncConfig?.required?.[environment] || []
   const isIgnored = compileGlobPatterns(ignorePatterns)
+  const hasMonorepo = isMonorepoFromConfig(effectiveConfig)
 
   // Determine source of variables
   // Priority: explicit file (-f/--file) > stdin > default path
@@ -91,7 +165,7 @@ async function syncSingleService(
     // Default path depends on directories.mode:
     // - unified: .vaulter/environments/<env>.env
     // - split: deploy/secrets/<env>.env
-    const configDir = serviceInfo?.configDir || findConfigDir()
+    const configDir = findConfigDir()
     if (!configDir) {
       throw new Error('No config directory found and no file specified')
     }
@@ -109,11 +183,24 @@ async function syncSingleService(
 
   ui.verbose(`Found ${Object.keys(localVars).length} local variables`, verbose)
 
-  const auditLogger = await createConnectedAuditLogger(effectiveConfig, effectiveProject, environment, verbose)
+  const auditLogger = await createConnectedAuditLogger(effectiveConfig, project, environment, verbose)
 
   try {
-    return await withClient({ args, config: effectiveConfig, project: effectiveProject, verbose }, async (client) => {
-      const remoteVars = await client.export(effectiveProject, environment, effectiveService)
+    return await withClient({ args, config: effectiveConfig, project, verbose }, async (client) => {
+      const remoteList = await client.list({
+        project,
+        environment,
+        service: effectiveService
+      })
+
+      const remoteVars: Record<string, string> = {}
+      const remoteSensitivity = new Map<string, boolean>()
+      for (const item of remoteList) {
+        remoteVars[item.key] = item.value
+        if (item.sensitive !== undefined) {
+          remoteSensitivity.set(item.key, !!item.sensitive)
+        }
+      }
 
       const mergedVars = { ...localVars }
       const syncVars: Record<string, string> = {}
@@ -177,6 +264,7 @@ async function syncSingleService(
             syncVars[key] = remoteValue
             continue
           }
+
           mergedVars[key] = remoteValue
           localAdded.push(key)
           syncVars[key] = remoteValue
@@ -184,16 +272,14 @@ async function syncSingleService(
       }
 
       // Check for blocking conflicts first (before required check)
-      // This prevents "missing required" errors for keys that are actually in conflict
       const isBlockingConflict = conflictMode === 'error' && conflicts.length > 0
-
       if (isBlockingConflict && !dryRun) {
         const conflictKeyNames = conflicts.map(c => c.key).join(', ')
         throw new Error(`Sync conflicts detected: ${conflictKeyNames}`)
       }
 
       // Now check for missing required keys
-      // Exclude keys that are in conflicts (they exist but have value mismatches)
+      // Exclude keys that are in conflicts (they exist but differ)
       const conflictKeySet = new Set(conflicts.map(c => c.key))
       const missingRequired = requiredKeys
         .filter(key => !isIgnored(key))
@@ -203,28 +289,48 @@ async function syncSingleService(
         throw new Error(`Missing required keys for ${environment}: ${missingRequired.join(', ')}`)
       }
 
+      const toSetKeys = [...added, ...updated]
+      const guard = evaluateSyncGuards({
+        keys: toSetKeys,
+        values: syncVars,
+        targetService: effectiveService,
+        environment,
+        config: effectiveConfig,
+        remoteSensitivity,
+        hasMonorepo
+      })
+
+      if (guard.blocked) {
+        throw new Error(guard.blockedMessage || 'Sync blocked by validation.')
+      }
+
       if (!dryRun) {
         if (canUpdateLocal && envFilePath && (localAdded.length > 0 || localUpdated.length > 0)) {
           const envContent = serializeEnv(mergedVars)
           fs.writeFileSync(envFilePath, envContent + '\n')
         }
 
-        for (const key of [...added, ...updated]) {
-          await client.set({
+        if (toSetKeys.length > 0) {
+          const setInputs = toSetKeys.map((key) => ({
             key,
             value: syncVars[key],
-            project: effectiveProject,
+            project,
             environment,
             service: effectiveService,
+            sensitive: remoteSensitivity.get(key),
             metadata: {
               source: 'sync'
             }
-          })
+          }))
+
+          await client.setMany(setInputs, { preserveMetadata: true })
         }
+
+        // Sync does not delete remote keys by design (unless caller uses --prune elsewhere)
 
         // Log to audit trail
         await logSyncOperation(auditLogger, {
-          project: effectiveProject,
+          project,
           environment,
           service: effectiveService,
           added,
@@ -241,7 +347,10 @@ async function syncSingleService(
         unchanged,
         conflicts,
         localAdded,
-        localUpdated
+        localUpdated,
+        localDeleted: [],
+        guardWarnings: guard.warnings,
+        encodingWarnings: guard.encodingWarnings
       }
     })
   } finally {
@@ -255,7 +364,6 @@ async function syncSingleService(
 export async function runSync(context: SyncContext): Promise<void> {
   const { args, config, project, service, environment, dryRun, jsonOutput } = context
 
-  // Check for batch mode (--all or multiple services with -s)
   const allServices = args.all
   const serviceFilter = args.service
 
@@ -280,9 +388,12 @@ export async function runSync(context: SyncContext): Promise<void> {
   try {
     const result = await syncSingleService(context)
 
+    const warnLines = result.guardWarnings || []
+    const encodingWarnings = result.encodingWarnings || []
+
     if (jsonOutput) {
       ui.output(JSON.stringify({
-        success: true,
+        success: !warnLines.some(Boolean),
         dryRun,
         project,
         service,
@@ -294,7 +405,10 @@ export async function runSync(context: SyncContext): Promise<void> {
         conflicts: result.conflicts,
         localAdded: result.localAdded || [],
         localUpdated: result.localUpdated || [],
-        localDeleted: result.localDeleted || []
+        localDeleted: result.localDeleted || [],
+        guardWarnings: warnLines,
+        encodingWarnings,
+        block: false
       }))
     } else if (dryRun) {
       ui.log('Dry run - changes that would be made:')
@@ -314,7 +428,7 @@ export async function runSync(context: SyncContext): Promise<void> {
         ui.log(`  Unchanged: ${result.unchanged.length} variables`)
       }
       if (result.conflicts.length > 0) {
-        ui.log(`  Conflicts (${result.conflicts.length}): ${result.conflicts.map(conf => conf.key).join(', ')}`)
+        ui.log(`  Conflicts (${result.conflicts.length}): ${result.conflicts.map((conf) => conf.key).join(', ')}`)
       }
       if (
         result.added.length === 0 &&
@@ -323,6 +437,21 @@ export async function runSync(context: SyncContext): Promise<void> {
         (result.localUpdated || []).length === 0
       ) {
         ui.log('  No changes needed')
+      }
+
+      if (warnLines.length > 0) {
+        ui.log(c.warning('Validation warnings:'))
+        for (const line of warnLines) {
+          ui.log(`  ${line}`)
+        }
+        ui.log(c.muted('Set VAULTER_SCOPE_POLICY=warn/off and VAULTER_VALUE_GUARDRAILS=warn/off to continue.'))
+      }
+
+      if (encodingWarnings.length > 0) {
+        ui.log(c.warning('Encoding warnings:'))
+        for (const item of encodingWarnings) {
+          ui.log(`  ${item.key}: ${item.message}`)
+        }
       }
     } else {
       ui.success(`Synced ${c.project(project)}/${environment}`)
@@ -342,7 +471,22 @@ export async function runSync(context: SyncContext): Promise<void> {
         ui.log(`  Unchanged: ${result.unchanged.length}`)
       }
       if (result.conflicts.length > 0) {
-        ui.log(`  Conflicts: ${result.conflicts.map(conf => conf.key).join(', ')}`)
+        ui.log(`  Conflicts: ${result.conflicts.map((conf) => conf.key).join(', ')}`)
+      }
+
+      if (warnLines.length > 0) {
+        ui.log(c.warning('Validation warnings:'))
+        for (const line of warnLines) {
+          ui.log(`  ${line}`)
+        }
+        ui.log(c.muted('Set VAULTER_SCOPE_POLICY=warn/off and VAULTER_VALUE_GUARDRAILS=warn/off to continue.'))
+      }
+
+      if (encodingWarnings.length > 0) {
+        ui.log(c.warning('Encoding warnings:'))
+        for (const item of encodingWarnings) {
+          ui.log(`  ${item.key}: ${item.message}`)
+        }
       }
     }
   } catch (err) {
@@ -394,17 +538,20 @@ async function runBatchSync(context: SyncContext): Promise<void> {
 
   // Production confirmation for batch
   if (isProdEnvironment(environment) && !args.force) {
-    print.error(`You are syncing ${services.length} services to ${environment} (production)`)
+    print.error(`You are syncing ${services.length} services to ${environment} (production)`) 
     ui.log(`Use ${c.highlight('--force')} to confirm this action`)
     process.exit(1)
   }
 
   // Run batch operation
-  const batchResult = await runBatch<SyncResult>(
+  const batchResult = await runBatch<GuardedSyncResult>(
     services,
     environment,
     async (service) => {
-      return syncSingleService({ ...context, config: service.config }, service)
+      const result = await syncSingleService({ ...context, config: service.config }, service)
+      return {
+        ...result
+      }
     },
     {
       onProgress: verbose ? (completed, total, current) => {
@@ -421,6 +568,7 @@ async function runBatchSync(context: SyncContext): Promise<void> {
       if (op.error) {
         return `✗ ${op.service.name}: ${op.error.message}`
       }
+
       const r = op.result!
       const remoteChanges = r.added.length + r.updated.length + r.deleted.length
       const localChanges = (r.localAdded?.length || 0) + (r.localUpdated?.length || 0) + (r.localDeleted?.length || 0)
@@ -432,7 +580,8 @@ async function runBatchSync(context: SyncContext): Promise<void> {
         parts.push(`local ${localChanges}`)
       }
       const summary = parts.length > 0 ? parts.join(', ') : 'no changes'
-      return `✓ ${op.service.name}: ${summary} (${op.duration}ms)`
+      const warningSuffix = (r.guardWarnings?.length || r.encodingWarnings?.length) ? ' ⚠ warnings' : ''
+      return `✓ ${op.service.name}: ${summary} (${op.duration}ms)${warningSuffix}`
     }))
   }
 

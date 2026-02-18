@@ -17,6 +17,8 @@ import { pushToBackend } from '../../lib/backend-sync.js'
 import { getEnvDir } from '../../lib/fs-store.js'
 import { c, colorEnv, print } from '../lib/colors.js'
 import { SHARED_SERVICE } from '../../lib/shared.js'
+import { checkValuesForEncoding } from '../../lib/encoding-detection.js'
+import { evaluateWriteGuard, formatWriteGuardLines } from '../../lib/write-guard.js'
 import * as ui from '../ui.js'
 
 export interface PushContext {
@@ -149,6 +151,44 @@ export async function runPush(context: PushContext): Promise<void> {
 
   ui.verbose(`Found ${c.value(String(varCount))} variables to push`, verbose)
 
+  const writeGuard = evaluateWriteGuard({
+    variables: Object.entries(localVars).map(([key, value]) => ({ key, value })),
+    targetScope: context.shared ? 'shared' : 'service',
+    targetService: context.shared ? undefined : effectiveService,
+    environment,
+    config,
+    policyMode: process.env.VAULTER_SCOPE_POLICY,
+    guardrailMode: process.env.VAULTER_VALUE_GUARDRAILS
+  })
+
+  const guardWarnings = formatWriteGuardLines(writeGuard)
+  const encodingWarnings = checkValuesForEncoding(
+    Object.entries(localVars).map(([key, value]) => ({ key, value }))
+  )
+
+  if (writeGuard.blocked) {
+    if (jsonOutput) {
+      ui.output(JSON.stringify({
+        success: false,
+        blocked: true,
+        project,
+        service: effectiveService,
+        environment,
+        shared: context.shared || false,
+        guardWarnings,
+        message: 'Write blocked by scope/value validation rules'
+      }))
+    } else {
+      print.error('Write blocked by validation.')
+      for (const line of guardWarnings) {
+        ui.log(`  ${line}`)
+      }
+      ui.log('Set VAULTER_SCOPE_POLICY=warn or VAULTER_SCOPE_POLICY=off to continue.')
+      ui.log('Set VAULTER_VALUE_GUARDRAILS=warn or VAULTER_VALUE_GUARDRAILS=off to continue.')
+    }
+    process.exit(1)
+  }
+
   const auditLogger = await createConnectedAuditLogger(config, project, environment, verbose)
 
   try {
@@ -190,11 +230,13 @@ export async function runPush(context: PushContext): Promise<void> {
             environment,
             shared: context.shared || false,
             prune: context.prune || false,
+            guardWarnings,
+            encodingWarnings: encodingWarnings.map(item => ({ key: item.key, message: item.result.message })),
             changes: {
               add: toAdd,
               update: toUpdate,
               delete: toDelete,
-              unchanged: unchanged
+              unchanged
             }
           }))
         } else {
@@ -214,7 +256,23 @@ export async function runPush(context: PushContext): Promise<void> {
           if (toAdd.length === 0 && toUpdate.length === 0 && toDelete.length === 0) {
             ui.log('  No changes needed')
           }
+
+          if (guardWarnings.length > 0) {
+            ui.log(c.warning('Validation warnings:'))
+            for (const line of guardWarnings) {
+              ui.log(`  ${line}`)
+            }
+            ui.log(c.muted('Set VAULTER_SCOPE_POLICY=warn/off and VAULTER_VALUE_GUARDRAILS=warn/off to continue.'))
+          }
+
+          if (encodingWarnings.length > 0) {
+            ui.log(c.warning('Encoding warnings:'))
+            for (const item of encodingWarnings) {
+              ui.log(`  ${item.key}: ${item.result.message}`)
+            }
+          }
         }
+
         return
       }
 
@@ -222,6 +280,15 @@ export async function runPush(context: PushContext): Promise<void> {
       const addedKeys: string[] = []
       const updatedKeys: string[] = []
       const deletedKeys: string[] = []
+      const toSet: Array<{
+        key: string
+        value: string
+        project: string
+        service?: string
+        environment: Environment
+        metadata: { source: 'sync' }
+      }> = []
+      const toDelete: string[] = []
 
       // Get remote vars to track what exists
       const remoteVars = await client.export(project, environment, effectiveService)
@@ -229,7 +296,7 @@ export async function runPush(context: PushContext): Promise<void> {
       for (const [key, value] of Object.entries(localVars)) {
         const existing = key in remoteVars
 
-        await client.set({
+        toSet.push({
           key,
           value,
           project,
@@ -247,15 +314,23 @@ export async function runPush(context: PushContext): Promise<void> {
         }
       }
 
+      if (toSet.length > 0) {
+        await client.setMany(toSet, { preserveMetadata: true })
+      }
+
       // If --prune is set, delete remote-only vars
       if (context.prune) {
         const localKeys = new Set(Object.keys(localVars))
         for (const remoteKey of Object.keys(remoteVars)) {
           if (!localKeys.has(remoteKey)) {
-            await client.delete(remoteKey, project, environment, effectiveService)
-            deletedKeys.push(remoteKey)
+            toDelete.push(remoteKey)
           }
         }
+      }
+
+      if (toDelete.length > 0) {
+        const deleteResult = await client.deleteManyByKeys(toDelete, project, environment, effectiveService)
+        deletedKeys.push(...deleteResult.deleted)
       }
 
       // Log to audit trail
@@ -279,10 +354,26 @@ export async function runPush(context: PushContext): Promise<void> {
           added: addedKeys.length,
           updated: updatedKeys.length,
           deleted: deletedKeys.length,
-          total: varCount
+          total: varCount,
+          guardWarnings,
+          encodingWarnings: encodingWarnings.map(item => ({ key: item.key, message: item.result.message }))
         }))
       } else {
         ui.success(`Pushed ${varCount} variables to ${project}/${environment}`)
+        if (guardWarnings.length > 0) {
+          ui.log(c.warning('Validation warnings:'))
+          for (const line of guardWarnings) {
+            ui.log(`  ${line}`)
+          }
+          ui.log(c.muted('Set VAULTER_SCOPE_POLICY=warn/off and VAULTER_VALUE_GUARDRAILS=warn/off to continue.'))
+        }
+
+        if (encodingWarnings.length > 0) {
+          ui.log(c.warning('Encoding warnings:'))
+          for (const item of encodingWarnings) {
+            ui.log(`  ${item.key}: ${item.result.message}`)
+          }
+        }
         if (addedKeys.length > 0) {
           ui.log(`  Added: ${addedKeys.length}`)
         }
@@ -333,7 +424,10 @@ async function runDirPush(context: PushContext, configDir: string): Promise<void
         vaulterDir: configDir,
         project,
         environment,
-        dryRun
+        dryRun,
+        config,
+        policyMode: process.env.VAULTER_SCOPE_POLICY,
+        guardrailMode: process.env.VAULTER_VALUE_GUARDRAILS
       })
 
       if (jsonOutput) {
@@ -342,6 +436,7 @@ async function runDirPush(context: PushContext, configDir: string): Promise<void
           dryRun,
           project,
           environment,
+          guardWarnings: result.guardWarnings,
           pushed: result.pushed,
           services: result.services,
           details: result.details
@@ -352,6 +447,13 @@ async function runDirPush(context: PushContext, configDir: string): Promise<void
         for (const [svc, counts] of Object.entries(result.details.services)) {
           ui.log(`  ${c.service(svc)}: ${counts.configs} configs, ${counts.secrets} secrets`)
         }
+        if (result.guardWarnings.length > 0) {
+          ui.log(c.warning('Validation warnings:'))
+          for (const line of result.guardWarnings) {
+            ui.log(`  ${line}`)
+          }
+          ui.log(c.muted('Set VAULTER_SCOPE_POLICY=warn/off and VAULTER_VALUE_GUARDRAILS=warn/off to continue.'))
+        }
         ui.log(`  ${c.muted('Total:')} ${result.pushed} variables`)
       } else {
         ui.success(`Pushed ${result.pushed} variables to ${project}/${environment}`)
@@ -359,6 +461,14 @@ async function runDirPush(context: PushContext, configDir: string): Promise<void
         for (const [svc, counts] of Object.entries(result.details.services)) {
           ui.log(`  ${c.service(svc)}: ${counts.configs} configs, ${counts.secrets} secrets`)
         }
+        if (result.guardWarnings.length > 0) {
+          ui.log(c.warning('Validation warnings:'))
+          for (const line of result.guardWarnings) {
+            ui.log(`  ${line}`)
+          }
+          ui.log(c.muted('Set VAULTER_SCOPE_POLICY=warn/off and VAULTER_VALUE_GUARDRAILS=warn/off to continue.'))
+        }
+        ui.log(`  ${c.muted('Total:')} ${result.pushed} variables`)
       }
     })
   } finally {

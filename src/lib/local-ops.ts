@@ -19,7 +19,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { mkdir, writeFile } from 'node:fs/promises'
 import type { VaulterClient } from '../client.js'
-import type { VaulterConfig, NormalizedOutputTarget } from '../types.js'
+import type { EnvVarInput, VaulterConfig, NormalizedOutputTarget } from '../types.js'
 import {
   normalizeOutputTargets,
   filterVarsByPatterns,
@@ -525,19 +525,19 @@ export async function runLocalPushAll(options: LocalPushAllOptions): Promise<Loc
     dryRun
   }
 
-  // 1. Push shared configs
+  // 1. Push shared configs and secrets
   const sharedConfigs = loadLocalSharedConfigs(configDir)
+  const pushInputs: EnvVarInput[] = []
+
   for (const [key, value] of Object.entries(sharedConfigs)) {
-    if (!dryRun) {
-      await client.set({
-        key,
-        value,
-        project: config.project,
-        environment: target,
-        service: SHARED_SERVICE,
-        sensitive: false
-      })
-    }
+    pushInputs.push({
+      key,
+      value,
+      project: config.project,
+      environment: target,
+      service: SHARED_SERVICE,
+      sensitive: false
+    })
     result.shared.configs++
     result.totalPushed++
   }
@@ -545,18 +545,20 @@ export async function runLocalPushAll(options: LocalPushAllOptions): Promise<Loc
   // 2. Push shared secrets
   const sharedSecrets = loadLocalSharedSecrets(configDir)
   for (const [key, value] of Object.entries(sharedSecrets)) {
-    if (!dryRun) {
-      await client.set({
-        key,
-        value,
-        project: config.project,
-        environment: target,
-        service: SHARED_SERVICE,
-        sensitive: true
-      })
-    }
+    pushInputs.push({
+      key,
+      value,
+      project: config.project,
+      environment: target,
+      service: SHARED_SERVICE,
+      sensitive: true
+    })
     result.shared.secrets++
     result.totalPushed++
+  }
+
+  if (!dryRun && pushInputs.length > 0) {
+    await client.setMany(pushInputs)
   }
 
   // 3. Find all services in .vaulter/local/services/
@@ -570,20 +572,19 @@ export async function runLocalPushAll(options: LocalPushAllOptions): Promise<Loc
 
     for (const service of serviceDirs) {
       result.services[service] = { configs: 0, secrets: 0 }
+      const serviceInputs: EnvVarInput[] = []
 
       // Push service configs
       const serviceConfigs = loadServiceConfigs(configDir, service)
       for (const [key, value] of Object.entries(serviceConfigs)) {
-        if (!dryRun) {
-          await client.set({
-            key,
-            value,
-            project: config.project,
-            environment: target,
-            service,
-            sensitive: false
-          })
-        }
+        serviceInputs.push({
+          key,
+          value,
+          project: config.project,
+          environment: target,
+          service,
+          sensitive: false
+        })
         result.services[service].configs++
         result.totalPushed++
       }
@@ -591,23 +592,27 @@ export async function runLocalPushAll(options: LocalPushAllOptions): Promise<Loc
       // Push service secrets
       const serviceSecrets = loadServiceSecrets(configDir, service)
       for (const [key, value] of Object.entries(serviceSecrets)) {
-        if (!dryRun) {
-          await client.set({
-            key,
-            value,
-            project: config.project,
-            environment: target,
-            service,
-            sensitive: true
-          })
-        }
+        serviceInputs.push({
+          key,
+          value,
+          project: config.project,
+          environment: target,
+          service,
+          sensitive: true
+        })
         result.services[service].secrets++
         result.totalPushed++
+      }
+
+      if (!dryRun && serviceInputs.length > 0) {
+        await client.setMany(serviceInputs)
       }
     }
   }
 
   // 4. If overwrite mode, delete backend vars that don't exist locally
+  const sharedDeleteCandidates: string[] = []
+  const serviceDeleteCandidates: Record<string, string[]> = {}
   if (overwrite) {
     // Build set of all local keys per scope
     const localSharedKeys = new Set([
@@ -638,33 +643,47 @@ export async function runLocalPushAll(options: LocalPushAllOptions): Promise<Loc
     // Find and delete vars that don't exist locally
     for (const v of backendVars) {
       const service = v.service
-      let shouldDelete = false
 
       if (service === SHARED_SERVICE || !service) {
         // Shared var (or no service in single-repo mode) - check if exists locally
         if (!localSharedKeys.has(v.key)) {
-          shouldDelete = true
-          result.deleted.shared.push(v.key)
+          sharedDeleteCandidates.push(v.key)
         }
       } else {
         // Service var - check if exists locally
         // If service doesn't exist locally at all, delete the var
         const localKeys = localServiceKeys[service]
         if (!localKeys || !localKeys.has(v.key)) {
-          shouldDelete = true
-          if (!result.deleted.services[service]) {
-            result.deleted.services[service] = []
+          if (!serviceDeleteCandidates[service]) {
+            serviceDeleteCandidates[service] = []
           }
-          result.deleted.services[service].push(v.key)
+          serviceDeleteCandidates[service].push(v.key)
         }
       }
+    }
+  }
 
-      if (shouldDelete) {
-        if (!dryRun) {
-          await client.delete(v.key, config.project, target, service)
-        }
-        result.totalDeleted++
-      }
+  if (!dryRun && overwrite) {
+    if (sharedDeleteCandidates.length > 0) {
+      const sharedDelete = await client.deleteManyByKeys(sharedDeleteCandidates, config.project, target, SHARED_SERVICE)
+      result.deleted.shared.push(...sharedDelete.deleted)
+      result.totalDeleted += sharedDelete.deleted.length
+    }
+
+    for (const [serviceName, keys] of Object.entries(serviceDeleteCandidates)) {
+      if (keys.length === 0) continue
+      const serviceDelete = await client.deleteManyByKeys(keys, config.project, target, serviceName)
+      result.deleted.services[serviceName] = [...serviceDelete.deleted]
+      result.totalDeleted += serviceDelete.deleted.length
+    }
+  }
+
+  if (dryRun && overwrite) {
+    result.deleted.shared = [...sharedDeleteCandidates]
+    result.totalDeleted = sharedDeleteCandidates.length
+    for (const [serviceName, keys] of Object.entries(serviceDeleteCandidates)) {
+      result.deleted.services[serviceName] = [...keys]
+      result.totalDeleted += keys.length
     }
   }
 

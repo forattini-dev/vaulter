@@ -12,6 +12,7 @@ import {
   discoverServices,
   discoverServicesWithFallback,
   findMonorepoRoot,
+  type ServiceInfo
 } from '../../../lib/monorepo.js'
 import { scanMonorepo, formatScanResult } from '../../../lib/monorepo-detect.js'
 import type { VaulterConfig, Environment } from '../../../types.js'
@@ -19,6 +20,26 @@ import { DEFAULT_ENVIRONMENTS } from '../../../types.js'
 import type { ToolResponse } from '../config.js'
 import { getMcpRuntimeOptions } from '../config.js'
 import pLimit from 'p-limit'
+
+function normalizeServiceRoots(rawPath: string): string[] {
+  const rawRoot = path.resolve(rawPath)
+  const candidates: string[] = []
+  const pushUnique = (value: string) => {
+    if (!candidates.includes(value)) {
+      candidates.push(value)
+    }
+  }
+
+  pushUnique(rawRoot)
+  const monorepoRoot = findMonorepoRoot(rawRoot)
+  if (monorepoRoot) {
+    pushUnique(monorepoRoot)
+  }
+
+  pushUnique(path.resolve(process.cwd()))
+
+  return candidates
+}
 
 export async function handleCompareCall(
   client: VaulterClient,
@@ -201,29 +222,60 @@ export async function handleServicesCall(
 ): Promise<ToolResponse> {
   const detailed = args.detailed as boolean || false
   const rawPath = (args.path as string) || process.cwd()
-  const rootPath = path.resolve(rawPath)
-  const monorepoRoot = findMonorepoRoot(rootPath) || rootPath
+  const scanRoots = normalizeServiceRoots(rawPath)
 
-  let config: VaulterConfig | null = null
   let configError: string | null = null
+  let discoveredServices: ServiceInfo[] = []
+  let discoveredRoot = scanRoots[0] || process.cwd()
+  let usedConfig = false
 
-  try {
-    config = loadConfig(monorepoRoot)
-  } catch (error) {
-    configError = (error as Error).message
+  for (const candidateRoot of scanRoots) {
+    try {
+      const candidateConfig = loadConfig(candidateRoot)
+      const candidateServices = discoverServicesWithFallback(candidateConfig, candidateRoot)
+      if (candidateServices.length > 0) {
+        discoveredServices = candidateServices
+        discoveredRoot = candidateRoot
+        usedConfig = true
+        configError = null
+        break
+      }
+    } catch (error) {
+      configError = (error as Error).message
+    }
+
+    const candidateServices = discoverServices(candidateRoot)
+    if (candidateServices.length > 0) {
+      discoveredServices = candidateServices
+      discoveredRoot = candidateRoot
+      break
+    }
   }
 
-  const services = config
-    ? discoverServicesWithFallback(config, monorepoRoot)
-    : discoverServices(monorepoRoot)
-
   try {
+    const services = discoveredServices
+
     if (services.length === 0) {
-      const lines = [`No services found in ${rootPath}.`]
+      const lines = [`No services found with Vaulter service discovery in ${discoveredRoot}.`]
       if (configError) {
-        lines.push(`Hint: unable to load .vaulter/config.yaml from ${monorepoRoot}: ${configError}`)
+        lines.push(`Hint: unable to load .vaulter/config.yaml from ${discoveredRoot}: ${configError}`)
       }
-      lines.push('Try passing --path with the monorepo root or check config/services discovery settings.')
+      lines.push('Hint: tried discovery roots in this order:')
+      for (const candidate of scanRoots) {
+        lines.push(`  - ${candidate}`)
+      }
+
+      try {
+        const scanResult = await scanMonorepo(discoveredRoot)
+        if (scanResult.packages.length > 0) {
+          lines.push('')
+          lines.push(`Monorepo scan found ${scanResult.packages.length} package(s) but no Vaulter service metadata.`)
+          lines.push('Tip: configure discovery via config.services or per-service .vaulter/config.yaml.')
+        }
+      } catch {
+        // ignore scan failures
+      }
+
       return {
         content: [{
           type: 'text',
@@ -233,11 +285,15 @@ export async function handleServicesCall(
     }
 
     const lines = [`Discovered ${services.length} service(s):\n`]
-    if (!config && configError) {
-      lines.push(`Config not loaded from ${monorepoRoot}; using filesystem fallback discovery.`)
+    if (usedConfig) {
+      lines.push(`Loaded config from ${discoveredRoot}.`)
+    } else if (configError) {
+      lines.push(`Config not loaded from ${discoveredRoot}; using filesystem fallback discovery.`)
       lines.push(`Config error: ${configError}`)
-      lines.push('')
+    } else {
+      lines.push(`Loaded filesystem-discovered services from ${discoveredRoot}.`)
     }
+    lines.push('')
 
     for (const svc of services) {
       if (detailed) {

@@ -250,6 +250,12 @@ Set or update an environment variable (encrypted).
 | `shared` | boolean | No | `false` | Set as shared variable |
 | `tags` | string[] | No | - | Tags for categorization |
 
+Notes:
+- Validates `scope_policy` from `scope_policy` config (default rules + custom rules) before applying.
+- In `strict` policy mode, this command is blocked when policy is violated.
+- Validates value guardrails (URLs, placeholders, sensitive-key naming, encoding hints) before writing.
+- Set `VAULTER_VALUE_GUARDRAILS=warn` (default), `off`, or `strict` to change behavior.
+
 #### `vaulter_delete`
 Delete an environment variable.
 
@@ -314,6 +320,12 @@ Set multiple variables in a single call.
 | `project` | string | No | auto | Project name |
 | `service` | string | No | - | Service name |
 | `shared` | boolean | No | `false` | Set as shared variables |
+| `sensitive` | boolean | No | `false` | Default sensitive flag for all variables when using object format |
+
+Notes:
+- Validates `scope_policy` for all provided keys before applying writes.
+- Supports `dry run` style review by validating policy/encoding issues in output before execution.
+- In `strict` mode, guardrail violations block the operation; in warn mode, it proceeds with warnings.
 
 **Example (object format):**
 ```json
@@ -447,6 +459,10 @@ List discovered services from local service configs and/or configured services.
 |-----------|------|----------|---------|-------------|
 | `path` | string | No | `.` | Root directory to scan |
 | `detailed` | boolean | No | `false` | Show detailed service info |
+
+Notes:
+- Service discovery tries multiple roots (`path`, detected monorepo root, current working directory).
+- If no services are found, the command returns fallback hints and monorepo-scan guidance.
 
 ---
 
@@ -746,6 +762,11 @@ Move/copy a variable between scopes (`shared` <-> `service` or service-to-servic
 | `dryRun` | boolean | No | `false` | Preview action without applying |
 | `deleteOriginal` | boolean | No | `true` | Delete source after move (set false to copy) |
 
+Notes:
+- Validates destination scope against `scope_policy` before mutation.
+- Uses atomic behavior: on any failure after write, tries to restore destination/source state to avoid half-moves.
+- Also validates destination-policy expectations and returns rollback details when needed.
+
 #### `vaulter_copy`
 Copy variables from one environment to another. Useful for promoting configs from dev to stg/prd.
 
@@ -782,6 +803,9 @@ Promote a service-specific variable to shared (applies to all services).
 | `project` | string | No | auto | Project name |
 | `deleteOriginal` | boolean | No | `true` | Delete the original service var after promoting |
 
+Notes:
+- Applies destination scope policy validation (`shared`) and uses atomic behavior with rollback on errors.
+
 #### `vaulter_demote_shared`
 Demote a shared variable to a specific service.
 
@@ -792,6 +816,9 @@ Demote a shared variable to a specific service.
 | `environment` | string | No | `dev` | Environment name |
 | `project` | string | No | auto | Project name |
 | `deleteShared` | boolean | No | `true` | Delete the shared var after demoting |
+
+Notes:
+- Applies destination scope policy validation (service target) and uses atomic behavior with rollback on errors.
 
 ---
 

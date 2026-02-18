@@ -607,6 +607,13 @@ export interface VaulterConfig {
   project: string
   service?: string
   backend?: BackendConfig
+  /**
+   * Scope policy used by scope-policy validation (shared vs service ownership)
+   *
+   * Can be configured in config.yaml to enforce stricter defaults than environment mode.
+   * Set `mode: strict` to fail on violations, `mode: off` to disable.
+   */
+  scope_policy?: ScopePolicyConfig
   encryption?: EncryptionConfig
   /** User-defined environment names (e.g., ['dev', 'stg', 'prd'] or ['development', 'production']) */
   environments?: string[]
@@ -757,6 +764,28 @@ export interface CommandContext {
   quiet: boolean
   dryRun: boolean
   jsonOutput: boolean
+}
+
+export interface ScopePolicyRuleConfig {
+  /** Friendly rule name */
+  name?: string
+  /** Regex pattern used to match variable keys */
+  pattern: string
+  /** Target scope for matched keys */
+  expected_scope: 'shared' | 'service'
+  /** Required target service when expected_scope = service */
+  expected_service?: string
+  /** Human-readable reason displayed in policy reports */
+  reason?: string
+}
+
+export interface ScopePolicyConfig {
+  /** Policy mode override for this project (`warn`, `strict`, `off`) */
+  mode?: 'off' | 'warn' | 'strict'
+  /** Keep built-in default rules and append custom ones */
+  inherit_defaults?: boolean
+  /** Custom rules for scope ownership */
+  rules?: ScopePolicyRuleConfig[]
 }
 
 // ============================================================================

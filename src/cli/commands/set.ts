@@ -21,12 +21,15 @@ import { createConnectedAuditLogger, logSetOperation, disconnectAuditLogger } fr
 import { c, symbols, colorEnv, print } from '../lib/colors.js'
 import { SHARED_SERVICE } from '../../lib/shared.js'
 import { checkValuesForEncoding, formatEncodingWarning } from '../../lib/encoding-detection.js'
+import { formatValueValidationSummary, validateVariableValues } from '../../lib/variable-validation.js'
 import {
   collectScopePolicyIssues,
+  resolveScopePolicy,
   formatScopePolicySummary,
   getScopePolicyMode,
   hasBlockingPolicyIssues
 } from '../../lib/scope-policy.js'
+import { withRetry } from '../../lib/timeout.js'
 import * as ui from '../ui.js'
 
 type SeparatorValue = string | number | boolean | null
@@ -61,18 +64,56 @@ function isSplitMode(config: VaulterConfig | null): boolean {
   return config?.directories?.mode === 'split'
 }
 
+function parseRetryCount(value: string | undefined, fallback: number): number {
+  const parsed = Number.parseInt(value || '', 10)
+  if (!Number.isInteger(parsed) || parsed < 1) return fallback
+  return parsed
+}
+
+function parseRetryDelay(value: string | undefined, fallback: number): number {
+  const parsed = Number.parseInt(value || '', 10)
+  if (!Number.isInteger(parsed) || parsed < 100) return fallback
+  return parsed
+}
+
+function isTransientFailure(error: unknown): boolean {
+  const message = ((error as Error).message || '').toLowerCase()
+  return message.includes('timeout') || message.includes('timed out') || message.includes('econnreset') || message.includes('etimedout') || message.includes('network')
+}
+
+function formatTimeoutHint(): string {
+  return 'If this is a slow backend, retry with smaller batches or vaulter_multi_set.'
+}
+
+async function runWithRetry<T>(label: string, task: () => Promise<T>, jsonOutput: boolean): Promise<T> {
+  const maxAttempts = parseRetryCount(process.env.VAULTER_WRITE_RETRIES, 3)
+  const delayMs = parseRetryDelay(process.env.VAULTER_WRITE_RETRY_DELAY_MS, 700)
+  return withRetry(async () => task(), {
+    maxAttempts,
+    delayMs,
+    onRetry: (attempt, error) => {
+      if (!jsonOutput) {
+        ui.verbose(`Retrying ${label} (${attempt}/${maxAttempts})`, true)
+        ui.verbose(`  ${error.message}`, true)
+      }
+    }
+  })
+}
+
 function validateScopePolicy(
   keys: string[],
   targetScope: 'shared' | 'service',
   targetService: string | undefined,
+  config: VaulterConfig | null,
   policyMode?: string
 ): void {
   if (keys.length === 0) return
-
+  const policy = resolveScopePolicy(config?.scope_policy, policyMode)
   const checks = collectScopePolicyIssues(keys, {
     scope: targetScope,
     service: targetService,
-    policyMode: getScopePolicyMode(policyMode)
+    policyMode: getScopePolicyMode(policyMode),
+    rules: policy.rules
   })
   const issues = checks.flatMap(check => check.issues)
 
@@ -80,10 +121,50 @@ function validateScopePolicy(
 
   print.warning('Scope policy check:')
   print.warning(formatScopePolicySummary(issues))
+  if (policy.warnings.length > 0) {
+    for (const warning of policy.warnings) {
+      print.warning(`- ${warning}`)
+    }
+  }
 
   if (hasBlockingPolicyIssues(checks)) {
     print.error('Scope policy blocked this change.')
     ui.log('Set VAULTER_SCOPE_POLICY=warn or VAULTER_SCOPE_POLICY=off to continue.')
+    process.exit(1)
+  }
+}
+
+function validateVariablePayload(
+  secrets: Map<string, string>,
+  configs: Map<string, string>,
+  environment: Environment
+): void {
+  const variableInputs = [
+    ...Array.from(secrets.entries()).map(([key, value]) => ({
+      key,
+      value,
+      sensitive: true
+    })),
+    ...Array.from(configs.entries()).map(([key, value]) => ({
+      key,
+      value,
+      sensitive: false
+    }))
+  ]
+
+  const validation = validateVariableValues(variableInputs, {
+    environment,
+    mode: process.env.VAULTER_VALUE_GUARDRAILS
+  })
+
+  if (validation.issues.length === 0) return
+
+  print.warning('Value guardrails check:')
+  print.warning(formatValueValidationSummary(validation.issues))
+
+  if (validation.blocked) {
+    print.error('Value guardrails blocked this change.')
+    ui.log('Set VAULTER_VALUE_GUARDRAILS=warn or VAULTER_VALUE_GUARDRAILS=off to continue.')
     process.exit(1)
   }
 }
@@ -227,7 +308,8 @@ export async function runSet(context: SetContext): Promise<void> {
     process.exit(1)
   }
 
-  validateScopePolicy([...secrets.keys(), ...configs.keys()], isShared ? 'shared' : 'service', effectiveService)
+  validateScopePolicy([...secrets.keys(), ...configs.keys()], isShared ? 'shared' : 'service', effectiveService, config)
+  validateVariablePayload(secrets, configs, environment)
 
   if (!project) {
     print.error('Project not specified and no config found')
@@ -347,24 +429,28 @@ export async function runSet(context: SetContext): Promise<void> {
             const isValueChanged = previousValue !== undefined && previousValue !== value
             const rotatedAt = isValueChanged ? new Date().toISOString() : existing?.metadata?.rotatedAt
 
-            await client.set({
-              key,
-              value,
-              project,
-              service: effectiveService,
-              environment,
-              tags: tags.length > 0 ? tags : undefined,
-              sensitive: true, // Secrets are sensitive
-              metadata: {
-                source: 'manual',
-                ...(owner && { owner }),
-                ...(description && { description }),
-                // Preserve rotation policy (rotateAfter) if it exists
-                ...(existing?.metadata?.rotateAfter && { rotateAfter: existing.metadata.rotateAfter }),
-                // Update rotatedAt when value changes
-                ...(rotatedAt && { rotatedAt })
-              }
-            })
+            await runWithRetry(
+              `set:${key}`,
+              () => client.set({
+                key,
+                value,
+                project,
+                service: effectiveService,
+                environment,
+                tags: tags.length > 0 ? tags : undefined,
+                sensitive: true, // Secrets are sensitive
+                metadata: {
+                  source: 'manual',
+                  ...(owner && { owner }),
+                  ...(description && { description }),
+                  // Preserve rotation policy (rotateAfter) if it exists
+                  ...(existing?.metadata?.rotateAfter && { rotateAfter: existing.metadata.rotateAfter }),
+                  // Update rotatedAt when value changes
+                  ...(rotatedAt && { rotatedAt })
+                }
+              }),
+              jsonOutput
+            )
 
             // Log to audit trail
             await logSetOperation(auditLogger, {
@@ -393,6 +479,9 @@ export async function runSet(context: SetContext): Promise<void> {
 
             if (!jsonOutput) {
               ui.log(`${symbols.error} Failed to set ${c.secretType('secret')} ${c.key(key)}: ${c.error((err as Error).message)}`)
+              if (isTransientFailure(err)) {
+                ui.log(`  ${c.warning(formatTimeoutHint())}`)
+              }
             }
           }
         }
@@ -439,24 +528,28 @@ export async function runSet(context: SetContext): Promise<void> {
               const isValueChanged = previousValue !== undefined && previousValue !== value
               const rotatedAt = isValueChanged ? new Date().toISOString() : existing?.metadata?.rotatedAt
 
-              await client.set({
-                key,
-                value,
-                project,
-                service: effectiveService,
-                environment,
-                tags: tags.length > 0 ? tags : undefined,
-                sensitive: false, // Configs are not sensitive
-                metadata: {
-                  source: 'manual',
-                  ...(owner && { owner }),
-                  ...(description && { description }),
-                  // Preserve rotation policy (rotateAfter) if it exists
-                  ...(existing?.metadata?.rotateAfter && { rotateAfter: existing.metadata.rotateAfter }),
-                  // Update rotatedAt when value changes
-                  ...(rotatedAt && { rotatedAt })
-                }
-              })
+              await runWithRetry(
+                `set:${key}`,
+                () => client.set({
+                  key,
+                  value,
+                  project,
+                  service: effectiveService,
+                  environment,
+                  tags: tags.length > 0 ? tags : undefined,
+                  sensitive: false, // Configs are not sensitive
+                  metadata: {
+                    source: 'manual',
+                    ...(owner && { owner }),
+                    ...(description && { description }),
+                    // Preserve rotation policy (rotateAfter) if it exists
+                    ...(existing?.metadata?.rotateAfter && { rotateAfter: existing.metadata.rotateAfter }),
+                    // Update rotatedAt when value changes
+                    ...(rotatedAt && { rotatedAt })
+                  }
+                }),
+                jsonOutput
+              )
 
               // Log to audit trail
               await logSetOperation(auditLogger, {
@@ -483,10 +576,13 @@ export async function runSet(context: SetContext): Promise<void> {
             } catch (err) {
               results.push({ key, type: 'config', success: false, error: (err as Error).message })
 
-              if (!jsonOutput) {
-                ui.log(`${symbols.error} Failed to set ${c.configType('config')} ${c.key(key)}: ${c.error((err as Error).message)}`)
+            if (!jsonOutput) {
+              ui.log(`${symbols.error} Failed to set ${c.configType('config')} ${c.key(key)}: ${c.error((err as Error).message)}`)
+              if (isTransientFailure(err)) {
+                ui.log(`  ${c.warning(formatTimeoutHint())}`)
               }
             }
+          }
           }
         })
       } finally {

@@ -5,14 +5,14 @@
  * Supports shared ↔ service and service ↔ service transitions.
  */
 
-import type { CLIArgs, VaulterConfig, Environment } from '../../types.js'
+import type { CLIArgs, VaulterConfig, Environment, EnvVar } from '../../types.js'
 import { withClient } from '../lib/create-client.js'
 import {
   collectScopePolicyIssues,
   formatScopePolicySummary,
   getScopeLabelFromParsed,
-  getScopePolicyMode,
   hasBlockingPolicyIssues,
+  resolveScopePolicy,
   parseScopeSpec
 } from '../../lib/scope-policy.js'
 import { createConnectedAuditLogger, logDeleteOperation, logSetOperation, disconnectAuditLogger } from '../lib/audit-helper.js'
@@ -40,6 +40,69 @@ function resolveScope(
     return { mode: 'service', service: fallback }
   }
   return null
+}
+
+interface VariableSnapshot {
+  existed: boolean
+  value: string
+  tags?: string[]
+  sensitive?: boolean
+  metadata?: EnvVar['metadata']
+}
+
+function stripMoveMetadata(metadata: EnvVar['metadata']): EnvVar['metadata'] {
+  if (!metadata) return undefined
+  const { movedFrom, movedTo, movedAt, moveAction, ...rest } = metadata
+  return Object.keys(rest).length === 0 ? undefined : rest
+}
+
+function snapshotVariable(variable: EnvVar | null): VariableSnapshot | undefined {
+  if (!variable) return undefined
+
+  return {
+    existed: true,
+    value: variable.value,
+    tags: variable.tags ? [...variable.tags] : undefined,
+    sensitive: variable.sensitive,
+    metadata: variable.metadata ? { ...variable.metadata } : undefined
+  }
+}
+
+async function restoreVariable(
+  client: {
+    set: (input: {
+      key: string
+      value: string
+      project: string
+      environment: Environment
+      service: string
+      tags?: string[]
+      sensitive?: boolean
+      metadata?: EnvVar['metadata']
+    }) => Promise<unknown>,
+    delete: (key: string, project: string, environment: Environment, service: string) => Promise<unknown>
+  },
+  key: string,
+  project: string,
+  environment: Environment,
+  service: string,
+  snapshot: VariableSnapshot | undefined
+): Promise<void> {
+  if (!snapshot || !snapshot.existed) {
+    await client.delete(key, project, environment, service)
+    return
+  }
+
+  await client.set({
+    key,
+    value: snapshot.value,
+    project,
+    environment,
+    service,
+    tags: snapshot.tags,
+    sensitive: snapshot.sensitive,
+    metadata: snapshot.metadata
+  })
 }
 
 /**
@@ -97,16 +160,21 @@ export async function runMove(context: MoveContext): Promise<void> {
   const targetLabel = getScopeLabelFromParsed(toScope)
   const action = deleteOriginal ? 'move' : 'copy'
   const actionPast = deleteOriginal ? 'moved' : 'copied'
+  const policy = resolveScopePolicy(config?.scope_policy)
 
   const policyChecks = collectScopePolicyIssues([key], {
     scope: toScope.mode,
     service: targetService === SHARED_SERVICE ? undefined : targetService,
-    policyMode: getScopePolicyMode()
+    policyMode: policy.policyMode,
+    rules: policy.rules
   })
   const policyIssues = policyChecks.flatMap(check => check.issues)
   if (policyIssues.length > 0) {
     print.warning('Scope policy check:')
     print.warning(formatScopePolicySummary(policyIssues))
+    for (const warning of policy.warnings) {
+      print.warning(`- ${warning}`)
+    }
 
     if (hasBlockingPolicyIssues(policyChecks)) {
       print.error('Scope policy blocked this change.')
@@ -167,27 +235,73 @@ export async function runMove(context: MoveContext): Promise<void> {
         return
       }
 
-      const previousTarget = destinationVar?.value
-      await client.set({
-        key,
-        value: sourceVar.value,
-        project,
-        environment,
-        service: targetService,
-        tags: sourceVar.tags,
-        sensitive: sourceVar.sensitive,
-        metadata: {
-          ...sourceVar.metadata,
-          source: 'manual',
-          movedFrom: sourceLabel,
-          movedTo: targetLabel,
-          movedAt: new Date().toISOString(),
-          moveAction: action
+      const sourceSourceMetadata = stripMoveMetadata(sourceVar.metadata)
+      const now = new Date().toISOString()
+      const sourceState = snapshotVariable(sourceVar)
+      const destinationState = snapshotVariable(destinationVar)
+
+      try {
+        await client.set({
+          key,
+          value: sourceVar.value,
+          project,
+          environment,
+          service: targetService,
+          tags: sourceVar.tags,
+          sensitive: sourceVar.sensitive,
+          metadata: {
+            ...(sourceSourceMetadata || {}),
+            source: 'manual',
+            movedFrom: sourceLabel,
+            movedTo: targetLabel,
+            movedAt: now,
+            moveAction: action
+          }
+        })
+
+        if (deleteOriginal) {
+          await client.delete(key, project, environment, sourceService)
         }
-      })
+      } catch (error) {
+        const rollbackErrors: string[] = []
+
+        try {
+          await restoreVariable(client, key, project, environment, targetService, destinationState)
+        } catch (rollbackError) {
+          rollbackErrors.push(`Destination rollback failed: ${(rollbackError as Error).message}`)
+        }
+
+        try {
+          await restoreVariable(client, key, project, environment, sourceService, sourceState)
+        } catch (rollbackError) {
+          rollbackErrors.push(`Source restore failed: ${(rollbackError as Error).message}`)
+        }
+
+        if (!jsonOutput) {
+          print.error(`Move failed for ${c.key(key)} from ${c.env(sourceLabel)} to ${c.env(targetLabel)}. Rolled back: ${rollbackErrors.length === 0}`)
+          if (rollbackErrors.length > 0) {
+            for (const item of rollbackErrors) {
+              ui.log(`  - ${item}`)
+            }
+            ui.log(c.warning('Critical: inconsistent state may remain. Please validate with doctor/local tools and adjust manually if needed.'))
+          }
+        } else {
+          ui.output(JSON.stringify({
+            success: false,
+            action: actionPast,
+            key,
+            from: sourceLabel,
+            to: targetLabel,
+            error: (error as Error).message,
+            rollbackErrors
+          }))
+        }
+        process.exit(1)
+      }
+
       await logSetOperation(auditLogger, {
         key,
-        previousValue: previousTarget,
+        previousValue: destinationVar?.value,
         newValue: sourceVar.value,
         project,
         environment,
@@ -202,7 +316,6 @@ export async function runMove(context: MoveContext): Promise<void> {
       })
 
       if (deleteOriginal) {
-        await client.delete(key, project, environment, sourceService)
         await logDeleteOperation(auditLogger, {
           key,
           previousValue: sourceVar.value,
@@ -212,7 +325,7 @@ export async function runMove(context: MoveContext): Promise<void> {
           source: 'cli',
           metadata: {
             movedTo: targetLabel,
-            movedAt: new Date().toISOString()
+            movedAt: now
           }
         })
       }

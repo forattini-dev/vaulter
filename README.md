@@ -300,7 +300,7 @@ See [docs/DOCTOR.md](docs/DOCTOR.md) for complete guide.
 | `var set KEY=val -e <env>` | Set secret (encrypted) |
 | `var set KEY::val -e <env>` | Set config (plain text) |
 | `var set KEY:=123 -e <env>` | Set typed secret (number/boolean) |
-| `var move <key> --from <scope> --to <scope> -e <env>` | Move/copy variable between scopes |
+| `var move <key> --from <scope> --to <scope> -e <env>` | Move/copy variable between scopes with rollback safety |
 | `var delete <key> -e <env>` | Delete a variable |
 | `var list -e <env>` | List all variables |
 
@@ -534,6 +534,20 @@ default_environment: dev
 audit:
   enabled: true
   retention_days: 90
+
+scope_policy:
+  mode: warn
+  inherit_defaults: true
+  rules:
+    - name: api-keys-service
+      pattern: '^API_'
+      expected_scope: service
+      expected_service: svc-app
+      reason: 'API_* vars are service-owned'
+    - name: app-url-shared-default
+      pattern: '^APP_.*_URL$'
+      expected_scope: shared
+      reason: 'URL variables stay shared by default'
 
 # Local development files (see "Local vs Deploy Structure" below)
 # local: .vaulter/local/

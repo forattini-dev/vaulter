@@ -29,6 +29,7 @@ import { SHARED_SERVICE } from '../../../lib/shared.js'
 import {
   collectScopePolicyIssues,
   formatScopePolicySummary,
+  resolveScopePolicy,
   hasBlockingPolicyIssues
 } from '../../../lib/scope-policy.js'
 import type { ToolResponse } from '../config.js'
@@ -457,13 +458,19 @@ export async function handleDoctorCall(
   const scopePolicyChecks: ReturnType<typeof collectScopePolicyIssues>[number][] = []
   const scopePolicyParserHints: string[] = []
   let scopePolicyCheckAdded = false
+  const scopePolicy = resolveScopePolicy(config?.scope_policy)
+  const scopePolicyWarnings = scopePolicy.warnings
+  if (scopePolicyWarnings.length > 0) {
+    suggestions.push(`Scope policy warning: ${scopePolicyWarnings.join(' | ')}`)
+  }
   const collectScopePolicyFromKeys = (keys: string[], scope: 'shared' | 'service', targetService?: string) => {
     if (keys.length === 0) return
     scopePolicyChecks.push(
       ...collectScopePolicyIssues(keys, {
         scope,
         service: targetService,
-        policyMode: process.env.VAULTER_SCOPE_POLICY
+        policyMode: scopePolicy.policyMode,
+        rules: scopePolicy.rules
       })
     )
   }

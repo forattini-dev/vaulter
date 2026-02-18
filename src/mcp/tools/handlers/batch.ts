@@ -7,12 +7,9 @@
 import { VaulterClient } from '../../../client.js'
 import { SHARED_SERVICE } from '../../../lib/shared.js'
 import { checkValuesForEncoding } from '../../../lib/encoding-detection.js'
-import {
-  collectScopePolicyIssues,
-  formatScopePolicySummary,
-  hasBlockingPolicyIssues
-} from '../../../lib/scope-policy.js'
+import { evaluateWriteGuard, formatWriteGuardLines } from '../../../lib/write-guard.js'
 import type { Environment } from '../../../types.js'
+import type { VaulterConfig } from '../../../types.js'
 import type { ToolResponse } from '../config.js'
 
 interface VariableInput {
@@ -80,6 +77,7 @@ export async function handleMultiSetCall(
   project: string,
   environment: Environment,
   service: string | undefined,
+  config: VaulterConfig | null,
   args: Record<string, unknown>
 ): Promise<ToolResponse> {
   const variables = args.variables
@@ -128,41 +126,49 @@ export async function handleMultiSetCall(
     }
   }
 
-  // Filter valid entries and prepare inputs for setMany
+  // Filter valid entries and apply guardrails before writing
   const validEntries = varsArray.filter(({ key, value }) => key && value !== undefined)
   const skipped = varsArray.length - validEntries.length
+  const normalizedEntries = validEntries.map((entry) => ({
+    ...entry,
+    value: String(entry.value),
+    sensitive: entry.sensitive ?? defaultSensitive
+  }))
 
-  const policyChecks = collectScopePolicyIssues(validEntries.map(entry => entry.key), {
-    scope: shared ? 'shared' : 'service',
-    service: shared ? undefined : service
+  const guard = evaluateWriteGuard({
+    variables: normalizedEntries,
+    targetScope: shared ? 'shared' : 'service',
+    targetService: shared ? undefined : service,
+    environment,
+    config,
+    policyMode: process.env.VAULTER_SCOPE_POLICY,
+    guardrailMode: process.env.VAULTER_VALUE_GUARDRAILS
   })
-  const policyIssues = policyChecks.flatMap((check) => check.issues)
 
-  if (policyIssues.length > 0) {
-    const lines = [`⚠️ Scope policy check:`]
-    lines.push(formatScopePolicySummary(policyIssues))
-
-    if (hasBlockingPolicyIssues(policyChecks)) {
-      lines.push('')
-      lines.push('Scope policy blocked this change. Set VAULTER_SCOPE_POLICY=warn or VAULTER_SCOPE_POLICY=off to continue.')
-      return {
-        content: [{
-          type: 'text',
-          text: lines.join('\n')
-        }]
-      }
+  if (guard.blocked) {
+    return {
+      content: [{
+        type: 'text',
+        text: [
+          '❌ Write blocked by validation.',
+          ...formatWriteGuardLines(guard),
+          '',
+          'Set VAULTER_SCOPE_POLICY=warn or VAULTER_SCOPE_POLICY=off to relax scope checks.',
+          'Set VAULTER_VALUE_GUARDRAILS=warn or VAULTER_VALUE_GUARDRAILS=off to relax value checks.'
+        ].join('\n')
+      }]
     }
   }
 
   // Use optimized setMany - single list query + parallel insert/update
   // Per-variable sensitive overrides the default
-  const inputs = validEntries.map(({ key, value, sensitive, tags }) => ({
+  const inputs = normalizedEntries.map(({ key, value, sensitive, tags }) => ({
     key,
-    value: String(value),
+    value,
     project,
     environment,
     service: effectiveService,
-    sensitive: sensitive ?? defaultSensitive,
+    sensitive,
     tags,
     metadata: { source: 'manual' as const }
   }))
@@ -176,10 +182,10 @@ export async function handleMultiSetCall(
       : `${project}/${environment}${service ? `/${service}` : ''}`
 
     const lines = [`Set ${succeeded.length}/${varsArray.length} variable(s) in ${location}:`]
-    if (policyIssues.length > 0) {
+    if (guard.scopeIssueSummary || guard.valueIssueSummary) {
       lines.push('')
-      lines.push('⚠️ Scope policy check (warnings only):')
-      lines.push(formatScopePolicySummary(policyIssues))
+      lines.push('⚠️ Validation warnings (continuing with apply):')
+      lines.push(...formatWriteGuardLines(guard))
     }
 
     if (succeeded.length > 0) lines.push(`✓ ${succeeded.join(', ')}`)
@@ -187,7 +193,7 @@ export async function handleMultiSetCall(
 
     // Check for pre-encoded/pre-encrypted values and add warnings
     const encodingWarnings = checkValuesForEncoding(
-      validEntries.map(({ key, value }) => ({ key, value: String(value) }))
+      normalizedEntries.map(({ key, value }) => ({ key, value: String(value) }))
     )
     if (encodingWarnings.length > 0) {
       lines.push('')

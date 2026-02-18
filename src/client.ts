@@ -1274,6 +1274,7 @@ export class VaulterClient {
       unchanged: [],
       conflicts: []
     }
+    const setInputs: EnvVarInput[] = []
 
     // Process new/updated vars
     for (const [key, value] of Object.entries(vars)) {
@@ -1281,7 +1282,7 @@ export class VaulterClient {
 
       if (!existingVar) {
         // New variable
-        await this.set({
+        setInputs.push({
           key,
           value,
           project,
@@ -1292,12 +1293,13 @@ export class VaulterClient {
         result.added.push(key)
       } else if (existingVar.value !== value) {
         // Updated variable
-        await this.set({
+        setInputs.push({
           key,
           value,
           project,
           environment,
           service,
+          sensitive: existingVar.sensitive ?? undefined,
           metadata: { source: options.source || 'sync' }
         })
         result.updated.push(key)
@@ -1309,11 +1311,17 @@ export class VaulterClient {
       existingMap.delete(key)
     }
 
+    if (setInputs.length > 0) {
+      await this.setMany(setInputs, { preserveMetadata: true })
+    }
+
     // Remaining are deleted (not in new vars)
     if (deleteMissing) {
-      for (const [key, existingVar] of existingMap) {
-        await this.resource.delete(existingVar.id)
-        result.deleted.push(key)
+      const toDelete = [...existingMap.keys()]
+
+      if (toDelete.length > 0) {
+        const deleted = await this.deleteManyByKeys(toDelete, project, environment, service)
+        result.deleted.push(...deleted.deleted)
       }
     }
 

@@ -307,7 +307,7 @@ export async function handleToolCall(
         return await handleGetCall(client, project, environment, service, args)
 
       case 'vaulter_set':
-        return await handleSetCall(client, project, environment, service, args)
+        return await handleSetCall(client, project, environment, service, config, args)
 
       case 'vaulter_delete':
         return await handleDeleteCall(client, project, environment, service, args)
@@ -323,7 +323,7 @@ export async function handleToolCall(
         return await handleMultiGetCall(client, project, environment, service, args)
 
       case 'vaulter_multi_set':
-        return await handleMultiSetCall(client, project, environment, service, args)
+        return await handleMultiSetCall(client, project, environment, service, config, args)
 
       case 'vaulter_multi_delete':
         return await handleMultiDeleteCall(client, project, environment, service, args)
@@ -384,16 +384,16 @@ export async function handleToolCall(
         return await handleCopyCall(client, project, environment, service, args)
 
       case 'vaulter_move':
-        return await handleMoveCall(client, project, environment, service, args)
+        return await handleMoveCall(client, project, environment, service, config, args)
 
       case 'vaulter_rename':
         return await handleRenameCall(client, project, environment, service, args)
 
       case 'vaulter_promote_shared':
-        return await handlePromoteSharedCall(client, project, environment, service, args)
+        return await handlePromoteSharedCall(client, project, environment, service, config, args)
 
       case 'vaulter_demote_shared':
-        return await handleDemoteSharedCall(client, project, environment, service, args)
+        return await handleDemoteSharedCall(client, project, environment, service, config, args)
 
       case 'vaulter_diff':
         return await handleDiffCall(client, config, project, environment, service, args)

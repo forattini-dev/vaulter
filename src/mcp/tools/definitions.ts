@@ -28,7 +28,7 @@ export function registerTools(): Tool[] {
     },
     {
       name: 'vaulter_set',
-      description: 'Set an environment variable in the backend (encrypted). Use shared=true for monorepo variables that apply to all services. Use sensitive=true for secrets, sensitive=false for configs.',
+      description: 'Set an environment variable in the backend (encrypted). Applies scope-policy checks and optional value guardrails before write.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -109,7 +109,7 @@ export function registerTools(): Tool[] {
     },
     {
       name: 'vaulter_multi_set',
-      description: 'Set multiple environment variables in a single call. Accepts an array of key-value pairs or an object with variables.',
+      description: 'Set multiple environment variables in a single call. Applies scope-policy checks and optional value guardrails before write.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -530,7 +530,7 @@ export function registerTools(): Tool[] {
     },
     {
       name: 'vaulter_move',
-      description: 'Move/copy a variable between scopes in one operation.',
+      description: 'Move/copy a variable between scopes in one operation. Applies scope-policy checks and atomic rollback on write failures.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -563,7 +563,7 @@ export function registerTools(): Tool[] {
     },
     {
       name: 'vaulter_promote_shared',
-      description: 'Promote a service-specific variable to shared (applies to all services). Moves the var from service scope to shared scope.',
+      description: 'Promote a service-specific variable to shared (applies to all services). Applies scope-policy checks and atomic rollback on write failures.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -578,7 +578,7 @@ export function registerTools(): Tool[] {
     },
     {
       name: 'vaulter_demote_shared',
-      description: 'Demote a shared variable to a specific service. Moves the var from shared scope to service scope.',
+      description: 'Demote a shared variable to a specific service. Applies scope-policy checks and atomic rollback on write failures.',
       inputSchema: {
         type: 'object',
         properties: {

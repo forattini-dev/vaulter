@@ -313,6 +313,20 @@ Valida políticas de escopo de variáveis (shared x service) com base em regras 
 - `strict` ou `error`: o check falha se houver violações
 - `off`: desativa validação
 
+**Configuração sugerida no `config.yaml`:**
+
+```yaml
+scope_policy:
+  mode: strict # off | warn | strict
+  inherit_defaults: true
+  rules:
+    - name: api-keys-service
+      pattern: '^API_'
+      expected_scope: service
+      expected_service: svc-app
+      reason: 'API_* vars are service-owned'
+```
+
 #### 17. Perf Config
 Sugestões de tunning quando o ambiente permite:
 

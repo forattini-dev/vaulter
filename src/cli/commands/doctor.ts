@@ -25,6 +25,7 @@ import { normalizeOutputTargets, validateOutputsConfig } from '../../lib/outputs
 import {
   collectScopePolicyIssues,
   formatScopePolicySummary,
+  resolveScopePolicy,
   hasBlockingPolicyIssues
 } from '../../lib/scope-policy.js'
 import { createClientFromConfig } from '../lib/create-client.js'
@@ -413,13 +414,20 @@ export async function runDoctor(context: DoctorContext): Promise<void> {
 
   // Scope policy checks on local files (always available, no backend needed)
   const scopePolicyChecks: ReturnType<typeof collectScopePolicyIssues>[number][] = []
+  const scopePolicy = resolveScopePolicy(config?.scope_policy)
+
+  for (const warning of scopePolicy.warnings) {
+    hints.add(`Scope policy rule warning: ${warning}`)
+  }
+
   const collectScopePolicyFromKeys = (keys: string[], scope: 'shared' | 'service', targetService?: string) => {
     if (keys.length === 0) return
     scopePolicyChecks.push(
       ...collectScopePolicyIssues(keys, {
         scope,
         service: targetService,
-        policyMode: process.env.VAULTER_SCOPE_POLICY
+        policyMode: scopePolicy.policyMode,
+        rules: scopePolicy.rules
       })
     )
   }

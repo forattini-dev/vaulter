@@ -10,9 +10,14 @@ import { detectEncoding } from '../../../lib/encoding-detection.js'
 import {
   collectScopePolicyIssues,
   formatScopePolicySummary,
-  hasBlockingPolicyIssues
+  hasBlockingPolicyIssues,
+  resolveScopePolicy
 } from '../../../lib/scope-policy.js'
-import type { Environment } from '../../../types.js'
+import {
+  formatValueValidationSummary,
+  validateVariableValues
+} from '../../../lib/variable-validation.js'
+import type { Environment, VaulterConfig } from '../../../types.js'
 import type { ToolResponse } from '../config.js'
 
 export async function handleGetCall(
@@ -37,6 +42,7 @@ export async function handleSetCall(
   project: string,
   environment: Environment,
   service: string | undefined,
+  config: VaulterConfig | null,
   args: Record<string, unknown>
 ): Promise<ToolResponse> {
   const key = args.key as string
@@ -47,11 +53,14 @@ export async function handleSetCall(
 
   // If shared flag is set, use __shared__ as service
   const effectiveService = shared ? SHARED_SERVICE : service
+  const policy = resolveScopePolicy(config?.scope_policy)
 
   // Validate scope policy for target
   const policyChecks = collectScopePolicyIssues([key], {
     scope: shared ? 'shared' : 'service',
-    service: shared ? undefined : service
+    service: shared ? undefined : service,
+    policyMode: policy.policyMode,
+    rules: policy.rules
   })
   const policyIssues = policyChecks.flatMap((check) => check.issues)
   const policyBlocked = hasBlockingPolicyIssues(policyChecks)
@@ -68,6 +77,9 @@ export async function handleSetCall(
     lines.push('')
     lines.push(`⚠️ Scope policy check for ${key}:`)
     lines.push(formatScopePolicySummary(policyIssues))
+    for (const warning of policy.warnings) {
+      lines.push(`⚠️ ${warning}`)
+    }
 
     if (policyBlocked) {
       return {
@@ -77,6 +89,30 @@ export async function handleSetCall(
             '',
             'Scope policy blocked this change.',
             'Set VAULTER_SCOPE_POLICY=warn or VAULTER_SCOPE_POLICY=off to continue.'
+          ].join('\n'))
+        }]
+      }
+    }
+  }
+
+  const valueValidation = validateVariableValues([{ key, value, sensitive }], {
+    environment,
+    mode: process.env.VAULTER_VALUE_GUARDRAILS
+  })
+
+  if (valueValidation.issues.length > 0) {
+    lines.push('')
+    lines.push('⚠️ Value guardrails:')
+    lines.push(formatValueValidationSummary(valueValidation.issues))
+
+    if (valueValidation.blocked) {
+      return {
+        content: [{
+          type: 'text',
+          text: lines.concat([
+            '',
+            'Value guardrails blocked this change.',
+            'Set VAULTER_VALUE_GUARDRAILS=warn to continue with warnings only.'
           ].join('\n'))
         }]
       }
