@@ -12,6 +12,33 @@ import type { Environment } from '../../../types.js'
 import type { VaulterConfig } from '../../../types.js'
 import type { ToolResponse } from '../config.js'
 
+function isLikelyTimeoutError(message: string): boolean {
+  const normalized = message.toLowerCase()
+  return (
+    normalized.includes('timeout') ||
+    normalized.includes('timed out') ||
+    normalized.includes('socket hang up') ||
+    normalized.includes('econnreset') ||
+    normalized.includes('econnrefused')
+  )
+}
+
+function buildMultiSetFailureMessage(message: string, requestedCount: number, successCount = 0): string {
+  const lines = [
+    `❌ Error setting ${requestedCount} variable(s): ${message}`,
+    `  Applied: ${successCount} var(s)`
+  ]
+
+  if (isLikelyTimeoutError(message)) {
+    lines.push('')
+    lines.push('Suggestion:')
+    lines.push('- Retry the operation with the same payload.')
+    lines.push('- If failures persist, reduce batch size and increase retry/timeout in MCP client config.')
+  }
+
+  return lines.join('\n')
+}
+
 interface VariableInput {
   key: string
   value: string
@@ -214,7 +241,7 @@ export async function handleMultiSetCall(
     return {
       content: [{
         type: 'text',
-        text: `Error setting variables: ${(err as Error).message}`
+        text: buildMultiSetFailureMessage((err as Error).message, varsArray.length)
       }]
     }
   }

@@ -20,6 +20,32 @@ import {
 import type { Environment, VaulterConfig } from '../../../types.js'
 import type { ToolResponse } from '../config.js'
 
+function isLikelyTimeoutError(message: string): boolean {
+  const normalized = message.toLowerCase()
+  return (
+    normalized.includes('timeout') ||
+    normalized.includes('timed out') ||
+    normalized.includes('etimedout') ||
+    normalized.includes('socket hang up') ||
+    normalized.includes('econnreset') ||
+    normalized.includes('econnrefused')
+  )
+}
+
+function buildWriteFailureMessage(action: string, key: string, message: string): string {
+  const lines = [`❌ ${action} failed for ${key}: ${message}`]
+
+  if (isLikelyTimeoutError(message)) {
+    lines.push('')
+    lines.push('Suggestion:')
+    lines.push('- Retry once with the same command.')
+    lines.push('- If this repeats, use vaulter_multi_set for related keys in a single batch.')
+    lines.push('- Check backend connectivity/credentials and retry with higher timeout if needed.')
+  }
+
+  return lines.join('\n')
+}
+
 export async function handleGetCall(
   client: VaulterClient,
   project: string,
@@ -132,16 +158,25 @@ export async function handleSetCall(
     }
   }
 
-  await client.set({
-    key,
-    value,
-    project,
-    environment,
-    service: effectiveService,
-    tags,
-    sensitive,
-    metadata: { source: 'manual' }
-  })
+  try {
+    await client.set({
+      key,
+      value,
+      project,
+      environment,
+      service: effectiveService,
+      tags,
+      sensitive,
+      metadata: { source: 'manual' }
+    })
+  } catch (error) {
+    return {
+      content: [{
+        type: 'text',
+        text: buildWriteFailureMessage('Set', key, (error as Error).message)
+      }]
+    }
+  }
 
   if (encodingResult.detected && encodingResult.confidence !== 'low') {
     lines.push('')
@@ -177,12 +212,21 @@ export async function handleDeleteCall(
     }
   }
 
-  const deleted = await client.delete(key, project, environment, service)
-  return {
-    content: [{
-      type: 'text',
-      text: deleted ? `✓ Deleted ${key} from ${scopeLabel}` : `Variable ${key} not found`
-    }]
+  try {
+    const deleted = await client.delete(key, project, environment, service)
+    return {
+      content: [{
+        type: 'text',
+        text: deleted ? `✓ Deleted ${key} from ${scopeLabel}` : `Variable ${key} not found`
+      }]
+    }
+  } catch (error) {
+    return {
+      content: [{
+        type: 'text',
+        text: buildWriteFailureMessage('Delete', key, (error as Error).message)
+      }]
+    }
   }
 }
 

@@ -20,6 +20,27 @@ import { compileGlobPatterns } from '../../../lib/pattern-matcher.js'
 import type { Environment, EnvVar, VaulterConfig } from '../../../types.js'
 import type { ToolResponse } from '../config.js'
 
+function buildMoveFailureMessage(message: string, key: string): string {
+  const normalized = message.toLowerCase()
+  const lines = [`❌ Move failed for ${key}: ${message}`]
+
+  if (
+    normalized.includes('timeout') ||
+    normalized.includes('timed out') ||
+    normalized.includes('socket hang up') ||
+    normalized.includes('econnreset') ||
+    normalized.includes('econnrefused')
+  ) {
+    lines.push('')
+    lines.push('Suggestion:')
+    lines.push('- Retry once with the same command.')
+    lines.push('- If this persists, split the change into smaller batches.')
+    lines.push('- Use vaulter_multi_set for grouped variable migrations when possible.')
+  }
+
+  return lines.join('\n')
+}
+
 interface VariableSnapshot {
   existed: boolean
   value: string
@@ -682,8 +703,8 @@ export async function handleMoveCall(
     }
 
     const message = rollbackErrors.length > 0
-      ? `Move failed for ${key}: ${(error as Error).message}. Rollback issues: ${rollbackErrors.join(' | ')}`
-      : `Move failed for ${key}: ${(error as Error).message}`
+      ? `${buildMoveFailureMessage((error as Error).message, key)}. Rollback issues: ${rollbackErrors.join(' | ')}`
+      : buildMoveFailureMessage((error as Error).message, key)
 
     return {
       content: [{
