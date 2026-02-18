@@ -740,12 +740,20 @@ export async function handleChangeCall(
       value,
       tags: args.tags,
       shared: args.shared,
-      sensitive: args.sensitive
+      sensitive: args.sensitive,
+      dryRun: args.dryRun
     })
   }
 
   if (action === 'delete') {
-    return handleDeleteCall(client, project, environment, service, { key })
+    const deleteScopeService = args.shared === true ? SHARED_SERVICE : service
+    return handleDeleteCall(
+      client,
+      project,
+      environment,
+      deleteScopeService,
+      { key, dryRun: args.dryRun }
+    )
   }
 
   if (action === 'move') {

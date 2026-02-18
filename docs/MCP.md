@@ -248,6 +248,8 @@ Set or update an environment variable (encrypted).
 | `project` | string | No | auto | Project name |
 | `service` | string | No | - | Service name (monorepo) |
 | `shared` | boolean | No | `false` | Set as shared variable |
+| `sensitive` | boolean | No | `false` | Mark as sensitive (secret) |
+| `dryRun` | boolean | No | `false` | Preview without applying changes |
 | `tags` | string[] | No | - | Tags for categorization |
 
 Notes:
@@ -273,6 +275,7 @@ High-level mutation helper for AI workflows (`set`, `delete`, `move`).
 | `service` | string | No | - | Service name |
 | `shared` | boolean | No | `false` | Set as shared variable |
 | `sensitive` | boolean | No | `false` | Mark value as sensitive |
+| `dryRun` | boolean | No | `false` | Preview without applying changes |
 | `tags` | string[] | No | - | Tags for set |
 
 Examples:

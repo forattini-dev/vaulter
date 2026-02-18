@@ -50,6 +50,7 @@ export async function handleSetCall(
   const tags = args.tags as string[] | undefined
   const shared = args.shared === true
   const sensitive = args.sensitive === true
+  const dryRun = args.dryRun === true
 
   // If shared flag is set, use __shared__ as service
   const effectiveService = shared ? SHARED_SERVICE : service
@@ -122,6 +123,15 @@ export async function handleSetCall(
   // Check for pre-encoded/pre-encrypted values
   const encodingResult = detectEncoding(value)
 
+  if (dryRun) {
+    return {
+      content: [{
+        type: 'text',
+        text: `Dry run: would set ${key} (${typeLabel}) in ${location}`
+      }]
+    }
+  }
+
   await client.set({
     key,
     value,
@@ -155,11 +165,23 @@ export async function handleDeleteCall(
   args: Record<string, unknown>
 ): Promise<ToolResponse> {
   const key = args.key as string
+  const dryRun = args.dryRun === true
+  const scopeLabel = service ? `${project}/${service}/${environment}` : `${project}/${environment}`
+
+  if (dryRun) {
+    return {
+      content: [{
+        type: 'text',
+        text: `Dry run: would delete ${key} from ${scopeLabel}`
+      }]
+    }
+  }
+
   const deleted = await client.delete(key, project, environment, service)
   return {
     content: [{
       type: 'text',
-      text: deleted ? `✓ Deleted ${key} from ${project}/${environment}` : `Variable ${key} not found`
+      text: deleted ? `✓ Deleted ${key} from ${scopeLabel}` : `Variable ${key} not found`
     }]
   }
 }

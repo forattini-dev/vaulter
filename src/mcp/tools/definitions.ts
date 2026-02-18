@@ -77,6 +77,11 @@ export function registerTools(): Tool[] {
             type: 'boolean',
             description: 'Mark value as sensitive (secret)',
             default: false
+          },
+          dryRun: {
+            type: 'boolean',
+            description: 'Preview without applying changes',
+            default: false
           }
         },
         required: ['action', 'key']
@@ -99,6 +104,7 @@ export function registerTools(): Tool[] {
           service: { type: 'string', description: 'Service name for monorepos' },
           shared: { type: 'boolean', description: 'Set as shared variable (applies to all services in monorepo)', default: false },
           sensitive: { type: 'boolean', description: 'Mark as sensitive (secret) or not (config). Affects K8s export (Secret vs ConfigMap)', default: false },
+          dryRun: { type: 'boolean', description: 'Preview without applying changes', default: false },
           tags: { type: 'array', items: { type: 'string' }, description: 'Tags for categorization (e.g., ["database", "sensitive"])' }
         },
         required: ['key', 'value']
