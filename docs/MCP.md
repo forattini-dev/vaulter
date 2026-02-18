@@ -284,6 +284,7 @@ Examples:
 { "action": "set", "key": "NODE_ENV", "value": "production", "environment": "prod" }
 { "action": "delete", "key": "OLD_TOKEN", "environment": "dev", "project": "my-app" }
 { "action": "move", "key": "MAILGUN_API_KEY", "from": "shared", "to": "service:api", "environment": "dev" }
+{ "action": "set", "key": "SMTP_HOST", "value": "smtp.example.com", "environment": "dev", "dryRun": true }
 ```
 
 #### `vaulter_delete`

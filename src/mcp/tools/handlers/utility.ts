@@ -770,7 +770,8 @@ export async function handleChangeCall(
       from: fromRaw,
       to: toRaw,
       overwrite: args.overwrite,
-      deleteOriginal: args.deleteOriginal ?? true
+      deleteOriginal: args.deleteOriginal ?? true,
+      dryRun: args.dryRun
     })
   }
 
