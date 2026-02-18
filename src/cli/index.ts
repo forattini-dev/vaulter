@@ -248,12 +248,24 @@ const cliSchema: CLISchema = {
           type: 'boolean',
           default: false,
           description: 'Apply safe repository fixes (currently .gitignore hygiene)'
+        },
+        offline: {
+          type: 'boolean',
+          default: false,
+          description: 'Run local checks only (skip backend connectivity/perf/sync validation)'
         }
       }
     },
 
     status: {
-      description: 'Alias for doctor (health and risk status check)'
+      description: 'Alias for doctor (health and risk status check)',
+      options: {
+        offline: {
+          type: 'boolean',
+          default: false,
+          description: 'Run local checks only (skip backend connectivity/perf/sync validation)'
+        }
+      }
     },
 
     init: {
@@ -410,6 +422,33 @@ const cliSchema: CLISchema = {
         },
         move: {
           description: 'Move/copy a variable between scopes'
+        }
+      }
+    },
+
+    move: {
+      description: 'Move/copy a variable between scopes (high-signal shortcut for `change move`)',
+      positional: [
+        { name: 'key', required: true, description: 'Variable name' }
+      ],
+      options: {
+        from: {
+          type: 'string',
+          description: 'Source scope (shared or service:<name>)'
+        },
+        to: {
+          type: 'string',
+          description: 'Destination scope (shared or service:<name>)'
+        },
+        overwrite: {
+          type: 'boolean',
+          default: false,
+          description: 'Overwrite destination value'
+        },
+        'delete-original': {
+          type: 'boolean',
+          default: true,
+          description: 'Delete source variable after move (set false to copy)'
         }
       }
     },
@@ -1188,6 +1227,18 @@ async function main(): Promise<void> {
       case 'change':
         await runChange(context)
         break
+
+      case 'move': {
+        const { runMove } = await import('./commands/move.js')
+        await runMove({
+          ...context,
+          args: {
+            ...context.args,
+            _: ['move', ...context.args._.slice(1)]
+          }
+        })
+        break
+      }
 
       case 'plan': {
         const changedArgs = {

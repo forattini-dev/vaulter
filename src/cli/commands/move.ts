@@ -25,6 +25,7 @@ interface MoveContext {
   config: VaulterConfig | null
   project: string
   environment: Environment
+  service?: string
   verbose: boolean
   dryRun: boolean
   jsonOutput: boolean
@@ -109,12 +110,22 @@ async function restoreVariable(
  * Run the move/copy command
  */
 export async function runMove(context: MoveContext): Promise<void> {
-  const { args, config, project, environment, verbose, dryRun, jsonOutput } = context
+  const {
+    args,
+    config,
+    project,
+    environment,
+    verbose,
+    dryRun,
+    jsonOutput,
+    service: contextService
+  } = context
   const key = args._[1]
   const fromRaw = args.from
   const toRaw = args.to
   const overwrite = args.overwrite === true
   const deleteOriginal = args.deleteOriginal !== false
+  const contextServiceFallback = contextService?.trim() || undefined
 
   if (!project) {
     print.error('Project not specified and no config found')
@@ -129,17 +140,45 @@ export async function runMove(context: MoveContext): Promise<void> {
     process.exit(1)
   }
 
-  if (!fromRaw || !toRaw) {
-    print.error('Both --from and --to are required')
-    ui.log(`Example: ${c.command('vaulter var move API_KEY --from svc-notifications --to shared')}`)
-    ui.log(`Example: ${c.command('vaulter var move API_KEY --from shared --to svc-notifications')}`)
+  if (!fromRaw && !toRaw) {
+    print.error('Missing both --from and --to')
+    ui.log('Provide at least one scope explicitly; the other can be inferred from the current service context')
+    ui.log(`Example: ${c.command('vaulter move API_KEY --from shared --to svc-notifications')}`)
+    ui.log(`Example: ${c.command('vaulter move API_KEY --from svc-notifications --to shared')}`)
     process.exit(1)
   }
 
-  const fromScope = resolveScope(fromRaw)
-  const toScope = resolveScope(toRaw)
+  if (!fromRaw && !contextServiceFallback) {
+    print.error('Missing --from and no service context')
+    ui.log('Provide --from or set --service / run from a service folder in a monorepo')
+    ui.log(`Example: ${c.command('vaulter move API_KEY --from svc-notifications --to shared')}`)
+    ui.log(`Example: ${c.command('vaulter move API_KEY --from shared --to svc-notifications')}`)
+    process.exit(1)
+  }
+
+  if (!toRaw && !contextServiceFallback) {
+    print.error('Missing --to and no service context')
+    ui.log('Provide --to or set --service / run from a service folder in a monorepo')
+    ui.log(`Example: ${c.command('vaulter move API_KEY --from shared --to svc-notifications')}`)
+    ui.log(`Example: ${c.command('vaulter move API_KEY --from svc-notifications --to shared')}`)
+    process.exit(1)
+  }
+
+  const fromScope = resolveScope(fromRaw, contextServiceFallback)
+  const toScope = resolveScope(toRaw, contextServiceFallback)
+
+  if (!fromRaw && fromScope?.service === contextServiceFallback) {
+    ui.log(`Using inferred source scope: ${c.env(contextServiceFallback)}`)
+  }
+
+  if (!toRaw && toScope?.service === contextServiceFallback) {
+    ui.log(`Using inferred destination scope: ${c.env(contextServiceFallback)}`)
+  }
+
   if (!fromScope || !toScope) {
     print.error('Invalid scope format. Use shared or service:<name>')
+    ui.log(`Example: ${c.command('vaulter var move API_KEY --from svc-notifications --to shared')}`)
+    ui.log(`Example: ${c.command('vaulter var move API_KEY --from shared --to svc-notifications')}`)
     process.exit(1)
   }
 

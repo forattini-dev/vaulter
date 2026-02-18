@@ -694,6 +694,7 @@ export interface CLIArgs {
   key?: string
   verbose?: boolean
   'timeout-ms'?: number
+  offline?: boolean
   'dry-run'?: boolean
   json?: boolean
   help?: boolean

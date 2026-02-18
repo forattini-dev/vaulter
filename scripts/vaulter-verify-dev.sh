@@ -7,6 +7,7 @@ cd "$ROOT_DIR"
 ENVIRONMENT="${VAULTER_VERIFY_ENV:-dev}"
 SERVICE="${VAULTER_VERIFY_SERVICE:-}"
 REQUIRE_CONFIG="${VAULTER_VERIFY_REQUIRE_CONFIG:-0}"
+VERIFY_OFFLINE="${VAULTER_VERIFY_OFFLINE:-1}"
 OUTDIR="${VAULTER_VERIFY_OUTDIR:-artifacts/vaulter-health}"
 
 mkdir -p "$OUTDIR"
@@ -33,6 +34,7 @@ run_vaulter() {
 echo "Vaulter verify started"
 echo "Environment: $ENVIRONMENT"
 echo "Service: ${SERVICE:-<all>}"
+echo "Offline doctor: ${VERIFY_OFFLINE}"
 echo "Report: $OUTFILE"
 echo "Require config: ${REQUIRE_CONFIG}"
 
@@ -52,7 +54,11 @@ if [ ! -f "${ROOT_DIR}/.vaulter/config.yaml" ]; then
 fi
 
 {
-  run_vaulter doctor -e "$ENVIRONMENT" -v
+  if [ "$VERIFY_OFFLINE" = "1" ] || [ "$VERIFY_OFFLINE" = "true" ] || [ "$VERIFY_OFFLINE" = "yes" ]; then
+    run_vaulter doctor -e "$ENVIRONMENT" -v --offline
+  else
+    run_vaulter doctor -e "$ENVIRONMENT" -v
+  fi
   run_vaulter sync diff -e "$ENVIRONMENT" --values
   if [ -n "$SERVICE" ]; then
     run_vaulter list -e "$ENVIRONMENT" -s "$SERVICE"

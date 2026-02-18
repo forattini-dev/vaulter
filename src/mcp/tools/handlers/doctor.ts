@@ -124,6 +124,7 @@ export async function handleDoctorCall(
   const checks: DoctorCheck[] = []
   const suggestions: string[] = []
   const applyFixes = args.fix === true
+  const isOffline = args.offline === true
   const outputFormat = args.format === 'json' ? 'json' : 'text'
 
   const addCheck = (check: DoctorCheck) => {
@@ -132,7 +133,7 @@ export async function handleDoctorCall(
   }
 
   const configDir = findConfigDir()
-  const projectRoot = configDir ? getBaseDir(configDir) : null
+  const projectRoot = configDir ? getBaseDir(configDir) : process.cwd()
   const configPath = configDir ? path.join(configDir, 'config.yaml') : null
 
   // Result object to build
@@ -511,37 +512,71 @@ export async function handleDoctorCall(
   // === CHECK 11: Backend connection ===
   let connectionSucceeded = false
   let testClient: any = null
-  try {
-    const { connected, error, varsCount } = await testConnection()
-    connectionSucceeded = connected
-    if (connected) {
-      addCheck({
-        name: 'connection',
-        status: 'ok',
-        details: varsCount !== undefined ? `connected (${varsCount} vars in ${environment})` : 'connected'
-      })
-      if (varsCount !== undefined) {
-        result.environments[environment] = {
-          ...result.environments[environment],
-          varsCount,
-          isEmpty: varsCount === 0
+  if (isOffline) {
+    addCheck({
+      name: 'connection',
+      status: 'skip',
+      details: 'skipped in offline mode',
+      hint: 'Run vaulter_doctor without offline=true to validate backend, permissions and round-trip checks'
+    })
+    addCheck({
+      name: 'latency',
+      status: 'skip',
+      details: 'skipped in offline mode'
+    })
+    addCheck({
+      name: 'permissions',
+      status: 'skip',
+      details: 'skipped in offline mode'
+    })
+    addCheck({
+      name: 'encryption',
+      status: 'skip',
+      details: 'encryption round-trip skipped in offline mode'
+    })
+    addCheck({
+      name: 'sync-status',
+      status: 'skip',
+      details: 'skipped in offline mode'
+    })
+    addCheck({
+      name: 'perf-config',
+      status: 'skip',
+      details: 'skipped in offline mode'
+    })
+  } else {
+    try {
+      const { connected, error, varsCount } = await testConnection()
+      connectionSucceeded = connected
+      if (connected) {
+        addCheck({
+          name: 'connection',
+          status: 'ok',
+          details: varsCount !== undefined ? `connected (${varsCount} vars in ${environment})` : 'connected'
+        })
+        if (varsCount !== undefined) {
+          result.environments[environment] = {
+            ...result.environments[environment],
+            varsCount,
+            isEmpty: varsCount === 0
+          }
         }
+      } else {
+        addCheck({
+          name: 'connection',
+          status: 'fail',
+          details: error || 'failed to connect',
+          hint: 'Check backend URL, credentials, and encryption keys'
+        })
       }
-    } else {
+    } catch (error) {
       addCheck({
         name: 'connection',
         status: 'fail',
-        details: error || 'failed to connect',
-        hint: 'Check backend URL, credentials, and encryption keys'
+        details: (error as Error).message,
+        hint: 'Check backend configuration'
       })
     }
-  } catch (error) {
-    addCheck({
-      name: 'connection',
-      status: 'fail',
-      details: (error as Error).message,
-      hint: 'Check backend configuration'
-    })
   }
 
   // === CHECK 12: Scope policy validation (remote) ===
@@ -817,11 +852,34 @@ export async function handleDoctorCall(
 
   // === CHECK 14: Sync Status ===
   if (config && configDir && connectionSucceeded && project && testClient) {
-    try {
-      const localFilePath = getEnvFilePathForConfig(config, configDir, environment)
+    const getLocalVarMapForDoctor = (): Record<string, string> => {
+      let localVarMap: Record<string, string> = {}
 
-      if (fs.existsSync(localFilePath)) {
-        const localVars = parseEnvFile(localFilePath)
+      if (isSplitMode(config)) {
+        const secretsPath = getSecretsFilePath(config, configDir, environment)
+        const configsPath = getConfigsFilePath(config, configDir, environment)
+
+        if (fs.existsSync(secretsPath)) {
+          localVarMap = { ...localVarMap, ...parseEnvFile(secretsPath) }
+        }
+
+        if (fs.existsSync(configsPath)) {
+          localVarMap = { ...localVarMap, ...parseEnvFile(configsPath) }
+        }
+      } else {
+        const envPath = getEnvFilePathForConfig(config, configDir, environment)
+        if (fs.existsSync(envPath)) {
+          localVarMap = parseEnvFile(envPath)
+        }
+      }
+
+      return localVarMap
+    }
+
+    try {
+      const localVars = getLocalVarMapForDoctor()
+
+      if (Object.keys(localVars).length > 0) {
         const remoteVars = await testClient.export(project, environment, service)
 
         const localKeys = new Set(Object.keys(localVars))
@@ -867,7 +925,7 @@ export async function handleDoctorCall(
         addCheck({
           name: 'sync-status',
           status: 'skip',
-          details: 'no local file to compare'
+          details: 'no local vars to compare'
         })
       }
     } catch (error) {
@@ -886,7 +944,6 @@ export async function handleDoctorCall(
     // Check if .env files are tracked in git
     try {
       const { execSync } = await import('node:child_process')
-      const projectRoot = path.dirname(configDir)
 
       // Check if we're in a git repo
       try {
@@ -926,12 +983,16 @@ export async function handleDoctorCall(
 
     // Check file permissions (if on Unix)
     if (process.platform !== 'win32') {
-      const envPath = getEnvFilePathForConfig(config, configDir, environment)
-      if (fs.existsSync(envPath)) {
+      const permissionPaths = isSplitMode(config)
+        ? [getSecretsFilePath(config, configDir, environment), getConfigsFilePath(config, configDir, environment)]
+        : [getEnvFilePathForConfig(config, configDir, environment)]
+
+      for (const envPath of permissionPaths) {
+        if (!fs.existsSync(envPath)) continue
         const stats = fs.statSync(envPath)
         const mode = stats.mode & 0o777
         if (mode !== 0o600 && mode !== 0o400) {
-          securityIssues.push(`.env file has weak permissions (${mode.toString(8)})`)
+          securityIssues.push(`.env file has weak permissions (${mode.toString(8)}): ${path.basename(envPath)}`)
         }
       }
     }
