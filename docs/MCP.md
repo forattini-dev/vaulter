@@ -2,7 +2,7 @@
 
 Complete reference for the Vaulter Model Context Protocol (MCP) server.
 
-**Stats:** 53 tools | 6 resources | 12 prompts
+**Stats:** 56 tools | 7 resources | 12 prompts
 
 ---
 
@@ -223,7 +223,7 @@ if (diagnosis.summary.warn > 0) {
 
 ---
 
-## Tools Reference (53)
+## Tools Reference (56)
 
 ### Core Operations (5)
 
@@ -346,17 +346,9 @@ Delete multiple variables in a single call.
 
 ---
 
-### Sync Operations (3)
+### Sync Operations (2)
 
-#### `vaulter_sync`
-Bidirectional sync between local .env and backend.
-
-| Parameter | Type | Required | Default | Description |
-|-----------|------|----------|---------|-------------|
-| `environment` | string | No | `dev` | Environment name |
-| `project` | string | No | auto | Project name |
-| `service` | string | No | - | Service name |
-| `dryRun` | boolean | No | `false` | Preview changes without applying |
+`vaulter_sync` is a CLI-only command and is not exposed in MCP tools.
 
 #### `vaulter_pull`
 Download from backend to local .env file or output targets.
@@ -417,7 +409,7 @@ vaulter sync push --dir -e dev
 
 ---
 
-### Analysis & Discovery (2)
+### Analysis & Discovery (4)
 
 #### `vaulter_compare`
 Compare variables between two environments.
@@ -439,6 +431,22 @@ Search for variables by key pattern.
 | `project` | string | No | auto | Project name |
 | `service` | string | No | - | Service name |
 | `environments` | string[] | No | all | Environments to search |
+
+#### `vaulter_scan`
+Scan monorepo to discover packages/apps and initialization state.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `path` | string | No | `.` | Root directory to scan |
+| `format` | string | No | `text` | Output format (`text` or `json`) |
+
+#### `vaulter_services`
+List discovered services from local service configs and/or configured services.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `path` | string | No | `.` | Root directory to scan |
+| `detailed` | boolean | No | `false` | Show detailed service info |
 
 ---
 
@@ -722,7 +730,21 @@ Returns:
 
 ---
 
-### Utility Tools (4)
+### Utility Tools (5)
+
+#### `vaulter_move`
+Move/copy a variable between scopes (`shared` <-> `service` or service-to-service) in one operation.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `key` | string | **Yes** | - | Variable name to move |
+| `from` | string | **Yes** | - | Source scope (`shared` or `service:<name>`) |
+| `to` | string | **Yes** | - | Destination scope (`shared` or `service:<name>`) |
+| `environment` | string | No | `dev` | Environment name |
+| `project` | string | No | auto | Project name |
+| `overwrite` | boolean | No | `false` | Overwrite destination when exists |
+| `dryRun` | boolean | No | `false` | Preview action without applying |
+| `deleteOriginal` | boolean | No | `true` | Delete source after move (set false to copy) |
 
 #### `vaulter_copy`
 Copy variables from one environment to another. Useful for promoting configs from dev to stg/prd.
@@ -773,13 +795,14 @@ Demote a shared variable to a specific service.
 
 ---
 
-### Local Overrides (10)
+### Local Overrides (11)
 
 **OFFLINE-FIRST ARCHITECTURE:**
 
 | Tool | What it does | Backend? |
 |------|--------------|----------|
 | `vaulter_local_pull` | Generate .env files from `.vaulter/local/` | ❌ OFFLINE |
+| `vaulter_local_push` | Push one local var (service/shared) to backend | ✅ Uses backend |
 | `vaulter_local_push_all` | Send `.vaulter/local/` → backend | ✅ Uses backend |
 | `vaulter_local_sync` | Download backend → `.vaulter/local/` | ✅ Uses backend |
 | `vaulter_local_set` | Write service/local overrides to `.vaulter/local/` (shared via `vaulter_local_shared_set`) | ❌ OFFLINE |
@@ -826,6 +849,17 @@ In monorepo mode, `service` is required.
 | `value` | string | **Yes** | - | Value to set |
 | `service` | string | No | - | Service name (monorepo) |
 | `sensitive` | boolean | No | `false` | If true, writes to secrets.env; if false, writes to configs.env |
+
+#### `vaulter_local_push`
+Push a single local override to backend (`configs.env` or `secrets.env`) for the selected scope.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `key` | string | **Yes** | - | Variable name |
+| `service` | string | No | - | Service name (monorepo) |
+| `shared` | boolean | No | `false` | Use `true` to target shared scope |
+| `targetEnvironment` | string | No | base env | Target environment in backend |
+| `dryRun` | boolean | No | `false` | Preview changes without applying |
 
 #### `vaulter_local_delete`
 Remove a service-scoped local override.
@@ -1049,7 +1083,7 @@ Show differences between local file and remote backend. Essential for understand
 
 ---
 
-## Resources Reference (6)
+## Resources Reference (7)
 
 Resources provide static/cached data that doesn't require input parameters. They are read-only and ideal for getting context before using tools.
 
@@ -1057,6 +1091,7 @@ Resources provide static/cached data that doesn't require input parameters. They
 |-----|-------------|-----------|-------------|
 | `vaulter://instructions` | **⚠️ Read first!** How vaulter works | `text/markdown` | Before any other operation |
 | `vaulter://tools-guide` | Which tool to use for each scenario | `text/markdown` | When unsure which tool to use |
+| `vaulter://workflow` | Local-first dev workflow and promotion path | `text/markdown` | Planning config changes and deployments |
 | `vaulter://mcp-config` | MCP settings with sources | `application/json` | Debugging configuration issues |
 | `vaulter://config` | Project configuration (YAML) | `application/yaml` | Understanding project setup |
 | `vaulter://services` | Monorepo services list (filesystem + outputs fallback) | `application/json` | Working with monorepos |
@@ -1111,16 +1146,16 @@ Comprehensive guide on which tool to use for each scenario. Includes:
 Also covers:
 - Core operations (5 tools)
 - Batch operations (3 tools)
-- Sync operations (3 tools)
-- Analysis & Discovery (2 tools)
+- Sync operations (2 tools)
+- Analysis & Discovery (4 tools)
 - Status & Audit (2 tools)
 - K8s/IaC Integration (4 tools)
 - Key Management (6 tools)
 - Monorepo support (5 tools)
 - Categorization (1 tool)
 - Dangerous operations (1 tool)
-- Utility tools (4 tools)
-- Local overrides (5 tools)
+- Utility tools (5 tools)
+- Local overrides (11 tools)
 - Snapshot tools (3 tools)
 - Diagnostic tools (3 tools)
 
@@ -1560,7 +1595,8 @@ Claude: I'll show you the differences...
 
 ```
 1. vaulter_compare → Compare dev vs prd
-2. vaulter_sync    → Sync with dry_run first
+2. vaulter_pull --dryRun=true → Preview what would change locally
+3. vaulter_push --dryRun=true → Preview what would be pushed
 ```
 
 ### 4. Batch Migration

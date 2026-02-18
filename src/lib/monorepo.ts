@@ -364,7 +364,7 @@ export function discoverServicesWithFallback(
   config: VaulterConfig,
   rootDir: string = process.cwd()
 ): ServiceInfo[] {
-  const discoveredServices = discoverServices(rootDir)
+  const discoveredServices = discoverServices(rootDir, { includeConfiguredServices: true })
   if (discoveredServices.length > 0) {
     return discoveredServices
   }

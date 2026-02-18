@@ -115,7 +115,7 @@ export async function listResources(): Promise<Resource[]> {
   resources.push({
     uri: 'vaulter://tools-guide',
     name: 'Tools Guide',
-    description: 'Comprehensive guide on which vaulter tool to use for each scenario. Includes 47 tools organized by category.',
+    description: 'Comprehensive guide on which vaulter tool to use for each scenario. Includes 56 tools organized by category.',
     mimeType: 'text/markdown'
   })
 
@@ -689,7 +689,7 @@ Since backend is source of truth:
  * Read tools guide resource - Which tool to use for each scenario
  */
 async function handleToolsGuideRead(uri: string): Promise<{ contents: Array<{ uri: string; mimeType: string; text: string }> }> {
-  const guide = `# Vaulter MCP Tools Guide (47 tools)
+  const guide = `# Vaulter MCP Tools Guide (56 tools)
 
 ## 🚨 FOR AI AGENTS: START HERE
 
@@ -720,6 +720,7 @@ This will tell you:
 | List all variables | \`vaulter_list\` |
 | Export to file format | \`vaulter_export\` |
 | Compare environments | \`vaulter_compare\` |
+| Move/copy scope | \`vaulter_move\` |
 | Copy vars between envs | \`vaulter_copy\` |
 | Search across envs | \`vaulter_search\` |
 | Check system status | \`vaulter_status\` |
@@ -888,7 +889,7 @@ environment: "dev"
 
 ---
 
-## 🔍 Analysis & Discovery (2 tools)
+## 🔍 Analysis & Discovery (4 tools)
 
 ### \`vaulter_compare\`
 **Use for:** Comparing two environments
@@ -901,6 +902,20 @@ target: "prd"
 **Use for:** Searching variables by pattern
 \`\`\`
 pattern: "DATABASE_*"
+\`\`\`
+
+### \`vaulter_scan\`
+**Use for:** Discovering monorepo services and workspace structure
+\`\`\`
+path: "."
+format: "json"
+\`\`\`
+
+### \`vaulter_services\`
+**Use for:** Listing services discovered from config and/or filesystem
+\`\`\`
+path: "."
+detailed: true
 \`\`\`
 
 ---
@@ -1037,7 +1052,7 @@ mode: "split"  # or "unified"
 
 ---
 
-## 💻 Local Overrides (8 tools)
+## 💻 Local Overrides (11 tools)
 
 Local overrides layer on top of a base environment. Plaintext, gitignored, never touch the backend.
 
@@ -1109,6 +1124,21 @@ service: "web"
 \`\`\`
 all: true  # or output: "web"
 \`\`\`
+
+### \`vaulter_local_push\`
+**Use for:** Push a single local override (`configs.env` or `secrets.env`) to backend.
+\`\`\`
+key: "PORT"
+service: "web"
+targetEnvironment: "dev" # optional
+dryRun: true # optional
+\`\`\`
+
+### \`vaulter_local_push_all\`
+**Use for:** Push entire `.vaulter/local/` structure (shared + services) to backend.
+
+### \`vaulter_local_sync\`
+**Use for:** Pull backend state to `.vaulter/local/` in one step.
 
 ### \`vaulter_local_diff\`
 **Use for:** See what's overridden locally vs base env

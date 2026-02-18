@@ -7,6 +7,11 @@
 import { VaulterClient } from '../../../client.js'
 import { SHARED_SERVICE } from '../../../lib/shared.js'
 import { detectEncoding } from '../../../lib/encoding-detection.js'
+import {
+  collectScopePolicyIssues,
+  formatScopePolicySummary,
+  hasBlockingPolicyIssues
+} from '../../../lib/scope-policy.js'
 import type { Environment } from '../../../types.js'
 import type { ToolResponse } from '../config.js'
 
@@ -43,6 +48,41 @@ export async function handleSetCall(
   // If shared flag is set, use __shared__ as service
   const effectiveService = shared ? SHARED_SERVICE : service
 
+  // Validate scope policy for target
+  const policyChecks = collectScopePolicyIssues([key], {
+    scope: shared ? 'shared' : 'service',
+    service: shared ? undefined : service
+  })
+  const policyIssues = policyChecks.flatMap((check) => check.issues)
+  const policyBlocked = hasBlockingPolicyIssues(policyChecks)
+
+  const location = shared
+    ? `${project}/${environment} (shared)`
+    : `${project}/${environment}${service ? `/${service}` : ''}`
+
+  const typeLabel = sensitive ? 'secret' : 'config'
+
+  // Build response with optional warning
+  const lines = [`✓ Set ${key} (${typeLabel}) in ${location}`]
+  if (policyIssues.length > 0) {
+    lines.push('')
+    lines.push(`⚠️ Scope policy check for ${key}:`)
+    lines.push(formatScopePolicySummary(policyIssues))
+
+    if (policyBlocked) {
+      return {
+        content: [{
+          type: 'text',
+          text: lines.concat([
+            '',
+            'Scope policy blocked this change.',
+            'Set VAULTER_SCOPE_POLICY=warn or VAULTER_SCOPE_POLICY=off to continue.'
+          ].join('\n'))
+        }]
+      }
+    }
+  }
+
   // Check for pre-encoded/pre-encrypted values
   const encodingResult = detectEncoding(value)
 
@@ -56,15 +96,6 @@ export async function handleSetCall(
     sensitive,
     metadata: { source: 'manual' }
   })
-
-  const location = shared
-    ? `${project}/${environment} (shared)`
-    : `${project}/${environment}${service ? `/${service}` : ''}`
-
-  const typeLabel = sensitive ? 'secret' : 'config'
-
-  // Build response with optional warning
-  const lines = [`✓ Set ${key} (${typeLabel}) in ${location}`]
 
   if (encodingResult.detected && encodingResult.confidence !== 'low') {
     lines.push('')

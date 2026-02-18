@@ -529,6 +529,24 @@ export function registerTools(): Tool[] {
       }
     },
     {
+      name: 'vaulter_move',
+      description: 'Move/copy a variable between scopes in one operation.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          key: { type: 'string', description: 'Variable name to move' },
+          from: { type: 'string', description: 'Source scope (shared or service:<name>)' },
+          to: { type: 'string', description: 'Destination scope (shared or service:<name>)' },
+          environment: { type: 'string', description: 'Environment name', default: 'dev' },
+          project: { type: 'string', description: 'Project name' },
+          overwrite: { type: 'boolean', description: 'Overwrite destination value if it exists', default: false },
+          dryRun: { type: 'boolean', description: 'Preview action without applying', default: false },
+          deleteOriginal: { type: 'boolean', description: 'Delete source variable after move (default: true). Set false to copy.', default: true }
+        },
+        required: ['key', 'from', 'to']
+      }
+    },
+    {
       name: 'vaulter_rename',
       description: 'Rename a variable (atomic operation). Copies value to new key and deletes old key.',
       inputSchema: {

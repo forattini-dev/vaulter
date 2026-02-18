@@ -114,6 +114,19 @@ export async function runVar(context: VarContext): Promise<void> {
       break
     }
 
+    case 'move': {
+      const { runMove } = await import('../move.js')
+      const shiftedArgs = {
+        ...args,
+        _: ['move', ...args._.slice(2)]
+      }
+      await runMove({
+        ...context,
+        args: shiftedArgs
+      })
+      break
+    }
+
     default:
       if (!subcommand) {
         ui.log(`${c.label('Usage:')} ${c.command('vaulter var')} ${c.subcommand('<command>')} [options]`)
@@ -125,6 +138,7 @@ export async function runVar(context: VarContext): Promise<void> {
         ui.log(`  ${c.subcommand('list')}                  List all variables`)
         ui.log(`  ${c.subcommand('versions')} ${c.muted('<key>')}        List version history`)
         ui.log(`  ${c.subcommand('rollback')} ${c.muted('<key> <ver>')}  Rollback to version`)
+        ui.log(`  ${c.subcommand('move')} ${c.muted('<key>')}         Move/copy between scopes`)
         ui.log('')
         ui.log(c.header('Set Syntax:'))
         ui.log(`  ${c.key('KEY')}${c.secret('=')}${c.value('value')}        ${c.secretType('secret')} ${c.muted('(encrypted, synced to backend)')}`)

@@ -9,6 +9,7 @@ import { getValidEnvironments } from '../../../lib/config-loader.js'
 import path from 'node:path'
 import { loadConfig } from '../../../lib/config-loader.js'
 import {
+  discoverServices,
   discoverServicesWithFallback,
   findMonorepoRoot,
 } from '../../../lib/monorepo.js'
@@ -203,20 +204,40 @@ export async function handleServicesCall(
   const rootPath = path.resolve(rawPath)
   const monorepoRoot = findMonorepoRoot(rootPath) || rootPath
 
-  try {
-    const config = loadConfig(monorepoRoot)
-    const services = discoverServicesWithFallback(config, monorepoRoot)
+  let config: VaulterConfig | null = null
+  let configError: string | null = null
 
+  try {
+    config = loadConfig(monorepoRoot)
+  } catch (error) {
+    configError = (error as Error).message
+  }
+
+  const services = config
+    ? discoverServicesWithFallback(config, monorepoRoot)
+    : discoverServices(monorepoRoot)
+
+  try {
     if (services.length === 0) {
+      const lines = [`No services found in ${rootPath}.`]
+      if (configError) {
+        lines.push(`Hint: unable to load .vaulter/config.yaml from ${monorepoRoot}: ${configError}`)
+      }
+      lines.push('Try passing --path with the monorepo root or check config/services discovery settings.')
       return {
         content: [{
           type: 'text',
-          text: `No services found in ${rootPath}. Run from a Vaulter monorepo root or pass a different "path".`
+          text: lines.join('\n')
         }]
       }
     }
 
     const lines = [`Discovered ${services.length} service(s):\n`]
+    if (!config && configError) {
+      lines.push(`Config not loaded from ${monorepoRoot}; using filesystem fallback discovery.`)
+      lines.push(`Config error: ${configError}`)
+      lines.push('')
+    }
 
     for (const svc of services) {
       if (detailed) {

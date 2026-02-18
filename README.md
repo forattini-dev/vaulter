@@ -299,6 +299,7 @@ See [docs/DOCTOR.md](docs/DOCTOR.md) for complete guide.
 | `var set KEY=val -e <env>` | Set secret (encrypted) |
 | `var set KEY::val -e <env>` | Set config (plain text) |
 | `var set KEY:=123 -e <env>` | Set typed secret (number/boolean) |
+| `var move <key> --from <scope> --to <scope> -e <env>` | Move/copy variable between scopes |
 | `var delete <key> -e <env>` | Delete a variable |
 | `var list -e <env>` | List all variables |
 
@@ -1275,7 +1276,7 @@ const result = await loadRuntime({
 
 ## MCP Server
 
-Claude AI integration via Model Context Protocol. **53 tools, 6 resources, 12 prompts.**
+Claude AI integration via Model Context Protocol. **56 tools, 7 resources, 12 prompts.**
 
 ```bash
 vaulter mcp
@@ -1294,13 +1295,13 @@ vaulter mcp
 }
 ```
 
-### Tools (53)
+### Tools (56)
 
 | Category | Tools |
 |:---------|:------|
 | **Core (5)** | `vaulter_get`, `vaulter_set`, `vaulter_delete`, `vaulter_list`, `vaulter_export` |
 | **Batch (3)** | `vaulter_multi_get`, `vaulter_multi_set`, `vaulter_multi_delete` |
-| **Sync (3)** | `vaulter_sync`, `vaulter_pull`, `vaulter_push` |
+| **Sync (2)** | `vaulter_pull`, `vaulter_push` |
 | **Analysis (2)** | `vaulter_compare`, `vaulter_search` |
 | **Status (2)** | `vaulter_status`, `vaulter_audit_list` |
 | **K8s (2)** | `vaulter_k8s_secret`, `vaulter_k8s_configmap` |
@@ -1309,13 +1310,13 @@ vaulter mcp
 | **Monorepo (5)** | `vaulter_init`, `vaulter_scan`, `vaulter_services`, `vaulter_shared_list`, `vaulter_inheritance_info` |
 | **Categorization (1)** | `vaulter_categorize_vars` |
 | **Dangerous (1)** | `vaulter_nuke_preview` |
-| **Utility (4)** | `vaulter_copy`, `vaulter_rename`, `vaulter_promote_shared`, `vaulter_demote_shared` |
-| **Local Overrides (8)** | `vaulter_local_pull`, `vaulter_local_set`, `vaulter_local_delete`, `vaulter_local_diff`, `vaulter_local_status`, `vaulter_local_shared_set`, `vaulter_local_shared_delete`, `vaulter_local_shared_list` |
+| **Utility (5)** | `vaulter_copy`, `vaulter_move`, `vaulter_rename`, `vaulter_promote_shared`, `vaulter_demote_shared` |
+| **Local Overrides (11)** | `vaulter_local_pull`, `vaulter_local_push`, `vaulter_local_set`, `vaulter_local_delete`, `vaulter_local_shared_set`, `vaulter_local_shared_delete`, `vaulter_local_shared_list`, `vaulter_local_push_all`, `vaulter_local_sync`, `vaulter_local_diff`, `vaulter_local_status` |
 | **Snapshot (3)** | `vaulter_snapshot_create`, `vaulter_snapshot_list`, `vaulter_snapshot_restore` |
 | **Versioning (3)** | `vaulter_list_versions`, `vaulter_get_version`, `vaulter_rollback` |
 | **Diagnostic (3)** | `vaulter_doctor`, `vaulter_clone_env`, `vaulter_diff` |
 
-### Resources (6)
+### Resources (7)
 
 Static data views (no input required). For actions with parameters, use tools.
 
@@ -1323,6 +1324,7 @@ Static data views (no input required). For actions with parameters, use tools.
 |:----|:------------|
 | `vaulter://instructions` | **Read first!** How vaulter stores data (s3db.js architecture) |
 | `vaulter://tools-guide` | Which tool to use for each scenario |
+| `vaulter://workflow` | Development workflow (local-first, commits/config/local) |
 | `vaulter://monorepo-example` | Complete monorepo isolation example with var counts |
 | `vaulter://mcp-config` | MCP settings sources (priority chain) |
 | `vaulter://config` | Project configuration (YAML) |

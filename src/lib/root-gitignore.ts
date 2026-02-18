@@ -17,6 +17,8 @@ export interface RootGitignoreSyncResult {
 export function getVaulterRootGitignoreEntries(isMonorepo: boolean): string[] {
   const singleRepoEntries = [
     '# Vaulter generated files',
+    '.env',
+    '.env.*',
     '.vaulter/local/configs.env',
     '.vaulter/local/secrets.env',
     '.vaulter/deploy/secrets/*.env'

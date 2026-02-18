@@ -90,6 +90,7 @@ import {
 } from './handlers/monorepo.js'
 import {
   handleCopyCall,
+  handleMoveCall,
   handleRenameCall,
   handlePromoteSharedCall,
   handleDemoteSharedCall
@@ -381,6 +382,9 @@ export async function handleToolCall(
       // === UTILITY TOOLS (for full autonomy) ===
       case 'vaulter_copy':
         return await handleCopyCall(client, project, environment, service, args)
+
+      case 'vaulter_move':
+        return await handleMoveCall(client, project, environment, service, args)
 
       case 'vaulter_rename':
         return await handleRenameCall(client, project, environment, service, args)

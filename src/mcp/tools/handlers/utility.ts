@@ -7,6 +7,13 @@
 
 import { VaulterClient } from '../../../client.js'
 import { SHARED_SERVICE } from '../../../lib/shared.js'
+import {
+  collectScopePolicyIssues,
+  formatScopePolicySummary,
+  getScopeLabelFromParsed,
+  hasBlockingPolicyIssues,
+  parseScopeSpec
+} from '../../../lib/scope-policy.js'
 import { compileGlobPatterns } from '../../../lib/pattern-matcher.js'
 import type { Environment } from '../../../types.js'
 import type { ToolResponse } from '../config.js'
@@ -291,6 +298,168 @@ export async function handleDemoteSharedCall(
     content: [{
       type: 'text',
       text: `✓ ${action} ${key} from shared → ${toService}`
+    }]
+  }
+}
+
+/**
+ * Move a variable between scopes in one command
+ */
+export async function handleMoveCall(
+  client: VaulterClient,
+  project: string,
+  environment: Environment,
+  _service: string | undefined, // Not used - source is explicit via --from
+  args: Record<string, unknown>
+): Promise<ToolResponse> {
+  const key = args.key as string
+  const fromRaw = args.from as string | undefined
+  const toRaw = args.to as string | undefined
+  const overwrite = args.overwrite === true
+  const deleteOriginal = args.deleteOriginal !== false
+  const dryRun = args.dryRun === true
+
+  if (!key) {
+    return {
+      content: [{
+        type: 'text',
+        text: 'Error: key is required'
+      }]
+    }
+  }
+
+  if (!fromRaw || !toRaw) {
+    return {
+      content: [{
+        type: 'text',
+        text: 'Error: both `from` and `to` are required (e.g., from="shared", to="service:api")'
+      }]
+    }
+  }
+
+  const fromScope = parseScopeSpec(fromRaw)
+  const toScope = parseScopeSpec(toRaw)
+
+  if (!fromScope) {
+    return {
+      content: [{
+        type: 'text',
+        text: `Error: invalid --from value "${fromRaw}". Use "shared", "service:<name>", or "<service>"`
+      }]
+    }
+  }
+
+  if (!toScope) {
+    return {
+      content: [{
+        type: 'text',
+        text: `Error: invalid --to value "${toRaw}". Use "shared", "service:<name>", or "<service>"`
+      }]
+    }
+  }
+
+  if (fromScope.mode === toScope.mode) {
+    if (fromScope.mode === 'shared' || fromScope.service === toScope.service) {
+      return {
+        content: [{
+          type: 'text',
+          text: 'Error: source and destination are the same scope'
+        }]
+      }
+    }
+  }
+
+  const sourceService = fromScope.mode === 'shared' ? SHARED_SERVICE : fromScope.service
+  const targetService = toScope.mode === 'shared' ? SHARED_SERVICE : toScope.service
+  const sourceLabel = getScopeLabelFromParsed(fromScope)
+  const targetLabel = getScopeLabelFromParsed(toScope)
+
+  // Validate destination scope policy before mutating
+  const policyChecks = collectScopePolicyIssues([key], {
+    scope: toScope.mode,
+    service: toScope.service
+  })
+  const policyIssues = policyChecks.flatMap((check) => check.issues)
+  if (policyIssues.length > 0) {
+    const policyBlocked = hasBlockingPolicyIssues(policyChecks)
+    const lines = [
+      `⚠️ Scope policy check for ${key}:`,
+      formatScopePolicySummary(policyIssues)
+    ]
+
+    if (policyBlocked) {
+      lines.push('')
+      lines.push('Scope policy blocked this change.')
+      lines.push('Set VAULTER_SCOPE_POLICY=warn or VAULTER_SCOPE_POLICY=off to continue.')
+
+      return {
+        content: [{
+          type: 'text',
+          text: lines.join('\n')
+        }]
+      }
+    }
+  }
+
+  const sourceVar = await client.get(key, project, environment, sourceService)
+  if (!sourceVar) {
+    return {
+      content: [{
+        type: 'text',
+        text: `Error: variable ${key} not found in ${sourceLabel}`
+      }]
+    }
+  }
+
+  const existingTarget = await client.get(key, project, environment, targetService)
+  if (existingTarget && !overwrite) {
+    return {
+      content: [{
+        type: 'text',
+        text: `Error: destination already has ${key} in ${targetLabel}. Use overwrite=true to replace it.`
+      }]
+    }
+  }
+
+  if (dryRun) {
+    const action = deleteOriginal ? 'move' : 'copy'
+    const overwriteHint = overwrite ? ' (overwrite allowed)' : ' (overwrite disabled)'
+    return {
+      content: [{
+        type: 'text',
+        text: `Dry run: would ${action} ${key} from ${sourceLabel} to ${targetLabel} in ${project}/${environment}${overwriteHint}`
+      }]
+    }
+  }
+
+  const destinationVar = sourceVar
+  const policyHint = deleteOriginal ? 'Moved' : 'Copied'
+
+  await client.set({
+    key,
+    value: destinationVar.value,
+    project,
+    environment,
+    service: targetService,
+    tags: destinationVar.tags,
+    sensitive: destinationVar.sensitive,
+    metadata: {
+      ...(destinationVar.metadata || {}),
+      source: 'mcp',
+      movedFrom: sourceLabel,
+      movedTo: targetLabel,
+      movedAt: new Date().toISOString()
+    }
+  })
+
+  if (deleteOriginal) {
+    await client.delete(key, project, environment, sourceService)
+  }
+
+  return {
+    content: [{
+      type: 'text',
+      text: `✓ ${policyHint} ${key} from ${sourceLabel} to ${targetLabel} in ${project}/${environment}`
     }]
   }
 }

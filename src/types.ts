@@ -739,6 +739,13 @@ export interface CLIArgs {
   confirm?: string
   // Push/Pull dir mode
   dir?: boolean
+  // Move/copy semantics
+  deleteOriginal?: boolean
+  // Service discovery path override
+  path?: string
+  // Move operation scope routing
+  from?: string
+  to?: string
 }
 
 export interface CommandContext {

@@ -7,6 +7,11 @@
 import { VaulterClient } from '../../../client.js'
 import { SHARED_SERVICE } from '../../../lib/shared.js'
 import { checkValuesForEncoding } from '../../../lib/encoding-detection.js'
+import {
+  collectScopePolicyIssues,
+  formatScopePolicySummary,
+  hasBlockingPolicyIssues
+} from '../../../lib/scope-policy.js'
 import type { Environment } from '../../../types.js'
 import type { ToolResponse } from '../config.js'
 
@@ -127,6 +132,28 @@ export async function handleMultiSetCall(
   const validEntries = varsArray.filter(({ key, value }) => key && value !== undefined)
   const skipped = varsArray.length - validEntries.length
 
+  const policyChecks = collectScopePolicyIssues(validEntries.map(entry => entry.key), {
+    scope: shared ? 'shared' : 'service',
+    service: shared ? undefined : service
+  })
+  const policyIssues = policyChecks.flatMap((check) => check.issues)
+
+  if (policyIssues.length > 0) {
+    const lines = [`⚠️ Scope policy check:`]
+    lines.push(formatScopePolicySummary(policyIssues))
+
+    if (hasBlockingPolicyIssues(policyChecks)) {
+      lines.push('')
+      lines.push('Scope policy blocked this change. Set VAULTER_SCOPE_POLICY=warn or VAULTER_SCOPE_POLICY=off to continue.')
+      return {
+        content: [{
+          type: 'text',
+          text: lines.join('\n')
+        }]
+      }
+    }
+  }
+
   // Use optimized setMany - single list query + parallel insert/update
   // Per-variable sensitive overrides the default
   const inputs = validEntries.map(({ key, value, sensitive, tags }) => ({
@@ -149,6 +176,12 @@ export async function handleMultiSetCall(
       : `${project}/${environment}${service ? `/${service}` : ''}`
 
     const lines = [`Set ${succeeded.length}/${varsArray.length} variable(s) in ${location}:`]
+    if (policyIssues.length > 0) {
+      lines.push('')
+      lines.push('⚠️ Scope policy check (warnings only):')
+      lines.push(formatScopePolicySummary(policyIssues))
+    }
+
     if (succeeded.length > 0) lines.push(`✓ ${succeeded.join(', ')}`)
     if (skipped > 0) lines.push(`⚠ Skipped ${skipped} invalid entries`)
 

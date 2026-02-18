@@ -21,6 +21,12 @@ import { createConnectedAuditLogger, logSetOperation, disconnectAuditLogger } fr
 import { c, symbols, colorEnv, print } from '../lib/colors.js'
 import { SHARED_SERVICE } from '../../lib/shared.js'
 import { checkValuesForEncoding, formatEncodingWarning } from '../../lib/encoding-detection.js'
+import {
+  collectScopePolicyIssues,
+  formatScopePolicySummary,
+  getScopePolicyMode,
+  hasBlockingPolicyIssues
+} from '../../lib/scope-policy.js'
 import * as ui from '../ui.js'
 
 type SeparatorValue = string | number | boolean | null
@@ -53,6 +59,33 @@ function isProdEnvironment(env: Environment): boolean {
  */
 function isSplitMode(config: VaulterConfig | null): boolean {
   return config?.directories?.mode === 'split'
+}
+
+function validateScopePolicy(
+  keys: string[],
+  targetScope: 'shared' | 'service',
+  targetService: string | undefined,
+  policyMode?: string
+): void {
+  if (keys.length === 0) return
+
+  const checks = collectScopePolicyIssues(keys, {
+    scope: targetScope,
+    service: targetService,
+    policyMode: getScopePolicyMode(policyMode)
+  })
+  const issues = checks.flatMap(check => check.issues)
+
+  if (issues.length === 0) return
+
+  print.warning('Scope policy check:')
+  print.warning(formatScopePolicySummary(issues))
+
+  if (hasBlockingPolicyIssues(checks)) {
+    print.error('Scope policy blocked this change.')
+    ui.log('Set VAULTER_SCOPE_POLICY=warn or VAULTER_SCOPE_POLICY=off to continue.')
+    process.exit(1)
+  }
 }
 
 /**
@@ -193,6 +226,8 @@ export async function runSet(context: SetContext): Promise<void> {
     ui.log(`  ${c.command('vaulter set')} ${c.key('KEY')}${c.secret('=')}${c.value('val')} ${c.muted('@tag:db,secret @owner:team')}  ${c.muted('# With metadata')}`)
     process.exit(1)
   }
+
+  validateScopePolicy([...secrets.keys(), ...configs.keys()], isShared ? 'shared' : 'service', effectiveService)
 
   if (!project) {
     print.error('Project not specified and no config found')

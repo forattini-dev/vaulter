@@ -201,6 +201,10 @@ const cliSchema: CLISchema = {
       default: false,
       description: 'Delete variables that don\'t exist in source (sync push/pull)'
     },
+    path: {
+      type: 'string',
+      description: 'Root path for vaulter config discovery'
+    },
     shared: {
       type: 'boolean',
       default: false,
@@ -258,6 +262,26 @@ const cliSchema: CLISchema = {
     // NEW: Hierarchical var command group
     var: {
       description: 'Variable management commands',
+      options: {
+        from: {
+          type: 'string',
+          description: 'Source scope for move operations (shared or service:<name>)'
+        },
+        to: {
+          type: 'string',
+          description: 'Destination scope for move operations (shared or service:<name>)'
+        },
+        overwrite: {
+          type: 'boolean',
+          default: false,
+          description: 'Overwrite destination value when moving'
+        },
+        'delete-original': {
+          type: 'boolean',
+          default: true,
+          description: 'Delete source variable after move (set false to copy only)'
+        }
+      },
       commands: {
         get: {
           description: 'Get a single variable',
@@ -312,6 +336,32 @@ const cliSchema: CLISchema = {
             { name: 'key', required: true, description: 'Variable name' },
             { name: 'version', required: true, description: 'Version number to rollback to' }
           ]
+        },
+        move: {
+          description: 'Move/copy a variable between scopes',
+          positional: [
+            { name: 'key', required: true, description: 'Variable name' }
+          ],
+          options: {
+            from: {
+              type: 'string',
+              description: 'Source scope (shared or service:<name>)'
+            },
+            to: {
+              type: 'string',
+              description: 'Destination scope (shared or service:<name>)'
+            },
+            overwrite: {
+              type: 'boolean',
+              default: false,
+              description: 'Overwrite destination value'
+            },
+            'delete-original': {
+              type: 'boolean',
+              default: true,
+              description: 'Delete source variable after move (set false to copy)'
+            }
+          }
         }
       }
     },
@@ -865,7 +915,11 @@ function toCliArgs(result: CommandParseResult): CLIArgs {
     // Nuke command
     confirm: opts.confirm as string | undefined,
     // Sync dir mode
-    dir: opts.dir as boolean | undefined
+    dir: opts.dir as boolean | undefined,
+    path: opts.path as string | undefined,
+    from: opts.from as string | undefined,
+    to: opts.to as string | undefined,
+    deleteOriginal: opts['delete-original'] as boolean | undefined
   }
 }
 
@@ -924,6 +978,17 @@ const cli = createCLI(cliSchema)
 async function main(): Promise<void> {
   const result = cli.parse(process.argv.slice(2))
   const opts = result.options as Record<string, unknown>
+
+  // Apply global working directory override before resolving config
+  const pathArg = opts.path as string | undefined
+  if (pathArg) {
+    const targetDir = path.resolve(String(pathArg))
+    if (!fs.existsSync(targetDir) || !fs.statSync(targetDir).isDirectory()) {
+      print.error(`Path does not exist or is not a directory: ${targetDir}`)
+      process.exit(1)
+    }
+    process.chdir(targetDir)
+  }
 
   // Handle help first (before error check, so `get --help` works)
   if (opts.help || result.command.length === 0) {
