@@ -79,6 +79,7 @@ function printReleaseHelp(): void {
   ui.log('')
   ui.log(c.header('Common flow:'))
   ui.log(`  ${c.command('vaulter release plan -e dev')}          ${c.muted('# preview changes')}`)
+  ui.log(`  ${c.command('vaulter release plan pull -e dev')}      ${c.muted('# writes artifacts automatically to artifacts/vaulter-plans/<project>-<env>-pull-<timestamp>.*')}`)
   ui.log(`  ${c.command('vaulter release apply -e dev --force')} ${c.muted('# apply after preview')}`)
   ui.log('')
   ui.log(c.header('Tips:'))

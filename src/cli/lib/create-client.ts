@@ -28,6 +28,22 @@ export interface CreateClientOptions {
   verbose?: boolean
 }
 
+function resolveTimeoutMs(args: CLIArgs): number | undefined {
+  const raw = args['timeout-ms']
+  if (raw === undefined) {
+    return undefined
+  }
+
+  const parsed = typeof raw === 'number' ? raw : Number.parseInt(String(raw), 10)
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return undefined
+  }
+
+  // Keep timeout within a practical range and avoid accidental typo values.
+  const clamped = Math.max(1000, Math.min(parsed, 300000))
+  return Math.round(clamped)
+}
+
 /**
  * Create a VaulterClient with proper fallback support
  *
@@ -101,6 +117,7 @@ export async function createClientFromConfig(options: CreateClientOptions): Prom
       publicKey: keyResult.publicKey || undefined,
       privateKey: keyResult.key || undefined,
       asymmetricAlgorithm: algorithm,
+      timeoutMs: resolveTimeoutMs(args),
       verbose
     })
   }
@@ -146,6 +163,7 @@ export async function createClientFromConfig(options: CreateClientOptions): Prom
     connectionStrings: connectionStrings.length > 0 ? connectionStrings : undefined,
     encryptionMode: 'symmetric',
     passphrase: passphrase || undefined,
+    timeoutMs: resolveTimeoutMs(args),
     verbose
   })
 }

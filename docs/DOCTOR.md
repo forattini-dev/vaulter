@@ -1,12 +1,14 @@
 # Vaulter Doctor - Health Checks
 
 O `vaulter doctor` é uma ferramenta de diagnóstico completa que executa **até 18 checks** para identificar problemas de configuração, performance e segurança.
+`vaulter status` é um atalho de CLI para o mesmo fluxo de diagnóstico (texto + visão de risco) e mantém a saída em sintonia com `doctor`.
 
 ## Quick Start
 
 ```bash
 # CLI
 vaulter doctor -e dev
+vaulter status -e dev
 
 # MCP Tool
 vaulter_doctor environment="dev" format="text"

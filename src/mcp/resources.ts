@@ -941,10 +941,10 @@ detailed: true
 ## 📊 Status & Audit (2 tools)
 
 ### \`vaulter_status\`
-**Use for:** Comprehensive status (encryption, rotation, audit)
+**Use for:** Comprehensive status (encryption, rotation, audit, optional doctor-style risk snapshot)
 \`\`\`
 environment: "dev"
-include: ["all"]  # or ["encryption", "rotation", "audit"]
+include: ["all"]  # or ["encryption", "rotation", "audit", "doctor"]
 overdue_only: true  # for rotation: only overdue secrets
 \`\`\`
 
@@ -1261,7 +1261,7 @@ Use the official GitHub Action for automated deployments:
 2. \`vaulter_push\` with dryRun=true - Preview changes
 
 ### 5. Check system status
-1. \`vaulter_status\` - Get encryption, rotation & audit overview
+1. \`vaulter_status\` - Get encryption, rotation, audit & risk overview
 2. \`vaulter_audit_list\` - Detailed audit log
 
 ### 6. Monorepo shared variables

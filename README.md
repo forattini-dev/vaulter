@@ -297,6 +297,13 @@ See [docs/DOCTOR.md](docs/DOCTOR.md) for complete guide.
 | `init` | Initialize project config |
 | `init --split` | Initialize with split mode (configs/secrets dirs) |
 
+### Health
+
+| Command | Description |
+|:--------|:------------|
+| `status -e <env>` | Health check alias (same as `doctor`) |
+| `doctor -e <env>` | Full diagnostic report with checks and suggestions |
+
 ### Variables (`var`)
 
 | Command | Description |
@@ -325,8 +332,7 @@ See [docs/DOCTOR.md](docs/DOCTOR.md) for complete guide.
 | `sync push -e <env>` | Upload .env file to backend |
 | `sync push --dir -e <env>` | Upload `.vaulter/{env}/` directory to backend |
 | `sync push --prune -e <env>` | Upload, delete remote-only vars |
-| `sync plan --plan-output <file> [--apply]` | Write plan artifact (`.json` + `.md`) for `merge|push|pull` |
-| `sync plan <merge|push|pull> -e <env>` | Preview planned sync changes (use `--apply` to execute) |
+| `sync plan <merge\|push\|pull> [--plan-output <file>] -e <env>` | Preview or apply planned sync (`--apply`) and write plan artifact (`.json` + `.md`). If `--plan-output` is omitted, defaults to `artifacts/vaulter-plans/<project>-<env>-<operation>-<timestamp>.*` |
 | `sync diff -e <env>` | Show differences without changes |
 
 ### Release (AI-friendly workflow)
@@ -340,7 +346,7 @@ See [docs/DOCTOR.md](docs/DOCTOR.md) for complete guide.
 | `release merge -e <env>` | Shortcut for `release apply merge` |
 | `release push -e <env>` | Shortcut for `release apply push` |
 | `release pull -e <env>` | Shortcut for `release apply pull` |
-| `release plan --plan-output <file>` | Write release plan artifact (`.json` + `.md`) |
+| `release plan [--plan-output <file>] [--apply] -e <env>` | Preview or apply with release workflow. If `--plan-output` is omitted, defaults to `artifacts/vaulter-plans/<project>-<env>-<operation>-<timestamp>.*` |
 | `release diff -e <env>` | Quick diff/compatibility check |
 | `release status -e <env>` | Health check before deployment actions |
 
@@ -349,6 +355,7 @@ See [docs/DOCTOR.md](docs/DOCTOR.md) for complete guide.
 - `vaulter local pull` → `vaulter local set` → `vaulter local push` (when ready)
 - `vaulter change set` → `vaulter change move` → `vaulter release plan -e <env>` → `vaulter release apply -e <env>`
 - `vaulter release plan -e <env>` → validate → `vaulter release apply -e <env>`
+- `vaulter status -e <env>` for quick pre-flight health check
 - `vaulter release status -e <env>` before deploying or running high-impact changes
 
 ### Export

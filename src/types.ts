@@ -693,6 +693,7 @@ export interface CLIArgs {
   backend?: string
   key?: string
   verbose?: boolean
+  'timeout-ms'?: number
   'dry-run'?: boolean
   json?: boolean
   help?: boolean

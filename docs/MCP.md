@@ -2,7 +2,7 @@
 
 Complete reference for the Vaulter Model Context Protocol (MCP) server.
 
-**Stats:** 58 tools | 7 resources | 12 prompts
+**Stats:** 59 tools | 7 resources | 12 prompts
 
 ---
 
@@ -467,7 +467,7 @@ Plan/apply a sync operation (`merge`, `push`, `pull`) before execution.
 | `prune` | boolean | No | `false` | For push: delete remote vars not in source |
 | `strategy` | string | No | `local` | Conflict strategy: `local`, `remote`, `error` |
 | `dryRun` | boolean | No | `false` | Explicit preview mode |
-| `plan-output` | string | No | - | Base path for sync plan artifact (writes `.json` and `.md`) |
+| `plan-output` | string | No | - | Base path for sync plan artifact (writes `.json` and `.md`). If omitted, defaults to `artifacts/vaulter-plans/{project}-{env}-{operation}-{timestamp}.*` |
 | `shared` | boolean | No | `false` | Push to shared scope (`--shared`) |
 
 ```bash
@@ -498,7 +498,7 @@ operation to reduce agent command noise.
 | `all` | boolean | No | `false` | Pull to all output targets |
 | `dir` | boolean | No | `false` | Use `.vaulter/{env}/` directory mode |
 | `prune` | boolean | No | `false` | Delete remote-only vars on push |
-| `plan-output` | string | No | - | Base path for release plan artifact (writes `.json` and `.md`) |
+| `plan-output` | string | No | - | Base path for release plan artifact (writes `.json` and `.md`). If omitted, defaults to `artifacts/vaulter-plans/{project}-{env}-{operation}-{timestamp}.*` |
 | `strategy` | string | No | `local` | Merge conflict strategy |
 | `dryRun` | boolean | No | `false` | Force preview without applying |
 | `shared` | boolean | No | `false` | Push in shared scope for monorepo |
@@ -560,15 +560,17 @@ Notes:
 ### Status & Audit (2)
 
 #### `vaulter_status`
-Get comprehensive status including encryption, rotation, and audit.
+Get comprehensive status including encryption, rotation, audit, and optional doctor-style risk snapshot.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `environment` | string | No | `dev` | Environment name |
 | `project` | string | No | auto | Project name |
 | `service` | string | No | - | Service name |
-| `include` | string[] | No | `["all"]` | Sections: `encryption`, `rotation`, `audit`, `all` |
+| `include` | string[] | No | `["all"]` | Sections: `encryption`, `rotation`, `audit`, `doctor`, `all` |
 | `overdue_only` | boolean | No | `false` | For rotation: only overdue secrets |
+
+**Tip:** use `include: ["doctor"]` for a quick health/risk snapshot, or `["encryption","rotation"]` for deployment-focused checks.
 
 #### `vaulter_audit_list`
 List audit log entries.

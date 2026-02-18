@@ -11,6 +11,7 @@
 import type { CLIArgs, VaulterConfig, Environment } from '../../../types.js'
 import { c, symbols, box, colorEnv, print } from '../../lib/colors.js'
 import { maskValue } from '../../../lib/masking.js'
+import { resolvePlanOutputPaths } from '../../../lib/sync-plan.js'
 import * as ui from '../../ui.js'
 
 export interface SyncContext {
@@ -41,7 +42,7 @@ export async function runSyncGroup(context: SyncContext): Promise<void> {
   const { args } = context
   const subcommand = args._[1]
   const apply = args.apply === true
-  const planOutput = typeof args['plan-output'] === 'string' && args['plan-output'].trim().length > 0
+  const explicitPlanOutput = typeof args['plan-output'] === 'string' && args['plan-output'].trim().length > 0
     ? args['plan-output'].trim()
     : undefined
 
@@ -58,7 +59,7 @@ export async function runSyncGroup(context: SyncContext): Promise<void> {
         _: ['sync', ...args._.slice(2)]
       }
       // Pass strategy to override config
-      await runSync({ ...context, args: shiftedArgs, strategy, planOutput })
+      await runSync({ ...context, args: shiftedArgs, strategy, planOutput: explicitPlanOutput })
       break
     }
 
@@ -71,7 +72,7 @@ export async function runSyncGroup(context: SyncContext): Promise<void> {
       // Pass prune and dir flags from args
       const prune = args.prune as boolean | undefined
       const dir = args.dir as boolean | undefined
-      await runPush({ ...context, args: shiftedArgs, prune, dir, planOutput })
+      await runPush({ ...context, args: shiftedArgs, prune, dir, planOutput: explicitPlanOutput })
       break
     }
 
@@ -85,7 +86,7 @@ export async function runSyncGroup(context: SyncContext): Promise<void> {
       const all = args.all as boolean | undefined
       const target = args.output as string | undefined
       const dir = args.dir as boolean | undefined
-      await runPull({ ...context, args: shiftedArgs, all, target, dir, planOutput })
+      await runPull({ ...context, args: shiftedArgs, all, target, dir, planOutput: explicitPlanOutput })
       break
     }
 
@@ -103,6 +104,7 @@ export async function runSyncGroup(context: SyncContext): Promise<void> {
       }
 
       const shouldDryRun = !apply
+      const planOutput = explicitPlanOutput ?? resolveDefaultPlanOutputPath(context, action)
       const planContext: SyncContext = {
         ...context,
         dryRun: shouldDryRun
@@ -153,6 +155,19 @@ export async function runSyncGroup(context: SyncContext): Promise<void> {
       ui.log(`Run "${c.command('vaulter sync --help')}" for usage`)
       process.exit(1)
   }
+}
+
+function resolveDefaultPlanOutputPath(
+  context: SyncContext,
+  action: 'merge' | 'push' | 'pull'
+): string | undefined {
+  const paths = resolvePlanOutputPaths({
+    operation: action,
+    project: context.project,
+    environment: context.environment,
+    service: context.service
+  })
+  return paths.json.replace(/\.json$/i, '')
 }
 
 function resolveSyncPlanAction(args: CLIArgs): 'merge' | 'push' | 'pull' | undefined {
@@ -375,6 +390,7 @@ export function printSyncHelp(): void {
   ui.log(`  ${c.highlight('--shared')}         Target shared variables (monorepo)`)
   ui.log(`  ${c.highlight('--dry-run')}        Preview without making changes`)
   ui.log(`  ${c.highlight('--apply')}          Apply changes after plan`)
+  ui.log(`  ${c.highlight('--plan-output')}      Optional: custom plan artifact path (json/md pair). Default path is generated automatically for plan commands.`)
   ui.log(`  ${c.highlight('--json')}           Output in JSON format`)
   ui.log('')
   ui.log(c.header('Examples:'))
@@ -384,6 +400,7 @@ export function printSyncHelp(): void {
   ui.log(`  ${c.command('vaulter sync push -e prd --prune')}         ${c.muted('# Push local, DELETE remote-only')}`)
   ui.log(`  ${c.command('vaulter sync merge -e dev --strategy remote')} ${c.muted('# Remote wins on conflict')}`)
   ui.log(`  ${c.command('vaulter sync plan push -e dev')}               ${c.muted('# Plan push without applying')}`)
+  ui.log(`  ${c.command('vaulter sync plan pull -e dev')}                ${c.muted('# Generates artifacts to artifacts/vaulter-plans/<project>-<env>-pull-<timestamp>.*')}`)
   ui.log(`  ${c.command('vaulter sync plan push -e dev --apply')}        ${c.muted('# Apply push')}`)
   ui.log(`  ${c.command('vaulter sync plan merge -e dev --apply')}       ${c.muted('# Apply merge')}`)
 }

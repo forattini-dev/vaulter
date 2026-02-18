@@ -14,6 +14,7 @@ import {
 import { resolveBackendUrls } from '../../../index.js'
 import type { VaulterConfig, Environment, AuditOperation, AuditQueryOptions } from '../../../types.js'
 import type { ToolResponse } from '../config.js'
+import { handleDoctorCall } from './doctor.js'
 
 /**
  * Handle vaulter_categorize_vars call
@@ -271,14 +272,31 @@ export async function handleStatusCall(
   service: string | undefined,
   args: Record<string, unknown>
 ): Promise<ToolResponse> {
-  const include = (args.include as string[]) || ['all']
+  const includeInput = Array.isArray(args.include)
+    ? args.include
+    : args.include
+      ? [args.include]
+      : ['all']
+  const validSections = new Set(['all', 'encryption', 'rotation', 'audit', 'doctor'])
+  const normalizedInclude = includeInput
+    .map(value => String(value).trim().toLowerCase())
+    .filter(value => value.length > 0)
+    .filter(value => validSections.has(value))
+  const includeSet = new Set(normalizedInclude)
+
+  if (includeSet.size === 0) {
+    includeSet.add('all')
+  }
+
   const overdueOnly = args.overdue_only === true
-  const showAll = include.includes('all')
+  const showAll = includeSet.has('all')
+  const shouldInclude = (section: string): boolean => showAll || includeSet.has(section)
+  const includeDoctorSnapshot = showAll || includeSet.has('doctor')
 
   const sections: string[] = []
 
   // === ENCRYPTION SECTION ===
-  if (showAll || include.includes('encryption')) {
+  if (shouldInclude('encryption')) {
     const enc = config?.encryption
     const encLines: string[] = ['## Encryption', '']
 
@@ -311,7 +329,7 @@ export async function handleStatusCall(
   }
 
   // === ROTATION SECTION ===
-  if (showAll || include.includes('rotation')) {
+  if (shouldInclude('rotation')) {
     const rotationConfig = config?.encryption?.rotation
     const rotLines: string[] = ['## Rotation', '']
 
@@ -380,7 +398,7 @@ export async function handleStatusCall(
   }
 
   // === AUDIT SECTION ===
-  if (showAll || include.includes('audit')) {
+  if (shouldInclude('audit')) {
     const auditConfig = config?.audit
     const auditLines: string[] = ['## Audit', '']
 
@@ -393,6 +411,92 @@ export async function handleStatusCall(
     }
 
     sections.push(auditLines.join('\n'))
+  }
+
+  if (includeDoctorSnapshot) {
+    try {
+      const doctorResponse = await handleDoctorCall(
+        config,
+        project,
+        environment,
+        service,
+        {
+          ...args,
+          format: 'json'
+        },
+        async () => {
+          try {
+            const vars = await client.list({ project, environment, service })
+            return { connected: true, varsCount: vars.length }
+          } catch (error) {
+            return { connected: false, error: (error as Error).message }
+          }
+        }
+      )
+
+      const doctorOutput = doctorResponse.content?.[0]?.type === 'text'
+        ? doctorResponse.content?.[0]?.text
+        : undefined
+
+      if (!doctorOutput) {
+        sections.push('## Doctor Snapshot\n\nUnable to load doctor snapshot.')
+      } else {
+        const doctorResult = JSON.parse(doctorOutput) as {
+          project: string | null
+          service: string | null
+          environment: string
+          summary: { ok: number; warn: number; fail: number; skip: number; healthy: boolean }
+          checks: Array<{ name: string; status: 'ok' | 'warn' | 'fail' | 'skip'; details: string }>
+          risk: { score: number; level: 'low' | 'medium' | 'high'; reasons: string[] }
+          suggestions: string[]
+        }
+
+        const doctorLines = [
+          '## Doctor Snapshot',
+          '',
+          `Status: ${doctorResult.summary?.healthy ? 'Healthy' : 'Needs attention'}`,
+          `Project: ${doctorResult.project || project}`,
+          `Service: ${doctorResult.service || 'not-set'}`,
+          `Environment: ${doctorResult.environment}`,
+          `Checks: ✓ ${doctorResult.summary?.ok || 0} | ⚠ ${doctorResult.summary?.warn || 0} | ✗ ${doctorResult.summary?.fail || 0} | ○ ${doctorResult.summary?.skip || 0}`
+        ]
+
+        if (doctorResult.risk) {
+          doctorLines.push(`Risk: ${doctorResult.risk.level.toUpperCase()} (${doctorResult.risk.score}/100)`)
+        }
+
+        if (doctorResult.risk?.reasons?.length > 0) {
+          doctorLines.push('')
+          doctorLines.push('Top risk signals:')
+          for (const reason of doctorResult.risk.reasons.slice(0, 6)) {
+            doctorLines.push(`- ${reason}`)
+          }
+        }
+
+        const noteworthyChecks = (doctorResult.checks || []).filter(
+          (check) => check.status === 'fail' || check.status === 'warn'
+        )
+        if (noteworthyChecks.length > 0) {
+          doctorLines.push('')
+          doctorLines.push('Action-oriented checks:')
+          for (const check of noteworthyChecks.slice(0, 10)) {
+            doctorLines.push(`- ${check.status.toUpperCase()} ${check.name}: ${check.details}`)
+          }
+        }
+
+        if (doctorResult.suggestions?.length > 0) {
+          doctorLines.push('')
+          doctorLines.push('Recommendations:')
+          for (const suggestion of doctorResult.suggestions.slice(0, 5)) {
+            doctorLines.push(`- ${suggestion}`)
+          }
+        }
+
+        sections.push(doctorLines.join('\n'))
+      }
+    } catch {
+      sections.push('## Doctor Snapshot\n\nUnable to compute doctor status at this time.')
+    }
   }
 
   return {

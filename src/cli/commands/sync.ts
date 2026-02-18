@@ -178,15 +178,20 @@ async function emitMergePlanArtifact(
   })
 
   try {
-    writeSyncPlanArtifact(summary, {
+    const artifactPaths = writeSyncPlanArtifact(summary, {
       operation: 'merge',
       project: context.project,
       environment: context.environment,
       service: context.service,
       outputPath: planOutput
     })
+    if (!context.jsonOutput) {
+      ui.log(`${c.success('Plan artifact')}: ${c.muted(artifactPaths.json)}`)
+    }
   } catch (error) {
-    ui.verbose(`Failed to write sync plan artifact: ${(error as Error).message}`, true)
+    if (context.verbose) {
+      ui.verbose(`Failed to write sync plan artifact: ${(error as Error).message}`, true)
+    }
   }
 }
 
@@ -302,14 +307,19 @@ async function emitBatchMergePlanArtifact(
   })
 
   try {
-    writeSyncPlanArtifact(summary, {
+    const artifactPaths = writeSyncPlanArtifact(summary, {
       operation: 'merge',
       project: context.project,
       environment: context.environment,
       outputPath: planOutput
     })
+    if (!context.jsonOutput) {
+      ui.log(`${c.success('Batch plan artifact')}: ${c.muted(artifactPaths.json)}`)
+    }
   } catch (error) {
-    ui.verbose(`Failed to write batch sync plan artifact: ${(error as Error).message}`, true)
+    if (context.verbose) {
+      ui.verbose(`Failed to write batch sync plan artifact: ${(error as Error).message}`, true)
+    }
   }
 }
 

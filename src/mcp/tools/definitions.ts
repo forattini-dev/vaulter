@@ -88,10 +88,6 @@ export function registerTools(): Tool[] {
       }
     },
     {
-      name: 'vaulter_delete',
-      description: 'Delete an environment variable from the backend',
-      inputSchema: {
-    {
       name: 'vaulter_set',
       description: 'Set an environment variable in the backend (encrypted). Applies scope-policy checks and optional value guardrails before write.',
       inputSchema: {
@@ -249,7 +245,7 @@ export function registerTools(): Tool[] {
           dryRun: { type: 'boolean', description: 'Preview changes without applying', default: false },
           'plan-output': {
             type: 'string',
-            description: 'Base path for pull plan artifact (writes .json and .md)'
+            description: 'Base path for pull plan artifact (writes .json and .md). If omitted, defaults to artifacts/vaulter-plans/{project}-{env}-{operation}-{timestamp}.*'
           }
         }
       }
@@ -269,7 +265,7 @@ export function registerTools(): Tool[] {
           dryRun: { type: 'boolean', description: 'Preview changes without applying', default: false },
           'plan-output': {
             type: 'string',
-            description: 'Base path for push plan artifact (writes .json and .md)'
+            description: 'Base path for push plan artifact (writes .json and .md). If omitted, defaults to artifacts/vaulter-plans/{project}-{env}-{operation}-{timestamp}.*'
           }
         }
       }
@@ -297,7 +293,7 @@ export function registerTools(): Tool[] {
           shared: { type: 'boolean', description: 'Target shared variables for push (monorepo)', default: false },
           'plan-output': {
             type: 'string',
-            description: 'Base path for sync plan artifact (writes .json and .md)'
+            description: 'Base path for sync plan artifact (writes .json and .md). If omitted, defaults to artifacts/vaulter-plans/{project}-{env}-{operation}-{timestamp}.*'
           }
         },
         required: ['action']
@@ -378,7 +374,7 @@ export function registerTools(): Tool[] {
           },
           'plan-output': {
             type: 'string',
-            description: 'Base path for release plan artifact (writes .json and .md)'
+            description: 'Base path for release plan artifact (writes .json and .md). If omitted, defaults to artifacts/vaulter-plans/{project}-{env}-{operation}-{timestamp}.*'
           },
           values: {
             type: 'boolean',
@@ -675,7 +671,7 @@ export function registerTools(): Tool[] {
     // === STATUS TOOL (consolidated) ===
     {
       name: 'vaulter_status',
-      description: 'Get comprehensive status including encryption config, rotation status, and audit summary. Use include parameter to select sections.',
+      description: 'Get comprehensive status including encryption config, rotation status, audit summary, and optional doctor risk snapshot.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -684,7 +680,7 @@ export function registerTools(): Tool[] {
           service: { type: 'string', description: 'Service name' },
           include: {
             type: 'array',
-            items: { type: 'string', enum: ['encryption', 'rotation', 'audit', 'all'] },
+            items: { type: 'string', enum: ['encryption', 'rotation', 'audit', 'doctor', 'all'] },
             description: 'Sections to include (default: all)',
             default: ['all']
           },

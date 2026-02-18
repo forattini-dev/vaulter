@@ -17,6 +17,7 @@ import { fileURLToPath } from 'node:url'
 import { c, print, vaulterFormatter } from './lib/colors.js'
 import * as ui from './ui.js'
 import { isVaulterError, formatErrorForCli } from '../lib/errors.js'
+import { buildErrorHints } from './lib/error-hints.js'
 
 // Version is injected at build time or read from package.json
 const VERSION = process.env.VAULTER_VERSION || getPackageVersion() || '0.0.0'
@@ -153,6 +154,10 @@ const cliSchema: CLISchema = {
       default: false,
       description: 'Enable verbose output'
     },
+    'timeout-ms': {
+      type: 'number',
+      description: 'Override client/backend timeout in milliseconds (default: 30000)'
+    },
     quiet: {
       short: 'q',
       type: 'boolean',
@@ -245,6 +250,10 @@ const cliSchema: CLISchema = {
           description: 'Apply safe repository fixes (currently .gitignore hygiene)'
         }
       }
+    },
+
+    status: {
+      description: 'Alias for doctor (health and risk status check)'
     },
 
     init: {
@@ -480,7 +489,7 @@ const cliSchema: CLISchema = {
         },
         'plan-output': {
           type: 'string',
-          description: 'Base path for sync plan artifact (writes .json and .md)'
+          description: 'Base path for sync plan artifact (writes .json and .md). If omitted, defaults to artifacts/vaulter-plans/<project>-<env>-<operation>-<timestamp>.*'
         }
       },
       commands: {
@@ -512,7 +521,7 @@ const cliSchema: CLISchema = {
         },
         'plan-output': {
           type: 'string',
-          description: 'Base path for plan artifact (writes .json and .md)'
+          description: 'Base path for plan artifact (writes .json and .md). If omitted, defaults to artifacts/vaulter-plans/<project>-<env>-<operation>-<timestamp>.*'
         }
       }
     },
@@ -526,7 +535,7 @@ const cliSchema: CLISchema = {
         },
         'plan-output': {
           type: 'string',
-          description: 'Base path for plan artifact (writes .json and .md)'
+          description: 'Base path for release plan artifact (writes .json and .md). If omitted, defaults to artifacts/vaulter-plans/<project>-<env>-<operation>-<timestamp>.*'
         }
       }
     },
@@ -989,6 +998,7 @@ function toCliArgs(result: CommandParseResult): CLIArgs {
     backend: opts.backend as string | undefined,
     key: opts.key as string | undefined,
     verbose: opts.verbose as boolean | undefined,
+    'timeout-ms': opts['timeout-ms'] as number | undefined,
     'dry-run': opts['dry-run'] as boolean | undefined,
     json: opts.json as boolean | undefined,
     force: opts.force as boolean | undefined,
@@ -1164,6 +1174,10 @@ async function main(): Promise<void> {
         break
 
       case 'doctor':
+        await runDoctor(context)
+        break
+
+      case 'status':
         await runDoctor(context)
         break
 
@@ -1371,6 +1385,12 @@ async function main(): Promise<void> {
         process.exit(1)
     }
   } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    const hints = buildErrorHints(err, {
+      command: result.command,
+      environment: context.environment,
+      timeoutMs: context.args['timeout-ms']
+    })
     // Use structured error formatting for VaulterErrors
     if (isVaulterError(err)) {
       print.error(err.message)
@@ -1383,7 +1403,14 @@ async function main(): Promise<void> {
     } else if (context.verbose) {
       ui.log(String(err))
     } else {
-      print.error((err as Error).message)
+      print.error(message)
+    }
+
+    if (hints.length > 0) {
+      ui.log(c.warning('Suggestions:'))
+      for (const hint of hints) {
+        ui.log(`  - ${hint}`)
+      }
     }
     process.exit(1)
   }
