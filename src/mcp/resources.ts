@@ -115,7 +115,7 @@ export async function listResources(): Promise<Resource[]> {
   resources.push({
     uri: 'vaulter://tools-guide',
     name: 'Tools Guide',
-    description: 'Comprehensive guide on which vaulter tool to use for each scenario. Includes 58 tools organized by category.',
+    description: 'Comprehensive guide on which vaulter tool to use for each scenario. Includes 59 tools organized by category.',
     mimeType: 'text/markdown'
   })
 
@@ -689,7 +689,7 @@ Since backend is source of truth:
  * Read tools guide resource - Which tool to use for each scenario
  */
 async function handleToolsGuideRead(uri: string): Promise<{ contents: Array<{ uri: string; mimeType: string; text: string }> }> {
-  const guide = `# Vaulter MCP Tools Guide (58 tools)
+  const guide = `# Vaulter MCP Tools Guide (59 tools)
 
 ## 🚨 FOR AI AGENTS: START HERE
 

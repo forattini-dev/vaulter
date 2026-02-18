@@ -653,9 +653,10 @@ ${action === 'check' ? `## Check Overdue Secrets
 
 Please:
 
-1. **Get rotation status** using \`vaulter_rotation_status\` tool
+1. **Get rotation status** using \`vaulter_status\` with \`include: [\"rotation\"]\`
    - Environment: ${environment}
    ${keyPattern ? `- Filter by pattern: ${keyPattern}` : ''}
+   ${keyPattern ? '- Narrow the list before reporting overdue/upcoming secrets.' : '- Focus on security-oriented secrets by applying your own filter when analyzing output.'}
 
 2. **List overdue secrets:**
    - Show secrets past their rotation date
@@ -682,15 +683,17 @@ ${action === 'rotate' ? `## Interactive Rotation
 
 Please help me rotate secrets step by step:
 
-1. **Get current rotation status** using \`vaulter_rotation_status\`
+1. **Get current rotation status** using \`vaulter_status\` with \`include: [\"rotation\"]\`
 
-2. **For each overdue secret:**
+2. **Get explicit overdue list** from CLI with \`vaulter rotation check -e ${environment} --overdue\`
+
+3. **For each overdue secret:**
    - Show current masked value
    - Ask for new value (or help generate one)
    - Update using \`vaulter_set\` with rotation metadata
    - Confirm rotation timestamp updated
 
-3. **Rotation checklist:**
+4. **Rotation checklist:**
    \`\`\`
    [ ] Generate new secret value
    [ ] Update in vaulter
@@ -699,7 +702,7 @@ Please help me rotate secrets step by step:
    [ ] Revoke old secret (if applicable)
    \`\`\`
 
-4. **After rotation:**
+5. **After rotation:**
    - Show updated rotation status
    - Confirm next rotation date` : ''}
 
@@ -708,7 +711,7 @@ ${action === 'report' ? `## Full Rotation Report
 Please generate a comprehensive rotation report:
 
 1. **Fetch all data:**
-   - Use \`vaulter_rotation_status\` for ${environment}
+   - Use \`vaulter_status\` with \`include: [\"rotation\"]\` for ${environment}
    - Use \`vaulter_list\` to get all variables
 
 2. **Generate report sections:**
@@ -786,7 +789,7 @@ Please:
 1. **Get shared variables** using \`vaulter_shared_list\`
    - Environment: ${environment}
 
-2. **Get service inheritance stats** using \`vaulter_inheritance_stats\`
+2. **Get service inheritance info** using \`vaulter_inheritance_info\`
    ${service ? `- Service: ${service}` : '- For all services in the project'}
 
 3. **Display inheritance map:**
@@ -831,7 +834,7 @@ ${!service ? '⚠️ **Service name required** - Please specify a service to pro
    \`\`\`
 
 5. **Verify promotion:**
-   - Use \`vaulter_inheritance_stats\` to confirm
+   - Use \`vaulter_inheritance_info\` for ${service || '<service>'} to confirm
    - Check all services now inherit the value` : ''}
 
 ${action === 'override' ? `## Create Override
@@ -852,7 +855,7 @@ ${!service ? '⚠️ **Service name required** - Please specify a service for th
    \`\`\`
 
 4. **Verify override:**
-   - Use \`vaulter_inheritance_stats -s ${service || '<service>'}\`
+   - Use \`vaulter_inheritance_info\` with \`service: ${service || '<service>'}\`
    - Confirm override count increased
 
 5. **Document reason for override** (recommended):
@@ -865,7 +868,7 @@ Please perform a shared variables audit:
 
 1. **Get all shared variables** using \`vaulter_shared_list\`
 
-2. **Get inheritance stats for all services** using \`vaulter_inheritance_stats\`
+2. **Get inheritance info** using \`vaulter_inheritance_info\` for each service
 
 3. **Check for issues:**
 
