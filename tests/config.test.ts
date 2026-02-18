@@ -16,6 +16,7 @@ import {
   getEnvironmentInfo,
   type ConfigOptions
 } from '../src/config.js'
+import { createClient } from '../src/client.js'
 
 describe('config.ts', () => {
   // Store original env vars
@@ -281,6 +282,11 @@ describe('config.ts', () => {
       localEnv?: Record<string, string>
       deployConfigs?: Record<string, string>
       deploySecrets?: Record<string, string>
+      service?: string
+      localServiceEnv?: Record<string, string>
+      localServiceSecrets?: Record<string, string>
+      deployServiceConfigs?: Record<string, string>
+      deployServiceSecrets?: Record<string, string>
     }) {
       const vaulterDir = path.join(baseDir, '.vaulter')
       const localDir = path.join(vaulterDir, 'local')
@@ -311,6 +317,24 @@ environments:
         fs.writeFileSync(path.join(localDir, 'configs.env'), content)
       }
 
+      if (opts?.localServiceEnv && opts.service) {
+        const serviceLocalDir = path.join(localDir, 'services', opts.service)
+        fs.mkdirSync(serviceLocalDir, { recursive: true })
+        const content = Object.entries(opts.localServiceEnv)
+          .map(([k, v]) => `${k}=${v}`)
+          .join('\n')
+        fs.writeFileSync(path.join(serviceLocalDir, 'configs.env'), content)
+      }
+
+      if (opts?.localServiceSecrets && opts.service) {
+        const serviceLocalDir = path.join(localDir, 'services', opts.service)
+        fs.mkdirSync(serviceLocalDir, { recursive: true })
+        const content = Object.entries(opts.localServiceSecrets)
+          .map(([k, v]) => `${k}=${v}`)
+          .join('\n')
+        fs.writeFileSync(path.join(serviceLocalDir, 'secrets.env'), content)
+      }
+
       // Deploy configs
       if (opts?.deployConfigs) {
         for (const [env, content] of Object.entries(opts.deployConfigs)) {
@@ -322,6 +346,22 @@ environments:
       if (opts?.deploySecrets) {
         for (const [env, content] of Object.entries(opts.deploySecrets)) {
           fs.writeFileSync(path.join(secretsDir, `${env}.env`), content)
+        }
+      }
+
+      if (opts?.deployServiceConfigs && opts.service) {
+        const serviceDir = path.join(vaulterDir, 'deploy', 'services', opts.service, 'configs')
+        fs.mkdirSync(serviceDir, { recursive: true })
+        for (const [env, content] of Object.entries(opts.deployServiceConfigs)) {
+          fs.writeFileSync(path.join(serviceDir, `${env}.env`), content)
+        }
+      }
+
+      if (opts?.deployServiceSecrets && opts.service) {
+        const serviceDir = path.join(vaulterDir, 'deploy', 'services', opts.service, 'secrets')
+        fs.mkdirSync(serviceDir, { recursive: true })
+        for (const [env, content] of Object.entries(opts.deployServiceSecrets)) {
+          fs.writeFileSync(path.join(serviceDir, `${env}.env`), content)
         }
       }
 
@@ -425,6 +465,25 @@ environments:
       expect(process.env.AUTO_VAR).toBe('detected')
     })
 
+    it('should load service-specific local files', () => {
+      createVaulterStructure(tempDir, {
+        service: 'svc-notifications',
+        localEnv: { BASE: 'shared' },
+        localServiceEnv: { SERVICE_VAR: 'from-service' },
+        localServiceSecrets: { SERVICE_SECRET: 'svc-secret' }
+      })
+
+      const result = config({ mode: 'local', cwd: tempDir, service: 'svc-notifications' })
+
+      expect(result.mode).toBe('local')
+      expect(result.loadedFiles).toContain(path.join(tempDir, '.vaulter', 'local', 'configs.env'))
+      expect(result.loadedFiles).toContain(path.join(tempDir, '.vaulter', 'local', 'services', 'svc-notifications', 'configs.env'))
+      expect(result.loadedFiles).toContain(path.join(tempDir, '.vaulter', 'local', 'services', 'svc-notifications', 'secrets.env'))
+      expect(process.env.BASE).toBe('shared')
+      expect(process.env.SERVICE_VAR).toBe('from-service')
+      expect(process.env.SERVICE_SECRET).toBe('svc-secret')
+    })
+
     it('should auto-detect deploy mode in CI', () => {
       process.env.CI = 'true'
       delete process.env.NODE_ENV
@@ -446,6 +505,94 @@ environments:
       expect(result.detectedEnv).toBe('ci')
       expect(process.env.CI_VAR).toBe('from-config')
       expect(process.env.CI_SECRET).toBe('from-secret')
+    })
+
+    it('should load service-specific deploy files', () => {
+      createVaulterStructure(tempDir, {
+        service: 'svc-auth',
+        deployConfigs: { dev: 'API_URL=https://dev.api.com\nLOG_LEVEL=debug' },
+        deploySecrets: { dev: 'API_KEY=secret123' },
+        deployServiceConfigs: { dev: 'SERVICE_ONLY=abc' },
+        deployServiceSecrets: { dev: 'SERVICE_SECRET=xyz' }
+      })
+
+      const result = config({ mode: 'deploy', environment: 'dev', cwd: tempDir, service: 'svc-auth' })
+
+      expect(result.mode).toBe('deploy')
+      expect(result.loadedFiles).toContain(path.join(tempDir, '.vaulter', 'deploy', 'services', 'svc-auth', 'configs', 'dev.env'))
+      expect(result.loadedFiles).toContain(path.join(tempDir, '.vaulter', 'deploy', 'services', 'svc-auth', 'secrets', 'dev.env'))
+      expect(process.env.SERVICE_ONLY).toBe('abc')
+      expect(process.env.SERVICE_SECRET).toBe('xyz')
+    })
+
+    it('should load from backend when source is backend', async () => {
+      const vaulterDir = path.join(tempDir, '.vaulter')
+      fs.mkdirSync(vaulterDir)
+      fs.writeFileSync(path.join(vaulterDir, 'config.yaml'), `
+version: "1"
+project: test-project
+backend:
+  url: memory://backend-config-test
+encryption:
+  key_source:
+    - inline: test-passphrase
+`)    
+
+      const client = createClient({
+        connectionString: 'memory://backend-config-test',
+        passphrase: 'test-passphrase'
+      })
+      await client.connect()
+      await client.set({
+        key: 'BACKEND_ONLY',
+        value: 'backend-value',
+        project: 'test-project',
+        environment: 'dev'
+      })
+      await client.disconnect()
+
+      const result = await config({
+        source: 'backend',
+        cwd: tempDir,
+        environment: 'dev'
+      })
+
+      expect(result.source).toBe('backend')
+      expect(result.varsLoaded).toBe(1)
+      expect(process.env.BACKEND_ONLY).toBe('backend-value')
+    })
+
+    it('should fallback to no backend source when backend source is not available', async () => {
+      const result = await config({
+        source: 'backend',
+        cwd: tempDir,
+        environment: 'dev'
+      })
+
+      expect(result.source).toBe('none')
+      expect(result.skipped).toBe(true)
+      expect(result.skipReason).toContain('No .vaulter config found')
+    })
+
+    it('should throw when backend load is required and fails', async () => {
+      const vaulterDir = path.join(tempDir, '.vaulter')
+      fs.mkdirSync(vaulterDir)
+      fs.writeFileSync(path.join(vaulterDir, 'config.yaml'), `
+version: "1"
+project: test-project
+backend:
+  url: invalid://backend
+encryption:
+  key_source:
+    - inline: test-passphrase
+`)
+
+      await expect(config({
+        source: 'backend',
+        cwd: tempDir,
+        environment: 'dev',
+        required: true
+      })).rejects.toThrow()
     })
 
     it('should track skipped files', () => {

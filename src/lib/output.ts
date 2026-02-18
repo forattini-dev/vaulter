@@ -109,6 +109,10 @@ function formatEnvContent(vars: Record<string, string>): string {
 /**
  * Generate .env files for all output targets
  */
+function resolveFilename(filename: string, env: Environment): string {
+  return filename.replace('{env}', env)
+}
+
 export function generateOutputs(options: GenerateOutputsOptions): GenerateOutputsResult {
   const { vaulterDir, projectRoot, config, env, targets: targetNames, dryRun = false } = options
 
@@ -138,7 +142,8 @@ export function generateOutputs(options: GenerateOutputsOptions): GenerateOutput
         continue
       }
 
-      const outputPath = join(projectRoot, target.path, target.filename)
+      const resolvedFilename = resolveFilename(target.filename, env)
+      const outputPath = join(projectRoot, target.path, resolvedFilename)
 
       if (!dryRun) {
         mkdirSync(dirname(outputPath), { recursive: true })
@@ -171,7 +176,7 @@ export function generateOutput(
   dryRun = false
 ): OutputResult {
   const vars = loadFlat(vaulterDir, env, target.service)
-  const outputPath = join(projectRoot, target.path, target.filename)
+  const outputPath = join(projectRoot, target.path, resolveFilename(target.filename, env))
 
   if (!dryRun) {
     mkdirSync(dirname(outputPath), { recursive: true })

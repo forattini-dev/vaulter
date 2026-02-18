@@ -134,9 +134,6 @@ export function hybridEncrypt(
     // ECDH key exchange for EC keys
     // Create ephemeral EC key pair
     const curve = algorithm === 'ec-p256' ? 'prime256v1' : 'secp384r1'
-    // EC key sizes: P-256 = 32 bytes private / 65 bytes public, P-384 = 48 bytes private / 97 bytes public
-    const privateKeySize = algorithm === 'ec-p256' ? 32 : 48
-    const publicKeySize = algorithm === 'ec-p256' ? 65 : 97
 
     const ephemeralKeyPair = crypto.generateKeyPairSync('ec', {
       namedCurve: curve,
@@ -144,20 +141,15 @@ export function hybridEncrypt(
       privateKeyEncoding: { type: 'pkcs8', format: 'pem' }
     })
 
-    // Derive shared secret using ECDH
-    const ecdh = crypto.createECDH(curve)
-    ecdh.setPrivateKey(
-      crypto.createPrivateKey(ephemeralKeyPair.privateKey)
-        .export({ type: 'pkcs8', format: 'der' })
-        .subarray(-privateKeySize) // Extract raw private key (32 for P-256, 48 for P-384)
-    )
-
     // Get public key from PEM
     const publicKeyObj = crypto.createPublicKey(publicKeyPem)
-    const publicKeyDer = publicKeyObj.export({ type: 'spki', format: 'der' })
+    const privateKeyObj = crypto.createPrivateKey(ephemeralKeyPair.privateKey)
 
-    // Compute shared secret - extract raw public key point (65 for P-256, 97 for P-384)
-    const sharedSecret = ecdh.computeSecret(publicKeyDer.subarray(-publicKeySize))
+    // Derive shared secret using the standard node helper
+    const sharedSecret = crypto.diffieHellman({
+      privateKey: privateKeyObj,
+      publicKey: publicKeyObj
+    })
 
     // Derive key from shared secret using HKDF
     const derivedKeyBuffer = Buffer.from(crypto.hkdfSync('sha256', sharedSecret, '', 'vaulter-ec', 32))
@@ -227,26 +219,24 @@ export function hybridDecrypt(
     )
   } else if (algorithm.startsWith('ec-')) {
     // ECDH key exchange for EC keys
-    const curve = algorithm === 'ec-p256' ? 'prime256v1' : 'secp384r1'
-    // EC key sizes: P-256 = 32 bytes private / 65 bytes public, P-384 = 48 bytes private / 97 bytes public
-    const privateKeySize = algorithm === 'ec-p256' ? 32 : 48
-    const publicKeySize = algorithm === 'ec-p256' ? 65 : 97
 
     // Extract ephemeral public key and XORed key
     const ephemeralPubKeyLen = (encryptedKey[0] << 8) | encryptedKey[1]
     const ephemeralPubKeyDer = encryptedKey.subarray(2, 2 + ephemeralPubKeyLen)
     const xorKey = encryptedKey.subarray(2 + ephemeralPubKeyLen)
 
-    // Create ECDH from our private key
+    // Create key objects and recompute shared secret
     const privateKeyObj = crypto.createPrivateKey(privateKeyPem)
-    const privateKeyDer = privateKeyObj.export({ type: 'pkcs8', format: 'der' })
+    const ephemeralPublicKeyObj = crypto.createPublicKey({
+      key: ephemeralPubKeyDer,
+      format: 'der',
+      type: 'spki'
+    })
 
-    const ecdh = crypto.createECDH(curve)
-    // Extract raw private key
-    ecdh.setPrivateKey(privateKeyDer.subarray(-privateKeySize))
-
-    // Compute shared secret - extract raw public key point
-    const sharedSecret = ecdh.computeSecret(ephemeralPubKeyDer.subarray(-publicKeySize))
+    const sharedSecret = crypto.diffieHellman({
+      privateKey: privateKeyObj,
+      publicKey: ephemeralPublicKeyObj
+    })
 
     // Derive key from shared secret using HKDF
     const derivedKeyBuffer = Buffer.from(crypto.hkdfSync('sha256', sharedSecret, '', 'vaulter-ec', 32))

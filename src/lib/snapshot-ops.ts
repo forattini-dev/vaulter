@@ -35,7 +35,7 @@ export interface SnapshotDriverOptions {
 
 export function getSnapshotDriver(options: SnapshotDriverOptions): SnapshotDriver {
   const { configDir, config, client } = options
-  return createSnapshotDriver(configDir, config.snapshots, client?.getDatabase())
+  return createSnapshotDriver(configDir, config.snapshots, client?.getDatabase?.())
 }
 
 export interface SnapshotCreateOptions {

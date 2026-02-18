@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { withTimeout } from '../src/lib/timeout.js'
+import { withTimeout, withRetry, createTimeoutWrapper } from '../src/lib/timeout.js'
 
 describe('withTimeout', () => {
   it('should resolve when promise completes before timeout', async () => {
@@ -80,5 +80,74 @@ describe('withTimeout', () => {
     const arrPromise = Promise.resolve([1, 2, 3])
     const arr = await withTimeout(arrPromise, 1000, 'array')
     expect(arr).toEqual([1, 2, 3])
+  })
+})
+
+describe('withRetry', () => {
+  it('should retry failed operations and eventually succeed', async () => {
+    let attempts = 0
+
+    const result = await withRetry(async () => {
+      attempts += 1
+      if (attempts < 3) {
+        throw new Error('temporary')
+      }
+      return `ok:${attempts}`
+    }, {
+      maxAttempts: 3,
+      delayMs: 10,
+      onRetry: (attempt, error) => {
+        expect(attempt).toBeLessThan(3)
+        expect(error.message).toBe('temporary')
+      }
+    })
+
+    expect(result).toBe('ok:3')
+    expect(attempts).toBe(3)
+  })
+
+  it('should throw after exhausting retries', async () => {
+    let attempts = 0
+
+    await expect(
+      withRetry(async () => {
+        attempts += 1
+        throw new Error('always-fails')
+      }, {
+        maxAttempts: 2,
+        delayMs: 1
+      })
+    ).rejects.toThrow('always-fails')
+
+    expect(attempts).toBe(2)
+  })
+})
+
+describe('createTimeoutWrapper', () => {
+  it('should wrap async methods with timeout', async () => {
+    const client = {
+      async fast(value: number) {
+        return value * 2
+      },
+      sync(value: number) {
+        return value
+      }
+    }
+
+    const wrapped = createTimeoutWrapper(client as unknown as object, 1000)
+
+    expect(await wrapped.fast(21)).toBe(42)
+    expect(wrapped.sync(9)).toBe(9)
+  })
+
+  it('should fail when wrapped promise times out', async () => {
+    const client = {
+      async slow() {
+        return new Promise(resolve => setTimeout(() => resolve('late'), 200))
+      }
+    }
+
+    const wrapped = createTimeoutWrapper(client as unknown as object, 25)
+    await expect(wrapped.slow()).rejects.toThrow('Operation timed out after 25ms')
   })
 })

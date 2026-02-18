@@ -6,7 +6,19 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
-import { parseEnvFile, parseEnvString, serializeEnv, hasStdinData } from '../../src/lib/env-parser.js'
+import {
+  parseEnvFile,
+  parseEnvString,
+  parseEnvFromStdin,
+  parseEnvFileSections,
+  writeEnvFileSections,
+  getAllVarsFromEnvFile,
+  getUserVarsFromEnvFile,
+  serializeEnv,
+  hasStdinData,
+  VAULTER_SECTION_MARKER,
+  VAULTER_SECTION_END
+} from '../../src/lib/env-parser.js'
 
 describe('env-parser', () => {
   describe('parseEnvString', () => {
@@ -401,6 +413,118 @@ FOO=\${EXISTING:-default_value}
       // This test just verifies the function returns a boolean
       const result = hasStdinData()
       expect(typeof result).toBe('boolean')
+    })
+  })
+
+  describe('section-aware parsing', () => {
+    let tempDir: string
+
+    beforeEach(() => {
+      tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vaulter-test-sections-'))
+    })
+
+    afterEach(() => {
+      fs.rmSync(tempDir, { recursive: true, force: true })
+    })
+
+    it('should return empty sections when file does not exist', () => {
+      const result = parseEnvFileSections(path.join(tempDir, '.env'))
+      expect(result.hadMarker).toBe(false)
+      expect(result.userLines).toEqual([])
+      expect(result.vaulterVars.size).toBe(0)
+    })
+
+    it('should parse user and vaulter sections with quoted values', () => {
+      const filePath = path.join(tempDir, '.env')
+      fs.writeFileSync(filePath, [
+        'PUBLIC=1',
+        VAULTER_SECTION_MARKER,
+        'VAULTER_KEY="my value"',
+        'VAULTER_SECRET=abc',
+        VAULTER_SECTION_END,
+        ''
+      ].join('\n'))
+
+      const result = parseEnvFileSections(filePath)
+
+      expect(result.hadMarker).toBe(true)
+      expect(result.userLines).toEqual(['PUBLIC=1'])
+      expect(result.vaulterVars.get('VAULTER_KEY')).toBe('my value')
+      expect(result.vaulterVars.get('VAULTER_SECRET')).toBe('abc')
+    })
+
+    it('should write sectioned env file with deterministic ordering', () => {
+      const filePath = path.join(tempDir, '.env')
+      writeEnvFileSections(filePath, {
+        hadMarker: true,
+        userLines: ['A=1', 'B=2'],
+        vaulterVars: new Map([
+          ['Z_VAR', 'value z'],
+          ['A_VAR', 'value a']
+        ])
+      })
+
+      const content = fs.readFileSync(filePath, 'utf-8').trim()
+      const lines = content.split('\n')
+
+      expect(lines).toContain('A=1')
+      expect(lines).toContain('B=2')
+      expect(lines).toContain(VAULTER_SECTION_MARKER)
+      expect(lines.some(line => line.startsWith('# Synced:'))).toBe(true)
+      expect(lines).toContain('A_VAR="value a"')
+      expect(lines).toContain('Z_VAR="value z"')
+      expect(lines).toContain(VAULTER_SECTION_END)
+    })
+
+    it('should merge user and vaulter vars', () => {
+      const filePath = path.join(tempDir, '.env')
+      fs.writeFileSync(filePath, [
+        'PUBLIC=one',
+        VAULTER_SECTION_MARKER,
+        'VAULT=two',
+        VAULTER_SECTION_END
+      ].join('\n'))
+
+      const result = getAllVarsFromEnvFile(filePath)
+      expect(result.PUBLIC).toBe('one')
+      expect(result.VAULT).toBe('two')
+    })
+
+    it('should return only user vars and keep precedence from sections', () => {
+      const filePath = path.join(tempDir, '.env')
+      fs.writeFileSync(filePath, [
+        'PUBLIC=one',
+        'OVERRIDE=user',
+        VAULTER_SECTION_MARKER,
+        'OVERRIDE=vaulter',
+        VAULTER_SECTION_END
+      ].join('\n'))
+
+      const userVars = getUserVarsFromEnvFile(filePath)
+      expect(userVars.PUBLIC).toBe('one')
+      expect(userVars.OVERRIDE).toBe('user')
+      expect(userVars).not.toHaveProperty('VAULTER')
+    })
+  })
+
+  describe('parseEnvFromStdin', () => {
+    it('should parse values piped from stdin', async () => {
+      const handlers: Record<string, (...args: any[]) => void> = {}
+      const onSpy = vi.spyOn(process.stdin, 'on').mockImplementation((event: string, handler: any) => {
+        handlers[event] = handler
+        return process.stdin
+      })
+      const setEncodingSpy = vi.spyOn(process.stdin, 'setEncoding').mockImplementation(() => {})
+
+      const resultPromise = parseEnvFromStdin()
+      handlers.data?.('STDIN_VAR=from_stdin\n')
+      handlers.end?.()
+
+      const result = await resultPromise
+      expect(result).toEqual({ STDIN_VAR: 'from_stdin' })
+
+      onSpy.mockRestore()
+      setEncodingSpy.mockRestore()
     })
   })
 

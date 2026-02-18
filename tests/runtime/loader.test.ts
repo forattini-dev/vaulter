@@ -2,7 +2,7 @@
  * Runtime Loader Tests
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { loadRuntime, isRuntimeAvailable, getRuntimeInfo } from '../../src/runtime/index.js'
 import { createClient } from '../../src/client.js'
 import fs from 'node:fs'
@@ -275,6 +275,85 @@ encryption:
 
       expect(result.varsLoaded).toBe(0)
     })
+
+    it('throws and logs error with required true when backend missing', async () => {
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+      await expect(
+        loadRuntime({
+          cwd: tempDir,
+          required: true,
+          silent: false,
+          environment: 'dev'
+        })
+      ).rejects.toThrow('No backend configured')
+
+      expect(errorSpy).toHaveBeenCalled()
+      errorSpy.mockRestore()
+    })
+
+    it('warns when backend is missing in loud, non-fatal mode', async () => {
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+      const result = await loadRuntime({
+        cwd: tempDir,
+        required: false,
+        silent: false
+      })
+
+      expect(result.varsLoaded).toBe(0)
+      expect(result.backend).toBe('none')
+      expect(warnSpy).toHaveBeenCalledTimes(1)
+
+      warnSpy.mockRestore()
+    })
+
+    it('respects verbose mode during successful runtime load', async () => {
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+      // Create config
+      const vaulterDir = path.join(tempDir, '.vaulter')
+      fs.mkdirSync(vaulterDir, { recursive: true })
+      fs.writeFileSync(
+        path.join(vaulterDir, 'config.yaml'),
+        `version: "1"
+project: verbose-runtime
+backend:
+  url: memory://verbose-runtime
+encryption:
+  key_source:
+    - inline: test-passphrase
+`
+      )
+
+      const client = createClient({
+        connectionString: 'memory://verbose-runtime',
+        passphrase: 'test-passphrase'
+      })
+      await client.connect()
+      await client.set({
+        key: 'VERBOSE_VAR',
+        value: 'verbose-value',
+        project: 'verbose-runtime',
+        environment: 'dev'
+      })
+      await client.disconnect()
+
+      delete process.env.VERBOSE_VAR
+
+      const result = await loadRuntime({
+        cwd: tempDir,
+        environment: 'dev',
+        silent: false,
+        verbose: true
+      })
+
+      expect(result.varsLoaded).toBe(1)
+      expect(process.env.VERBOSE_VAR).toBe('verbose-value')
+      expect(logSpy).toHaveBeenCalled()
+
+      logSpy.mockRestore()
+    })
   })
 
   describe('environment-specific keys', () => {
@@ -405,6 +484,268 @@ backend:
         expect(info.backend).toContain('***')      // password masked
         expect(info.backend).not.toContain('secretpassword')
       }
+    })
+
+    it('masks backend URL with user info in info', async () => {
+      const vaulterDir = path.join(tempDir, '.vaulter')
+      fs.mkdirSync(vaulterDir, { recursive: true })
+      fs.writeFileSync(
+        path.join(vaulterDir, 'config.yaml'),
+        `version: "1"
+project: runtime-url-mask
+backend:
+  url: "s3://user-with-long-name:token123@bucket"`
+      )
+
+      const info = await getRuntimeInfo({ cwd: tempDir })
+
+      expect(info.backend).toBeDefined()
+      expect(info.backend).toContain('user***')
+      expect(info.backend).toContain('***')
+      expect(info.backend).not.toContain('token123')
+    })
+  })
+
+  describe('loadRuntime edge cases', () => {
+    it('loads using direct config object without file discovery', async () => {
+      const config = {
+        version: '1' as const,
+        project: 'runtime-direct',
+        backend: {
+          url: 'memory://runtime-direct'
+        },
+        environments: ['dev'],
+        encryption: {
+          keys: {
+            dev: { mode: 'symmetric' }
+          }
+        }
+      }
+
+      const client = createClient({
+        connectionString: 'memory://runtime-direct',
+        passphrase: undefined
+      })
+      await client.connect()
+      await client.set({
+        key: 'DIRECT_VAR',
+        value: 'direct-value',
+        project: 'runtime-direct',
+        environment: 'dev'
+      })
+      await client.disconnect()
+
+      const result = await loadRuntime({
+        config,
+        cwd: tempDir,
+        silent: true,
+        environment: 'dev'
+      })
+
+      expect(result.varsLoaded).toBe(1)
+      expect(result.project).toBe('runtime-direct')
+      expect(process.env.DIRECT_VAR).toBe('direct-value')
+    })
+
+    it('uses explicit configPath as project root', async () => {
+      const projectRoot = path.join(tempDir, 'root-project')
+      const vaulterDir = path.join(projectRoot, '.vaulter')
+      fs.mkdirSync(vaulterDir, { recursive: true })
+      fs.writeFileSync(
+        path.join(vaulterDir, 'config.yaml'),
+        `version: "1"
+project: root-project-runtime
+backend:
+  url: memory://runtime-root
+`
+      )
+
+      const client = createClient({
+        connectionString: 'memory://runtime-root',
+        passphrase: undefined
+      })
+      await client.connect()
+      await client.set({
+        key: 'ROOT_VAR',
+        value: 'root-value',
+        project: 'root-project-runtime',
+        environment: 'dev'
+      })
+      await client.disconnect()
+
+      process.env.VAULTER_KEY = undefined
+
+      const result = await loadRuntime({
+        configPath: projectRoot,
+        cwd: tempDir,
+        environment: 'dev',
+        silent: true
+      })
+
+      expect(result.varsLoaded).toBe(1)
+      expect(process.env.ROOT_VAR).toBe('root-value')
+    })
+
+    it('falls back to NODE_ENV for environment when not explicit', async () => {
+      process.env.NODE_ENV = 'prd'
+
+      const vaulterDir = path.join(tempDir, '.vaulter')
+      fs.mkdirSync(vaulterDir, { recursive: true })
+      fs.writeFileSync(
+        path.join(vaulterDir, 'config.yaml'),
+        `version: "1"
+project: runtime-node-env
+backend:
+  url: memory://runtime-node-env
+environments:
+  - prd
+encryption:
+  key_source:
+    - inline: test-key
+`
+      )
+
+      const client = createClient({
+        connectionString: 'memory://runtime-node-env',
+        passphrase: 'test-key'
+      })
+      await client.connect()
+      await client.set({
+        key: 'ENV_KEY',
+        value: 'env-value',
+        project: 'runtime-node-env',
+        environment: 'prd'
+      })
+      await client.disconnect()
+
+      delete process.env.ENV_KEY
+
+      const result = await loadRuntime({
+        cwd: tempDir,
+        silent: true
+      })
+
+      expect(result.environment).toBe('prd')
+      expect(process.env.ENV_KEY).toBe('env-value')
+    })
+
+    it('loads from an explicit .vaulter configPath', async () => {
+      const vaulterDir = path.join(tempDir, '.vaulter')
+      fs.mkdirSync(vaulterDir, { recursive: true })
+      fs.writeFileSync(
+        path.join(vaulterDir, 'config.yaml'),
+        'version: "1"\nproject: runtime-configpath\nbackend:\n  url: memory://runtime-configpath\n'
+      )
+
+      const client = createClient({
+        connectionString: 'memory://runtime-configpath',
+        passphrase: 'runtime-configpath-key'
+      })
+      await client.connect()
+      await client.set({
+        key: 'PATH_VAR',
+        value: 'path-value',
+        project: 'runtime-configpath',
+        environment: 'dev'
+      })
+      await client.disconnect()
+      process.env.VAULTER_KEY = 'runtime-configpath-key'
+
+      const result = await loadRuntime({
+        configPath: vaulterDir,
+        cwd: tempDir,
+        silent: true,
+        environment: 'dev'
+      })
+
+      expect(result.varsLoaded).toBe(1)
+      expect(process.env.PATH_VAR).toBe('path-value')
+    })
+
+    it('supports onError callback and throws with required runtime config', async () => {
+      const onError = vi.fn()
+
+      await expect(
+        loadRuntime({
+          cwd: tempDir,
+          required: true,
+          silent: true,
+          onError
+        })
+      ).rejects.toThrow()
+
+      expect(onError).toHaveBeenCalledTimes(1)
+    })
+
+    it('returns info when config is invalid on parse', async () => {
+      const vaulterDir = path.join(tempDir, '.vaulter')
+      fs.mkdirSync(vaulterDir, { recursive: true })
+      fs.writeFileSync(path.join(vaulterDir, 'config.yaml'), '::: invalid yaml :::')
+
+      const info = await getRuntimeInfo({ cwd: tempDir })
+
+      expect(info.available).toBe(true)
+      expect(info.project).toBeUndefined()
+      expect(info.configFile).toContain('config.yaml')
+    })
+
+    it('fails fast when asymmetric mode is configured but no private key is available', async () => {
+      const vaulterDir = path.join(tempDir, '.vaulter')
+      fs.mkdirSync(vaulterDir, { recursive: true })
+      fs.writeFileSync(
+        path.join(vaulterDir, 'config.yaml'),
+        `version: "1"
+project: runtime-asymmetric
+encryption:
+  mode: asymmetric
+  keys:
+    dev:
+      mode: asymmetric
+backend:
+  url: memory://runtime-asymmetric
+`
+      )
+
+      await expect(
+        loadRuntime({
+          cwd: tempDir,
+          required: true,
+          environment: 'dev',
+          silent: true
+        })
+      ).rejects.toThrow('Asymmetric encryption mode requires a private key')
+    })
+
+    it('uses explicit runtime encryption key even without config key configuration', async () => {
+      const client = createClient({
+        connectionString: 'memory://runtime-direct-key',
+        passphrase: 'explicit-secret'
+      })
+      await client.connect()
+      await client.set({
+        key: 'EXPLICIT_KEY_VAR',
+        value: 'explicit-value',
+        project: 'runtime-direct-key',
+        environment: 'dev'
+      })
+      await client.disconnect()
+
+      const result = await loadRuntime({
+        config: {
+          version: '1' as const,
+          project: 'runtime-direct-key',
+          backend: {
+            url: 'memory://runtime-direct-key'
+          }
+        },
+        cwd: tempDir,
+        environment: 'dev',
+        encryptionKey: 'explicit-secret',
+        silent: true
+      })
+
+      expect(result.varsLoaded).toBe(1)
+      expect(process.env.EXPLICIT_KEY_VAR).toBe('explicit-value')
     })
   })
 })

@@ -8,11 +8,17 @@ import path from 'node:path'
 import os from 'node:os'
 import {
   discoverServices,
+  discoverConfiguredServices,
+  discoverServicesFromOutputs,
+  discoverServicesWithFallback,
   filterServices,
   findMonorepoRoot,
+  isMonorepoFromConfig,
   isMonorepo,
+  mergeServices,
   getCurrentService,
   formatServiceList,
+  type ServiceInfo,
   type ServiceInfo
 } from '../../src/lib/monorepo.js'
 
@@ -137,6 +143,144 @@ describe('monorepo', () => {
       const service = services.find(s => s.name === 'malformed-svc')
       expect(service).toBeDefined()
       expect(service!.name).toBe('malformed-svc')
+    })
+
+    it('should skip configured services when disabled', () => {
+      const configDir = path.join(tempDir, '.vaulter')
+      fs.mkdirSync(configDir)
+      fs.writeFileSync(path.join(configDir, 'config.yaml'), `
+version: "1"
+project: monorepo
+services:
+  - configured-svc
+`)
+
+      const discovered = discoverServices(tempDir, { includeConfiguredServices: false })
+      expect(discovered).toEqual([])
+    })
+  })
+
+  describe('discoverConfiguredServices', () => {
+    it('should resolve services from config.services with mixed declarations', () => {
+      const config = {
+        version: '1',
+        project: 'monorepo',
+        services: ['auth', { name: 'notifications', path: 'services/notifications' }],
+        monorepo: {
+          services_pattern: 'services/*'
+        }
+      }
+
+      const authConfigDir = path.join(tempDir, 'services', 'auth', '.vaulter')
+      const notificationsConfigDir = path.join(tempDir, 'services', 'notifications', '.vaulter')
+      fs.mkdirSync(authConfigDir, { recursive: true })
+      fs.mkdirSync(notificationsConfigDir, { recursive: true })
+      fs.writeFileSync(path.join(notificationsConfigDir, 'config.yaml'), 'version: "1"\nservice: notifications\n')
+
+      const services = discoverConfiguredServices(config as any, tempDir)
+
+      expect(services).toHaveLength(2)
+      expect(services.map(s => s.name)).toContain('auth')
+      expect(services.map(s => s.name)).toContain('notifications')
+
+      const notifications = services.find(s => s.name === 'notifications')
+      expect(notifications?.path).toBe(path.join(tempDir, 'services', 'notifications'))
+      expect(notifications?.config.service).toBe('notifications')
+
+      const auth = services.find(s => s.name === 'auth')
+      expect(auth?.path).toBe(path.join(tempDir, 'services', 'auth'))
+      expect(auth?.config.service).toBe('auth')
+    })
+  })
+
+  describe('discoverServicesFromOutputs', () => {
+    it('should discover services from outputs and ignore shared marker', () => {
+      const config = {
+        version: '1',
+        outputs: {
+          web: 'apps/web',
+          'svc-notifications': {
+            path: 'services/notifications',
+            service: 'notifications',
+            filename: '.env'
+          },
+          __shared__: 'shared/.env'
+        }
+      }
+
+      const services = discoverServicesFromOutputs(config as any, tempDir)
+
+      expect(services).toHaveLength(2)
+      expect(services.map(s => s.name).sort()).toEqual(['notifications', 'web'])
+
+      const web = services.find(s => s.name === 'web')
+      expect(web?.path).toBe(path.join(tempDir, 'apps/web'))
+      const notifications = services.find(s => s.name === 'notifications')
+      expect(notifications?.path).toBe(path.join(tempDir, 'services/notifications'))
+    })
+  })
+
+  describe('discoverServicesWithFallback', () => {
+    it('should fallback to outputs when no filesystem services are found', () => {
+      const config = {
+        version: '1',
+        outputs: {
+          api: {
+            path: 'apps/api',
+            service: 'svc-api'
+          }
+        }
+      }
+
+      const services = discoverServicesWithFallback(config as any, tempDir)
+      expect(services).toHaveLength(1)
+      expect(services[0].name).toBe('svc-api')
+      expect(services[0].path).toBe(path.join(tempDir, 'apps/api'))
+    })
+  })
+
+  describe('isMonorepoFromConfig', () => {
+    it('should detect monorepo config from services declaration', () => {
+      expect(isMonorepoFromConfig({ version: '1', project: 'x', services: ['svc-1'] } as any)).toBe(true)
+    })
+
+    it('should detect monorepo from monorepo config', () => {
+      expect(isMonorepoFromConfig({
+        version: '1',
+        project: 'x',
+        monorepo: { services_pattern: 'services/*' }
+      } as any)).toBe(true)
+    })
+
+    it('should detect monorepo from deploy service outputs', () => {
+      expect(isMonorepoFromConfig({
+        version: '1',
+        project: 'x',
+        deploy: { services: { configs: 'services/{service}/configs/{env}.env' } }
+      } as any)).toBe(true)
+    })
+
+    it('should return false for non-monorepo config', () => {
+      expect(isMonorepoFromConfig({ version: '1', project: 'x' } as any)).toBe(false)
+    })
+  })
+
+  describe('mergeServices', () => {
+    it('should merge lists by unique service name keeping first occurrence', () => {
+      const listA: ServiceInfo[] = [
+        { name: 'shared', path: '/a', configDir: '/a', config: {} as any },
+        { name: 'api', path: '/a/api', configDir: '/a/api', config: {} as any }
+      ]
+      const listB: ServiceInfo[] = [
+        { name: 'api', path: '/b/api', configDir: '/b/api', config: {} as any },
+        { name: 'worker', path: '/b/worker', configDir: '/b/worker', config: {} as any }
+      ]
+
+      const merged = mergeServices(listA, listB)
+
+      expect(merged).toHaveLength(3)
+      expect(merged.map(s => s.name)).toEqual(['shared', 'api', 'worker'])
+      expect(merged[1].path).toBe('/a/api')
     })
   })
 

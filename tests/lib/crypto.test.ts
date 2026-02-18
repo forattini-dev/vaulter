@@ -125,9 +125,8 @@ describe('crypto', () => {
       })
     })
 
-    // Note: EC P-256 has known issues with key extraction in some Node versions
-    // The hybridEncrypt/Decrypt for EC needs refactoring
-    describe.skip('EC P-256', () => {
+    // Note: EC P-256/384 can be slower on some environments, but should be stable in this runtime.
+    describe('EC P-256', () => {
       let keyPair: KeyPair
 
       beforeAll(() => {
@@ -149,9 +148,7 @@ describe('crypto', () => {
       })
     })
 
-    // Note: EC P-384 has known issues with key extraction in some Node versions
-    // Skipping for now until crypto.ts is fixed
-    describe.skip('EC P-384', () => {
+    describe('EC P-384', () => {
       let keyPair: KeyPair
 
       beforeAll(() => {
