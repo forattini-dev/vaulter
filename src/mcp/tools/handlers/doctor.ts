@@ -124,6 +124,7 @@ export async function handleDoctorCall(
   const checks: DoctorCheck[] = []
   const suggestions: string[] = []
   const applyFixes = args.fix === true
+  const outputFormat = args.format === 'json' ? 'json' : 'text'
 
   const addCheck = (check: DoctorCheck) => {
     checks.push(check)
@@ -1062,6 +1063,15 @@ export async function handleDoctorCall(
     lines.push('## Suggestions')
     for (const suggestion of result.suggestions) {
       lines.push(`- ${suggestion}`)
+    }
+  }
+
+  if (outputFormat === 'json') {
+    return {
+      content: [{
+        type: 'text',
+        text: JSON.stringify(result, null, 2)
+      }]
     }
   }
 

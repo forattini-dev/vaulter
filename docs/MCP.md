@@ -1102,6 +1102,7 @@ Restore a snapshot to the backend. Verifies SHA256 integrity before restoring. I
 | `environment` | string | No | `dev` | Environment to check |
 | `project` | string | No | auto | Project name |
 | `service` | string | No | - | Service name (monorepo) |
+| `format` | string | No | `text` | Output format (`text` or `json`) |
 | `timeout_ms` | number | No | 30000 | Override timeout (useful for slow backends) |
 
 **17 Checks Performed:**
@@ -1126,6 +1127,25 @@ Restore a snapshot to the backend. Verifies SHA256 integrity before restoring. I
 15. ✅ **Security issues** - Detects .env in git, weak keys, bad permissions
 16. ✅ **Scope policy** - Validates expected scope ownership by variable domain
 17. ✅ **Perf config** - Suggests cache/warmup/concurrency tuning
+
+With `format: "json"`, the output is a machine-readable JSON object in the same schema as the report, including:
+
+```json
+{
+  "project": "apps-lair",
+  "service": "svc-github",
+  "environment": "dev",
+  "configPath": "/repo/.vaulter/config.yaml",
+  "backend": { "urls": ["s3://..."], "type": "remote" },
+  "encryption": { "mode": "symmetric", "keyFound": true, "source": "env:VAULTER_KEY" },
+  "environments": { "dev": { "varsCount": 120, "isEmpty": false } },
+  "services": ["svc-notifications", "svc-repositories"],
+  "checks": [{ "name": "backend", "status": "ok", "details": "configured" }],
+  "summary": { "ok": 15, "warn": 2, "fail": 0, "skip": 0, "healthy": true },
+  "risk": { "score": 8, "level": "low", "reasons": [] },
+  "suggestions": ["..."]
+}
+```
 
 **Returns:**
 ```json
