@@ -1084,7 +1084,7 @@ List all snapshots, optionally filtered by environment. Shows checksum and compr
 | `environment` | string | No | - | Filter by environment |
 
 #### `vaulter_snapshot_restore`
-Restore a snapshot to the backend. Verifies SHA256 integrity before restoring. In CLI mode, omitting the ID opens an interactive tuiuiu.js selector.
+Restore a snapshot to the backend. Verifies SHA256 integrity before restoring. In CLI mode, omitting the ID opens an interactive tui.js selector.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
@@ -1818,7 +1818,7 @@ Snapshots use gzip compression + SHA256 verification. Stored as `data.jsonl.gz` 
 4. vaulter_snapshot_restore id=<id> environment=dev → Verify SHA256 + rollback
 ```
 
-CLI: `vaulter snapshot restore -e dev` (sem ID) abre selector interativo via tuiuiu.js.
+CLI: `vaulter snapshot restore -e dev` (sem ID) abre selector interativo via tui.js.
 
 ### 8. Output Targets (Multi-Framework)
 
