@@ -2,7 +2,7 @@
 
 Complete reference for the Vaulter Model Context Protocol (MCP) server.
 
-**Stats:** 16 tools | 4 resources | 5 prompts
+**Stats:** 17 tools | 4 resources | 5 prompts
 
 ---
 
@@ -145,9 +145,9 @@ DONE
 
 ---
 
-## Tools Reference (16)
+## Tools Reference (17)
 
-### Mutation Flow (3)
+### Mutation Flow (4)
 
 #### `vaulter_change`
 Mutate local state (set, delete, move, import). Writes to `.vaulter/local/` only — does NOT touch backend. Use `vaulter_plan` + `vaulter_apply` to push changes.
@@ -195,6 +195,26 @@ Execute a plan: push local changes to backend. Requires a prior `vaulter_plan`. 
 | `prune` | boolean | No | `false` | Delete remote-only vars |
 | `force` | boolean | No | `false` | Required for production environments |
 | `dryRun` | boolean | No | `false` | Preview without applying |
+
+#### `vaulter_run`
+Run an external command with vars loaded from Vaulter.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `command` | string | **Yes** | - | Command to run |
+| `args` | string[] | No | - | Arguments for command |
+| `shell` | boolean | No | `false` | Run through shell (for `&&`, `|`, redirects) |
+| `cwd` | string | No | current dir | Working directory |
+| `environment` | string | No | config | Target environment |
+| `service` | string | No | - | Service for scoped resolution |
+| `source` | string | No | `auto` | `auto`, `local`, `backend` |
+| `override` | boolean | No | `false` | Override existing env vars |
+| `quiet` | boolean | No | `false` | Reduce response verbosity |
+| `verbose` | boolean | No | `false` | Show detailed load info |
+| `dry-run` | boolean | No | `false` | Preview command only |
+| `dryRun` | boolean | No | `false` | Alias for `dry-run` |
+| `timeout_ms` | number | No | `30000` | Timeout in ms |
+| `output_limit` | number | No | `8000` | Max chars returned per stream |
 
 ---
 
@@ -460,7 +480,7 @@ Resources provide read-only context to AI agents.
 Contains essential information about:
 
 1. **Data Storage Architecture** — s3db.js stores data in S3 object **metadata**, NOT the body
-2. **Tool Architecture** — 16 action-based tools with domain delegation
+2. **Tool Architecture** — 17 action-based tools with domain delegation
 3. **Mutation Workflow** — change → plan → apply flow
 4. **Local .env Management** — pull, push, sync operations
 5. **Sensitive vs Config** — `sensitive=true` (secret) vs `sensitive=false` (config)
@@ -475,6 +495,7 @@ Quick reference showing which tool to use for each scenario:
 | Delete a variable | `vaulter_change action="delete"` |
 | Move variable between scopes | `vaulter_change action="move"` |
 | Read a single variable | `vaulter_get` |
+| Run a command with loaded vars | `vaulter_run` |
 | List all variables | `vaulter_list` |
 | Compare environments | `vaulter_search source="dev" target="prd"` |
 | Search by pattern | `vaulter_search pattern="DATABASE_*"` |
@@ -596,6 +617,83 @@ Set up local development with shared vars and service overrides.
 7. `vaulter_local action="diff"` — View diff
 
 ---
+
+### Framework Playbooks (Famosos)
+
+Exemplos práticos para frameworks comuns.
+
+#### 1) Next.js (frontend SPA)
+
+```yaml
+# .vaulter/config.yaml
+outputs:
+  web:
+    path: apps/web
+    filename: .env.local
+    include: [NEXT_PUBLIC_*, APP_*, NODE_ENV]
+    exclude: [*_LOCAL]
+    inherit: true
+```
+
+```bash
+vaulter local pull --output web -e dev
+vaulter local set NEXT_PUBLIC_API_URL=https://api.dev.tetis.io -e dev
+vaulter local set NODE_ENV=local -e dev
+vaulter local pull --output web -e dev
+vaulter local diff -e dev
+```
+
+#### 2) NestJS (API + worker) no monorepo
+
+```yaml
+# .vaulter/config.yaml
+outputs:
+  api:
+    path: apps/api
+    filename: .env
+    include: [DATABASE_*, JWT_*, API_*]
+    inherit: true
+  worker:
+    path: apps/worker
+    include: [REDIS_*, QUEUE_*, NODE_ENV]
+```
+
+```bash
+vaulter change set DATABASE_URL=postgres://postgres:local@localhost:5432/app -e dev --scope svc-api
+vaulter change set REDIS_URL=redis://127.0.0.1:6379 -e dev --scope svc-worker
+vaulter plan -e dev
+vaulter apply -e dev
+vaulter local pull --all
+vaulter export k8s-secret -e dev --service svc-api --name api-secrets
+```
+
+#### 3) Express / Fastify (container + CI)
+
+```bash
+vaulter change set PORT::3000 -e stg
+vaulter change set SERVICE_NAME::api -e stg --scope shared
+vaulter change set STRIPE_SECRET::sk_test_... -e stg --scope svc-payments --sensitive true
+vaulter plan -e stg
+vaulter apply -e stg --force
+```
+
+#### 4) Django/FastAPI (API Python)
+
+```yaml
+# .vaulter/config.yaml
+outputs:
+  django:
+    path: apps/django
+    filename: .env
+    include: [DATABASE_*, DJANGO_*, SECRET_KEY, DEBUG, ALLOWED_HOSTS]
+```
+
+```bash
+vaulter local set DEBUG=true -e dev
+vaulter local set DJANGO_SETTINGS_MODULE=app.settings.dev -e dev
+vaulter local pull -o django -e dev
+vaulter export helm -e dev --service django-api
+```
 
 ## Common Workflows
 

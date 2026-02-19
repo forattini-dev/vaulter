@@ -1,7 +1,7 @@
 /**
  * Vaulter MCP Tool Definitions
  *
- * 16 action-based tools that delegate to the domain layer.
+ * 17 action-based tools that delegate to the domain layer.
  */
 
 export interface ToolDefinition {
@@ -85,7 +85,87 @@ export function registerTools(): ToolDefinition[] {
       }
     },
 
-    // ─── 4. vaulter_get ────────────────────────────────────────────────
+    // ─── 4. vaulter_run ───────────────────────────────────────────────
+    {
+      name: 'vaulter_run',
+      description:
+        'Execute a command with vars loaded by vaulter config.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          command: {
+            type: 'string',
+            description: 'Command to execute (required)'
+          },
+          args: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'Arguments for command when not using shell mode'
+          },
+          shell: {
+            type: 'boolean',
+            description: 'Run through shell (for &&, |, redirects)',
+            default: false
+          },
+          cwd: {
+            type: 'string',
+            description: 'Working directory'
+          },
+          environment: {
+            type: 'string',
+            description: 'Target environment (default from config)'
+          },
+          service: {
+            type: 'string',
+            description: 'Service for scoped variable resolution'
+          },
+          source: {
+            type: 'string',
+            enum: ['auto', 'local', 'backend'],
+            description: 'Config source',
+            default: 'auto'
+          },
+          override: {
+            type: 'boolean',
+            description: 'Override existing environment variables',
+            default: false
+          },
+          quiet: {
+            type: 'boolean',
+            description: 'Reduce response verbosity',
+            default: false
+          },
+          verbose: {
+            type: 'boolean',
+            description: 'Show detailed load info',
+            default: false
+          },
+          'dry-run': {
+            type: 'boolean',
+            description: 'Preview command and loaded vars only',
+            default: false
+          },
+          dryRun: {
+            type: 'boolean',
+            description: 'Alias for dry-run',
+            default: false
+          },
+          timeout_ms: {
+            type: 'number',
+            description: 'Command timeout in milliseconds',
+            default: 30000
+          },
+          output_limit: {
+            type: 'number',
+            description: 'Max chars to return per stream',
+            default: 8000
+          }
+        },
+        required: ['command']
+      }
+    },
+
+    // ─── 5. vaulter_get ────────────────────────────────────────────────
     {
       name: 'vaulter_get',
       description:
@@ -102,7 +182,7 @@ export function registerTools(): ToolDefinition[] {
       }
     },
 
-    // ─── 5. vaulter_list ───────────────────────────────────────────────
+    // ─── 6. vaulter_list ───────────────────────────────────────────────
     {
       name: 'vaulter_list',
       description:
@@ -119,7 +199,7 @@ export function registerTools(): ToolDefinition[] {
       }
     },
 
-    // ─── 6. vaulter_status ─────────────────────────────────────────────
+    // ─── 7. vaulter_status ─────────────────────────────────────────────
     {
       name: 'vaulter_status',
       description:
@@ -154,7 +234,7 @@ export function registerTools(): ToolDefinition[] {
       }
     },
 
-    // ─── 7. vaulter_search ─────────────────────────────────────────────
+    // ─── 8. vaulter_search ─────────────────────────────────────────────
     {
       name: 'vaulter_search',
       description:
@@ -172,7 +252,7 @@ export function registerTools(): ToolDefinition[] {
       }
     },
 
-    // ─── 8. vaulter_diff ───────────────────────────────────────────────
+    // ─── 9. vaulter_diff ───────────────────────────────────────────────
     {
       name: 'vaulter_diff',
       description:
@@ -188,7 +268,7 @@ export function registerTools(): ToolDefinition[] {
       }
     },
 
-    // ─── 9. vaulter_export ─────────────────────────────────────────────
+    // ─── 10. vaulter_export ────────────────────────────────────────────
     {
       name: 'vaulter_export',
       description:
@@ -213,7 +293,7 @@ export function registerTools(): ToolDefinition[] {
       }
     },
 
-    // ─── 10. vaulter_key ───────────────────────────────────────────────
+    // ─── 11. vaulter_key ───────────────────────────────────────────────
     {
       name: 'vaulter_key',
       description:
@@ -241,7 +321,7 @@ export function registerTools(): ToolDefinition[] {
       }
     },
 
-    // ─── 11. vaulter_snapshot ──────────────────────────────────────────
+    // ─── 12. vaulter_snapshot ────────────────────────────────────────
     {
       name: 'vaulter_snapshot',
       description:
@@ -264,7 +344,7 @@ export function registerTools(): ToolDefinition[] {
       }
     },
 
-    // ─── 12. vaulter_versions ──────────────────────────────────────────
+    // ─── 13. vaulter_versions ─────────────────────────────────────────
     {
       name: 'vaulter_versions',
       description:
@@ -288,7 +368,7 @@ export function registerTools(): ToolDefinition[] {
       }
     },
 
-    // ─── 13. vaulter_local ─────────────────────────────────────────────
+    // ─── 14. vaulter_local ────────────────────────────────────────────
     {
       name: 'vaulter_local',
       description:
@@ -322,7 +402,7 @@ export function registerTools(): ToolDefinition[] {
       }
     },
 
-    // ─── 14. vaulter_init ──────────────────────────────────────────────
+    // ─── 15. vaulter_init ─────────────────────────────────────────────
     {
       name: 'vaulter_init',
       description:
@@ -338,7 +418,7 @@ export function registerTools(): ToolDefinition[] {
       }
     },
 
-    // ─── 15. vaulter_services ──────────────────────────────────────────
+    // ─── 16. vaulter_services ───────────────────────────────────────
     {
       name: 'vaulter_services',
       description:
@@ -352,7 +432,7 @@ export function registerTools(): ToolDefinition[] {
       }
     },
 
-    // ─── 16. vaulter_nuke ──────────────────────────────────────────────
+    // ─── 17. vaulter_nuke ─────────────────────────────────────────────
     {
       name: 'vaulter_nuke',
       description:

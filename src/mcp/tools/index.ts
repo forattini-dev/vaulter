@@ -1,7 +1,7 @@
 /**
  * Vaulter MCP Tool Dispatcher
  *
- * 16 action-based tools delegating to domain layer.
+ * 17 action-based tools delegating to domain layer.
  */
 
 import type { Environment } from '../../types.js'
@@ -56,6 +56,7 @@ import { handleSnapshot } from './handlers/snapshot.js'
 import { handleVersions } from './handlers/versions.js'
 import { handleLocal } from './handlers/local.js'
 import { handleInit } from './handlers/init.js'
+import { handleRun } from './handlers/run.js'
 import { handleServices } from './handlers/services.js'
 import { handleNuke } from './handlers/nuke.js'
 
@@ -191,6 +192,9 @@ export async function handleToolCall(
 
       case 'vaulter_apply':
         return handleApply(ctx, client, args)
+
+      case 'vaulter_run':
+        return handleRun(ctx, args)
 
       case 'vaulter_get':
         return handleGet(ctx, client, args)

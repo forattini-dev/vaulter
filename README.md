@@ -38,6 +38,56 @@ vaulter plan -e dev                                      # Preview changes befor
 eval $(vaulter export shell -e dev)                   # Export to shell
 ```
 
+## Quick Example (End-to-End)
+
+Monorepo example with two services (`web`, `api`): add variables, share with team, and promote to multiple environments.
+
+```bash
+# 0) Initialize + discover services
+vaulter init --monorepo
+vaulter key generate --name master
+vaulter services
+
+# 1) Create/override vars locally (offline)
+vaulter local set NEXT_PUBLIC_APP_NAME=Portal        --shared -e dev
+vaulter local set NODE_ENV=local                    -e dev --shared
+vaulter local set DATABASE_URL=postgres://...        -e dev -s api
+vaulter local set REDIS_URL=redis://...             -e dev -s api
+vaulter local set QUEUE_ENABLED::true               -e dev -s api
+vaulter local set WORKER_CONCURRENCY::4             -e dev -s web
+vaulter local pull --all                             # generates .env for local run (all outputs)
+vaulter local diff                                # review local overrides
+
+# 2) Share source of truth with team (backend sync)
+vaulter local push --all -e dev
+
+# 3) Team members pull and generate local envs
+vaulter local sync -e dev
+vaulter local pull --all -e dev
+
+# 4) Promote the same managed set to multiple environments
+for ENV in dev stg prd; do
+  echo "Deploying to $ENV"
+  vaulter plan -e "$ENV"
+  vaulter apply -e "$ENV" $( [ "$ENV" = "prd" ] && echo '--force' )
+done
+
+# 5) Run your scripts with vaulter-managed variables
+vaulter run -e dev -- pnpm start                  # local run with local overrides
+vaulter run -e dev -s web -- pnpm --dir apps/web dev
+vaulter run -e dev -s api -- pnpm --dir apps/api lint
+vaulter run -e stg -s api -- pnpm --dir apps/api migrate
+vaulter run -e prd -- docker compose -f ./deploy/docker/docker-compose.yml up
+
+# 6) Export service-specific artifacts per environment
+vaulter export k8s-secret -e dev --service api --name api-secrets
+vaulter export k8s-secret -e dev --service web --name web-secrets
+vaulter export k8s-secret -e stg --service api --name api-secrets
+vaulter export k8s-secret -e prd --service api --name api-secrets
+```
+
+> `--force` is required on `apply -e prd` and other production-like environments.
+
 ---
 
 ## 🔄 Development Workflow
@@ -402,6 +452,30 @@ npx vaulter run -e prd -- pnpm build
 # Monorepo service
 npx vaulter run -e dev -s api -- pnpm start
 ```
+
+### Run scripts via package.json
+
+Use `vaulter run` directly in your npm scripts to keep variables centralized and explicit.
+
+```json
+{
+  "scripts": {
+    "dev:web": "vaulter run -e dev -s web -- pnpm --dir apps/web dev",
+    "lint:api": "vaulter run -e dev -s api -- pnpm --dir apps/api lint",
+    "migrate:api:stg": "vaulter run -e stg -s api -- pnpm --dir apps/api run migrate",
+    "deploy:api:prd": "vaulter run -e prd -s api -- pnpm --dir apps/api build && vaulter export k8s-secret -e prd -s api --name api-secrets"
+  }
+}
+```
+
+```bash
+npm run dev:web
+npm run lint:api
+npm run migrate:api:stg
+```
+
+The important part is that `vaulter run` stays as the first command so variable resolution and scope resolution
+happen before your script command.
 
 The `run` command auto-detects the environment (local, CI, K8s) and loads the appropriate files before executing your command.
 
@@ -1314,7 +1388,7 @@ const result = await loadRuntime({
 
 ## MCP Server
 
-Claude AI integration via Model Context Protocol. **16 Tools | 4 Resources | 5 Prompts.**
+Claude AI integration via Model Context Protocol. **17 Tools | 4 Resources | 5 Prompts.**
 
 ```bash
 vaulter mcp
@@ -1333,7 +1407,7 @@ vaulter mcp
 }
 ```
 
-### Tools (16)
+### Tools (17)
 
 > **Tool Architecture:** Each tool is action-based (one tool per domain with `action` parameter).
 
@@ -1342,6 +1416,7 @@ vaulter mcp
 | **Mutation Flow** | `vaulter_change` | set, delete, move, import (writes local state only) |
 | | `vaulter_plan` | Compute diff local vs backend, generate plan artifact |
 | | `vaulter_apply` | Execute plan, push changes to backend |
+| | `vaulter_run` | Execute command with loaded variables |
 | **Read** | `vaulter_get` | Get single var or multi-get via `keys[]` |
 | | `vaulter_list` | List vars with optional filter |
 | | `vaulter_search` | Search by pattern or compare environments |

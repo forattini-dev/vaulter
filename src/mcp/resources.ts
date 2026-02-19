@@ -101,13 +101,14 @@ NOT in the object body. This means:
 - **NEVER** create JSON files manually in S3
 - **NEVER** modify S3 objects outside of vaulter
 
-## Tool Architecture (16 tools)
+## Tool Architecture (17 tools)
 
 | Tool | Role |
 |------|------|
 | \`vaulter_change\` | **Primary mutation entrypoint** — set, delete, move, import to local state |
 | \`vaulter_plan\` | Compute diff between local state and backend |
 | \`vaulter_apply\` | Push planned changes to backend |
+| \`vaulter_run\` | Execute command with vars loaded by vaulter |
 | \`vaulter_get\` | Read variable(s) from backend |
 | \`vaulter_list\` | List variables from backend |
 | \`vaulter_search\` | Search/compare across environments |
@@ -122,11 +123,14 @@ NOT in the object body. This means:
 | \`vaulter_services\` | Discover monorepo services |
 | \`vaulter_nuke\` | Preview backend deletion |
 
+`vaulter_run` is useful for local tasks like `pnpm build`, `pnpm dev`, `docker compose`, or custom scripts after loading the correct var set.
+
 ## Workflow: Local-First Mutations
 
 1. **\`vaulter_change\`** — Edit local state (set/delete/move/import). Writes to \`.vaulter/local/\` only.
 2. **\`vaulter_plan\`** — See what would change in backend (diff + scorecard).
 3. **\`vaulter_apply\`** — Push planned changes to backend.
+4. **\`vaulter_run\`** — Run your command with loaded vars before deploy/build.
 
 ## Workflow: Local .env Management
 
@@ -178,6 +182,7 @@ function getToolsGuide(): string {
 | 1 | \`vaulter_change\` | Edit local state (set/delete/move/import) |
 | 2 | \`vaulter_plan\` | Compute diff (local vs backend) |
 | 3 | \`vaulter_apply\` | Push changes to backend |
+| 4 | \`vaulter_run\` | Execute command with loaded vars |
 
 ## Read Operations
 | Tool | Purpose |
@@ -252,6 +257,11 @@ function getToolsGuide(): string {
 { "environment": "prd" }
 \`\`\`
 
+### Run a command
+\`\`\`json
+{ "command": "pnpm", "args": ["--dir", "apps/api", "build"], "environment": "prd", "service": "api" }
+\`\`\`
+
 ### Status scorecard
 \`\`\`json
 { "action": "scorecard", "environment": "dev" }
@@ -268,6 +278,7 @@ function getWorkflow(): string {
     '1. `vaulter_change` (CLI: `change`) edits local `.vaulter/local/*` only.',
     '2. `vaulter_plan` shows what would be synchronized to backend.',
     '3. `vaulter_apply` pushes after review.',
+    '4. `vaulter_run` (optional) runs your command with loaded vars.',
     '',
     'Use `change set`, `change delete`, `change move` for local-first mutations.',
     '',
@@ -275,6 +286,7 @@ function getWorkflow(): string {
     '1. `vaulter_change` (set/delete/move/import)',
     '2. `vaulter_plan`',
     '3. `vaulter_apply`',
+    '4. `vaulter_run` (`{"command":"pnpm","args":["build"]}`)',
     '',
     '## 2) Pre-deploy / release gate',
     '',
