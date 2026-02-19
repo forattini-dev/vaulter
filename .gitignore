@@ -32,6 +32,7 @@ artifacts/vaulter-plans/
 # AI Assistant configs
 .agent/
 .claude/
+.codex/
 .gemini/
 openspec/
 
