@@ -1,7 +1,7 @@
 # Vaulter Status - Health Checks
 
-O `vaulter status` é uma ferramenta de diagnóstico completa que executa **até 18 checks** para identificar problemas de configuração, performance e segurança.
-Em `--offline`, ele valida a estrutura local e segurança do projeto sem tocar backend (útil para rotina de desenvolvimento).
+`vaulter status` is a full diagnostic command that runs up to 18 checks to detect configuration, performance, and security issues.
+In `--offline`, it validates local structure and project security without touching the backend (useful for daily development workflow).
 
 ## Quick Start
 
@@ -12,18 +12,18 @@ vaulter status -e dev --offline
 
 # MCP Tool
 vaulter_status action="scorecard" environment="dev" format="text"
-vaulter_status action="scorecard" environment="dev" format="json"  # saída estruturada para automação/IA
+vaulter_status action="scorecard" environment="dev" format="json"  # machine-readable output for automation/AI
 
-# Com service (monorepo)
+# With service (monorepo)
 vaulter status -e dev -s api
 ```
 
-## Os Checks
+## Checks
 
-### ✅ Checks Básicos (1-10)
+### ✅ Basic Checks (1-10)
 
 #### 1. Config File
-Verifica se `.vaulter/config.yaml` existe.
+Verifies `.vaulter/config.yaml` exists.
 
 ```
 ✓ config: found at /project/.vaulter/config.yaml
@@ -32,7 +32,7 @@ Verifica se `.vaulter/config.yaml` existe.
 ```
 
 #### 2. Project Name
-Verifica se o projeto está configurado.
+Checks whether the project name is configured.
 
 ```
 ✓ project: myproject
@@ -41,7 +41,7 @@ Verifica se o projeto está configurado.
 ```
 
 #### 3. Environment
-Valida se o environment existe no config.
+Validates whether the environment exists in config.
 
 ```
 ✓ environment: dev
@@ -50,7 +50,7 @@ Valida se o environment existe no config.
 ```
 
 #### 4. Service (Monorepo)
-Verifica se o service existe.
+Checks whether the service exists.
 
 ```
 ✓ service: api
@@ -59,7 +59,7 @@ Verifica se o service existe.
 ```
 
 #### 5. Backend URLs
-Verifica configuração do backend.
+Validates backend configuration.
 
 ```
 ✓ backend: 1 backend(s) configured (remote)
@@ -68,7 +68,7 @@ Verifica configuração do backend.
 ```
 
 #### 6. Encryption Keys
-Verifica se chaves de encriptação existem.
+Checks whether encryption keys exist.
 
 ```
 ✓ encryption: symmetric (from env)
@@ -78,7 +78,7 @@ Verifica se chaves de encriptação existem.
 ```
 
 #### 7. Shared Key Environment
-Verifica chave para shared variables (monorepo).
+Checks key settings for shared variables (monorepo).
 
 ```
 ✓ shared-key: dev
@@ -87,7 +87,7 @@ Verifica chave para shared variables (monorepo).
 ```
 
 #### 8. Local Env Files
-Verifica se arquivos `.env` locais existem.
+Checks whether local `.env` files exist.
 
 ```
 ✓ local-files: env file present
@@ -96,7 +96,7 @@ Verifica se arquivos `.env` locais existem.
 ```
 
 #### 9. Outputs Config
-Valida configuração de outputs.
+Validates output configuration.
 
 ```
 ✓ outputs: 3 output file(s) present
@@ -106,7 +106,7 @@ Valida configuração de outputs.
 ```
 
 #### 10. Gitignore Coverage
-Valida se entradas críticas do `.vaulter` estão no `.gitignore`.
+Checks whether critical `.vaulter` entries are in `.gitignore`.
 
 ```
 ✓ gitignore: required Vaulter entries present in .gitignore
@@ -117,12 +117,12 @@ Valida se entradas críticas do `.vaulter` estão no `.gitignore`.
 
 ---
 
-### ⚡ Checks Avançados (11-18)
+### ⚡ Advanced Checks (11-18)
 
 #### 11. Backend Connection
-Testa conexão com o backend e lista variáveis.
+Tests backend connection and variable listing.
 
-No `--offline`, este check aparece como `skip` com sugestão para executar sem modo offline.
+In `--offline`, this check appears as `skip` and suggests running without offline mode.
 
 ```
 ✓ connection: connected (15 vars in dev)
@@ -132,15 +132,15 @@ No `--offline`, este check aparece como `skip` com sugestão para executar sem m
   → Backend not responding, check network or increase timeout_ms
 ```
 
-**O que testa:**
-- Conecta ao backend (com retry automático)
-- Lista variáveis do environment
-- Valida que o backend está acessível
+What it does:
+- Connects to backend (with automatic retry)
+- Lists environment variables
+- Confirms backend accessibility
 
-No modo `--offline`, os checks `latency`, `permissions`, `encryption` round-trip, `sync-status` e `perf-config` também aparecem como `skip` automaticamente.
+In offline mode, `latency`, `permissions`, `encryption` round-trip, `sync-status`, and `perf-config` checks also appear as `skip` automatically.
 
 #### 12. Performance & Latency
-Mede velocidade das operações no backend.
+Measures operation speed against backend.
 
 ```
 ✓ latency: read=45ms, list=67ms
@@ -150,19 +150,19 @@ Mede velocidade das operações no backend.
   → Check network connectivity, backend region, or consider using a closer backend
 ```
 
-**Thresholds:**
+Thresholds:
 - **Ideal:** < 1000ms average
 - **OK:** 1000-2000ms
 - **Slow:** > 2000ms
 
-**O que causa lentidão:**
-- Backend em região distante (cross-region)
-- Rede lenta ou com alta latência
-- Backend sobrecarregado
+Common causes:
+- Backend in a distant region (cross-region)
+- Slow network or high latency
+- Overloaded backend
 - Rate limiting
 
 #### 13. Write Permissions
-Testa se consegue escrever, ler e deletar no backend.
+Checks read/write/delete capabilities on the backend.
 
 ```
 ✓ permissions: read/write/delete OK
@@ -172,19 +172,19 @@ Testa se consegue escrever, ler e deletar no backend.
   → Check backend permissions and credentials
 ```
 
-**O que testa:**
-1. Escreve uma chave temporária `vaulter-healthcheck-*` com timestamp
-2. Lê de volta para validar
-3. Deleta a var de teste
-4. Confirma que tudo funcionou
+Validation steps:
+1. Writes temporary key `vaulter-healthcheck-*` with timestamp
+2. Reads it back
+3. Deletes the test key
+4. Confirms all operations succeed
 
-**Erros comuns:**
-- IAM policy sem `s3:PutObject`
-- MinIO policy sem `write` permission
-- Bucket read-only
+Common errors:
+- IAM policy missing `s3:PutObject`
+- MinIO policy missing write permissions
+- Bucket is read-only
 
 #### 14. Encryption Round-Trip
-Valida que encriptação e descriptografia funcionam corretamente.
+Validates encryption and decryption correctness.
 
 ```
 ✓ encryption: round-trip successful (encrypt → decrypt → match)
@@ -194,20 +194,20 @@ Valida que encriptação e descriptografia funcionam corretamente.
   → Check encryption configuration
 ```
 
-**O que testa:**
-1. Encripta valor aleatório
-2. Salva no backend
-3. Lê de volta
-4. Descriptografa
-5. Compara se voltou igual
+What it does:
+1. Encrypts random value
+2. Stores it on backend
+3. Reads it back
+4. Decrypts
+5. Verifies equality
 
-**Detecta:**
-- Chave de encriptação errada (VAULTER_KEY_DEV != chave usada pra encriptar)
-- Dados corrompidos no backend
-- Modo de encriptação incompatível
+Detects:
+- Wrong encryption key (`VAULTER_KEY_DEV` differs from key used to encrypt)
+- Corrupted backend data
+- Encryption mode mismatch
 
 #### 15. Sync Status
-Compara variáveis locais vs remotas.
+Compares local and remote variables.
 
 ```
 ✓ sync-status: local and remote in sync
@@ -218,28 +218,28 @@ Compara variáveis locais vs remotas.
 ○ sync-status: no local vars to compare
 ```
 
-**O que verifica:**
-- **Local-only:** Vars que existem só no `.env` local (seriam adicionadas no push)
-- **Remote-only:** Vars que existem só no backend (seriam adicionadas no pull)
-- **Conflicts:** Vars que existem nos dois mas com valores diferentes
+What it validates:
+- **Local-only:** Vars that exist only in local `.env` (would be added on push)
+- **Remote-only:** Vars that exist only in backend (would be added on pull)
+- **Conflicts:** Vars with values in both places but different values
 
-**Próximos passos:**
+Next steps:
 ```bash
-# Ver detalhes das diferenças
+# Inspect differences
 vaulter diff -e dev --values
 
-# Push local para remoto
+# Push local to remote
 vaulter plan -e dev && vaulter apply -e dev
 
-# Pull remoto para local
+# Pull remote to local
 vaulter local sync -e dev && vaulter local pull --all
 
-# Merge (escolhe estratégia de conflito)
+# Merge with a conflict strategy
 vaulter plan -e dev && vaulter apply -e dev
 ```
 
 #### 16. Security Issues
-Detecta problemas de segurança.
+Detects security problems.
 
 ```
 ✓ security: no security issues detected
@@ -249,21 +249,20 @@ Detecta problemas de segurança.
   → Fix security issues: generate stronger keys, fix permissions
 ```
 
-**O que detecta:**
+What it detects:
 
-**1. Arquivos .env commitados no git** (CRÍTICO):
+1. `.env` files tracked by git (CRITICAL):
 ```bash
-# Verifica se algum arquivo .env está tracked
+# Check for tracked env files
 git ls-files "*.env" ".vaulter/**/*.env"
 
-# Se encontrar → FAIL
-# Para monorepo:
+# For monorepo:
 git ls-files ".vaulter/local/services/*/configs.env" ".vaulter/local/services/*/secrets.env"
 ```
 
-**Como corrigir:**
+How to fix:
 ```bash
-# 1. Adicionar ao .gitignore
+# 1. Add to .gitignore
 echo "*.env" >> .gitignore
 echo ".vaulter/local/*.env" >> .gitignore
 echo ".vaulter/local/services/*/configs.env" >> .gitignore
@@ -272,35 +271,32 @@ echo ".vaulter/deploy/secrets/*.env" >> .gitignore
 echo ".vaulter/deploy/shared/secrets/*.env" >> .gitignore
 echo ".vaulter/deploy/services/*/secrets/*.env" >> .gitignore
 
-# 2. Remover do histórico do git
+# 2. Untrack from git
 git rm --cached .vaulter/local/{configs,secrets}.env
 git rm --cached .vaulter/deploy/secrets/*.env .vaulter/deploy/shared/secrets/*.env .vaulter/deploy/services/*/secrets/*.env
 git rm --cached .vaulter/local/services/*/configs.env .vaulter/local/services/*/secrets.env
 git commit -m "Remove sensitive .env files from git"
 
-# 3. Se já foi pusheado, precisa limpar histórico
+# 3. If already pushed, scrub history
 git filter-branch --force --index-filter \
   'git rm --cached --ignore-unmatch .vaulter/local/{configs,secrets}.env .vaulter/local/services/*/configs.env .vaulter/local/services/*/secrets.env .vaulter/deploy/secrets/*.env .vaulter/deploy/shared/secrets/*.env .vaulter/deploy/services/*/secrets/*.env' \
   --prune-empty --tag-name-filter cat -- --all
 ```
 
-**2. Chave de encriptação fraca** (< 32 caracteres):
+2. Weak encryption key (<32 chars):
 ```bash
-# Gerar nova chave forte
 vaulter key generate -e dev
-
-# Ou manualmente
+# Or
 export VAULTER_KEY_DEV=$(openssl rand -base64 32)
 ```
 
-**3. Permissões de arquivo inseguras** (não 600 ou 400):
+3. Insecure file permissions (not 600 or 400):
 ```bash
-# Corrigir permissões (somente owner pode ler/escrever)
 chmod 600 .vaulter/local/configs.env
 chmod 600 .vaulter/local/services/${SERVICE_NAME}/configs.env
 chmod 600 .vaulter/local/services/${SERVICE_NAME}/secrets.env
 
-# Ou read-only
+# Or read-only
 chmod 400 .vaulter/local/secrets.env
 chmod 400 .vaulter/local/services/${SERVICE_NAME}/secrets.env
 ```
@@ -309,7 +305,7 @@ chmod 400 .vaulter/local/services/${SERVICE_NAME}/secrets.env
 
 #### 17. Scope Policy Validation
 
-Valida políticas de escopo de variáveis (shared x service) com base em regras configuráveis de domínio.
+Validates variable scope ownership (`shared` vs `service`) based on configurable domain rules.
 
 ```
 ✓ scope-policy: no scope-policy issues detected
@@ -320,17 +316,17 @@ Valida políticas de escopo de variáveis (shared x service) com base em regras 
   → GITHUB_TOKEN: expected service svc-repositories (rule github-service-owned); currently targeting __shared__. GITHUB_* variables should be service-owned (svc-repositories)
 ```
 
-**Regras padrão:**
+Default rules:
 - `MAILGUN_*` → `svc-notifications` (service)
 - `GITHUB_*` → `svc-repositories` (service)
-- `SVC_*_URL` → `shared` (por padrão)
+- `SVC_*_URL` → `shared` (default)
 
-**Comportamento:**
-- `warn` (padrão): o check mostra os erros sem bloquear o `status`
-- `strict` ou `error`: o check falha se houver violações
-- `off`: desativa validação
+Behavior:
+- `warn` (default): reports issues without failing `status`
+- `strict` or `error`: fails when violations exist
+- `off`: disables validation
 
-**Configuração sugerida no `config.yaml`:**
+Suggested config (`config.yaml`):
 
 ```yaml
 scope_policy:
@@ -345,7 +341,7 @@ scope_policy:
 ```
 
 #### 18. Perf Config
-Sugestões de tunning quando o ambiente permite:
+Provides tuning suggestions when possible.
 
 ```
 ⚠ perf-config: performance tuning available
@@ -353,16 +349,16 @@ Sugestões de tunning quando o ambiente permite:
 ○ perf-config: no performance suggestions
 ```
 
-**O que sugere:**
-- Cache do s3db (reduz leituras repetidas)
-- Warmup do MCP (remove a latência do primeiro call)
-- Concurrency do `vaulter_search` em monorepos grandes
+Suggestions may include:
+- S3DB cache (reduces repeated reads)
+- MCP warmup (removes first-call latency)
+- `vaulter_search` concurrency for large monorepos
 
 ---
 
 ## `format: "json"` (machine-readable)
 
-Com `format: "json"`, a saída retorna um objeto estruturado com:
+With `format: "json"`, output returns a structured object containing:
 `project`, `service`, `environment`, `backend`, `encryption`, `environments`, `checks`, `summary`, `risk`, `suggestions`.
 
 ```json
@@ -382,7 +378,7 @@ Com `format: "json"`, a saída retorna um objeto estruturado com:
 }
 ```
 
-## Output Completo - Exemplo (texto)
+## Full Text Output Example
 
 ```
 # Vaulter Status Report
@@ -422,85 +418,85 @@ Com `format: "json"`, a saída retorna um objeto estruturado com:
 - Run "vaulter diff -e dev --values" to see details
 ```
 
-## Interpretando o Summary
+## Interpreting the Summary
 
 ```
 ✓ ok: 15 | ⚠ warn: 1 | ✗ fail: 1 | ○ skip: 0
 ```
 
-- **✓ ok:** Checks que passaram - tudo certo
-- **⚠ warn:** Avisos - funciona mas pode melhorar
-- **✗ fail:** Falhas críticas - precisa corrigir
-- **○ skip:** Checks que foram pulados (pré-requisito falhou)
+- **✓ ok:** Checks passed.
+- **⚠ warn:** Warning - should still be reviewed.
+- **✗ fail:** Critical issues that should be fixed.
+- **○ skip:** Checks skipped due to precondition failures.
 
-**Healthy:** `fail === 0` (nenhuma falha crítica)
+**Healthy:** `fail === 0`
 
-## Quando Usar
+## When to Use
 
-### 🆕 Setup Inicial
+### 🆕 Initial Setup
 ```bash
-# Depois de rodar vaulter init
+# After running vaulter init
 vaulter status -e dev
 
-# Verifica:
-# - Config está correto
-# - Backend conecta
-# - Chaves funcionam
+# Verify:
+# - Config is correct
+# - Backend connects
+# - Keys work
 ```
 
 ### 🐛 Debugging
 ```bash
-# Quando algo não funciona
+# When something breaks
 vaulter status -e prd
 
-# Identifica:
-# - Problemas de conexão
-# - Chaves erradas
-# - Permissões faltando
+# Identify:
+# - Connection issues
+# - Bad keys
+# - Missing permissions
 ```
 
 ### 🚀 Pre-Deploy
 ```bash
-# Antes de fazer deploy
+# Before deployment
 vaulter status -e prd
 
-# Garante:
-# - Todas as vars sincronizadas
-# - Performance OK
-# - Sem issues de segurança
+# Ensure:
+# - Variables are synchronized
+# - Performance is acceptable
+# - No security issues
 ```
 
-### 🔄 Rotina
+### 🔄 Routine
 ```bash
-# Periodicamente (ex: toda semana)
+# Weekly check
 vaulter status -e dev
 vaulter status -e prd
 
-# Monitora:
-# - Performance degradando
-# - Arquivos .env vazando pro git
-# - Sync drift entre local/remoto
+# Track:
+# - Performance degradation
+# - Env files leaking into git
+# - Sync drift between local and remote
 ```
 
 ## Troubleshooting
 
-### Check falha mas não sei o porquê
+### A check fails and you need details
 
 Use verbose mode:
 ```bash
 vaulter status -e dev -v
 ```
 
-Saída mostrará detalhes dos erros:
+Output includes detailed error context:
 ```
 [vaulter] Trying backend: s3://****:****@mybucket
 [vaulter] Connection attempt 1 failed, retrying... Connection timeout
 [vaulter] Connection attempt 2 failed, retrying... Connection timeout
 ```
 
-### Todos os checks passam mas operações falham
+### All checks pass but operations still fail
 
-Execute checks individuais:
+Run checks individually:
 ```bash
 # Test write permissions
 vaulter change set TEST_VAR=123 -e dev
@@ -515,15 +511,15 @@ vaulter change set SECRET=xyz -e dev
 vaulter list -e dev --filter SECRET  # Should return "xyz"
 ```
 
-### Status trava/timeout
+### Status stalls or times out
 
-Reduza timeout para fail-fast:
+Reduce timeout for fail-fast:
 ```yaml
 mcp:
-  timeout_ms: 5000  # 5 segundos
+  timeout_ms: 5000  # 5 seconds
 ```
 
-Se ainda travar, problema é no backend (não responde).
+If it still hangs, the issue is likely backend-related.
 
 ## CI/CD Integration
 
@@ -533,7 +529,7 @@ name: Vaulter Health Check
 
 on:
   schedule:
-    - cron: '0 9 * * 1'  # Toda segunda às 9h
+    - cron: '0 9 * * 1'  # Every Monday at 9:00
   workflow_dispatch:
 
 jobs:
@@ -552,8 +548,8 @@ jobs:
 
       - name: Check for security issues
         run: |
-          # Fail if any .env files are tracked
-          if git ls-files | grep -E '\.env$'; then
+          # Fail if any .env files are tracked in git
+          if git ls-files | grep -E '\\.env$'; then
             echo "❌ .env files are tracked in git!"
             exit 1
           fi
@@ -605,6 +601,6 @@ if (retrieved?.value === testValue) {
 
 ## See Also
 
-- [Timeout Configuration](TIMEOUT.md) - Timeout e retry logic
-- [MCP Tools](MCP.md) - Todos os MCP tools disponíveis
-- [Security Best Practices](../README.md#security) - Práticas de segurança
+- [Timeout Configuration](TIMEOUT.md) - Timeout and retry settings
+- [MCP Tools](MCP.md) - All available MCP tools
+- [Security Best Practices](../README.md#security) - Security guidance

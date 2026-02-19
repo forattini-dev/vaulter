@@ -24,7 +24,9 @@ curl -fsSL https://raw.githubusercontent.com/forattini-dev/vaulter/main/install.
 # or: npm install -g vaulter
 ```
 
-## Quick Start (mínimo)
+## Quick Start
+
+### Minimal
 
 ```bash
 vaulter init                                          # Initialize project
@@ -38,9 +40,9 @@ vaulter plan -e dev                                      # Preview changes befor
 eval $(vaulter export shell -e dev)                   # Export to shell
 ```
 
-## Exemplo completo (End-to-End)
+### End-to-End (Monorepo, `web` + `api`)
 
-Monorepo example with two services (`web`, `api`): add variables, share with team, and promote to multiple environments.
+This flow shows local editing, team sharing, and promotion across multiple environments.
 
 ```bash
 # 0) Initialize + discover services
@@ -48,17 +50,16 @@ vaulter init --monorepo
 vaulter key generate --name master
 vaulter services
 
-# 1) Create/override vars locally (offline)
-# `local set` always writes to `.vaulter/local/*`; `-e/--env` is optional here.
-# `-e` passa a fazer diferença em operações que tocam backend (`local push/sync`).
+# 1) Create/override vars locally (offline by default)
+# `local set` writes only to `.vaulter/local/*`; use `-e/--env` only for backend-aware operations.
 vaulter local set NEXT_PUBLIC_APP_NAME=Portal        --shared
 vaulter local set NODE_ENV=local                    --shared
 vaulter local set DATABASE_URL=postgres://...        -s api
 vaulter local set REDIS_URL=redis://...             -s api
 vaulter local set QUEUE_ENABLED::true               -s api
 vaulter local set WORKER_CONCURRENCY::4             -s web
-vaulter local pull --all                             # generates .env for local run (all outputs)
-vaulter local diff                                # review local overrides
+vaulter local pull --all                             # Generates .env for local run (all outputs)
+vaulter local diff                                # Review local overrides
 
 # 2) Share source of truth with team (backend sync)
 vaulter local push --all -e dev
@@ -75,7 +76,7 @@ for ENV in dev stg prd; do
 done
 
 # 5) Run your scripts with vaulter-managed variables
-vaulter run -e dev -- pnpm start                  # local run with local overrides
+vaulter run -e dev -- pnpm start                  # Local run with local overrides
 vaulter run -e dev -s web -- pnpm --dir apps/web dev
 vaulter run -e dev -s api -- pnpm --dir apps/api lint
 vaulter run -e stg -s api -- pnpm --dir apps/api migrate

@@ -618,9 +618,9 @@ Set up local development with shared vars and service overrides.
 
 ---
 
-### Framework Playbooks (Famosos)
+### Framework Playbooks
 
-Exemplos práticos para frameworks comuns.
+Practical examples for common frameworks.
 
 #### 1) Next.js (frontend SPA)
 
@@ -643,7 +643,7 @@ vaulter local pull --output web
 vaulter local diff
 ```
 
-#### 2) NestJS (API + worker) no monorepo
+#### 2) NestJS (API + worker) in a monorepo
 
 ```yaml
 # .vaulter/config.yaml

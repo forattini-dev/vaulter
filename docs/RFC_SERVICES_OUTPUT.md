@@ -1,14 +1,14 @@
-# RFC: Services Output Targets
+# RFC: Service Output Targets
 
 ## Status: Draft
 
-## Motivação
+## Motivation
 
-O Vaulter precisa funcionar bem com qualquer framework e monorepo tool. A solução atual (per-app config) funciona mas é trabalhosa de configurar.
+Vaulter needs to work well with any framework and monorepo tool. The current per-app config approach works, but can be too verbose.
 
-## Proposta
+## Proposal
 
-Uma config na raiz que define onde cada service recebe seu `.env`:
+A root config should define where each service receives its generated `.env`:
 
 ```yaml
 # .vaulter/config.yaml
@@ -16,18 +16,17 @@ version: '1'
 project: my-monorepo
 environments: [dev, stg, prd]
 
-# NEW: Service outputs
 outputs:
   web:
-    path: apps/web           # Onde gerar o .env
-    filename: .env.local     # Nome do arquivo (default: .env)
-    include:                 # Quais vars incluir (glob patterns)
+    path: apps/web
+    filename: .env.local
+    include:                 # Optional glob patterns to include
       - NEXT_PUBLIC_*
       - API_URL
-    exclude:                 # Quais vars excluir (glob patterns)
+    exclude:                 # Optional glob patterns to exclude
       - DATABASE_*
       - REDIS_*
-    inherit: true            # Herdar shared vars? (default: true)
+    inherit: true            # Inherit shared vars? (default: true)
 
   api:
     path: apps/api
@@ -37,10 +36,9 @@ outputs:
       - REDIS_*
       - JWT_*
 
-  # Shorthand: só path
+  # Shorthand: path only
   worker: apps/worker
 
-# Shared vars (herdados por todos os services)
 shared:
   include:
     - LOG_LEVEL
@@ -48,44 +46,44 @@ shared:
     - SENTRY_DSN
 ```
 
-## Tipos TypeScript
+## TypeScript Types
 
 ```typescript
 /**
- * Output target for a service
+ * Output target for a service.
  */
 export interface OutputTarget {
-  /** Directory path where .env will be generated (relative to project root) */
+  /** Directory path where .env will be generated (relative to project root). */
   path: string
 
-  /** Filename to generate (default: '.env') */
+  /** Filename to generate (default: '.env'). */
   filename?: string
 
-  /** Glob patterns for vars to include. If omitted, includes all. */
+  /** Glob patterns to include. If omitted, includes all. */
   include?: string[]
 
-  /** Glob patterns for vars to exclude. Applied after include. */
+  /** Glob patterns to exclude. Applied after include. */
   exclude?: string[]
 
-  /** Inherit shared vars? (default: true) */
+  /** Inherit shared vars? (default: true). */
   inherit?: boolean
 }
 
 /**
- * Shorthand: string = just the path
+ * Shorthand notation: string means path only.
  */
 export type OutputTargetInput = string | OutputTarget
 
 /**
- * Shared vars config
+ * Shared vars configuration.
  */
 export interface SharedConfig {
-  /** Glob patterns for shared vars */
+  /** Glob patterns for vars inherited by all outputs. */
   include?: string[]
 }
 
 /**
- * Updated VaulterConfig
+ * Updated VaulterConfig.
  */
 export interface VaulterConfig {
   // ... existing fields ...
@@ -103,16 +101,16 @@ export interface VaulterConfig {
 ### CLI
 
 ```bash
-# Gera .env em todos os outputs
+# Generate .env for all outputs
 vaulter local pull --all
 
-# Gera .env em um output específico
+# Generate .env for one output
 vaulter local pull --output web
 
-# Alias: -s também funciona para output
+# Alias: -s works for output too
 vaulter local pull -s web
 
-# Dry-run: mostra o que seria gerado
+# Dry run preview
 vaulter local pull --all --dry-run
 ```
 
@@ -124,7 +122,7 @@ import { createClient, pullToOutputs } from 'vaulter'
 const client = createClient({ connectionString: '...' })
 await client.connect()
 
-// Pull para todos os outputs
+// Pull for all outputs
 await pullToOutputs({
   client,
   config,
@@ -132,7 +130,7 @@ await pullToOutputs({
   all: true
 })
 
-// Pull para um output específico
+// Pull for one output
 await pullToOutputs({
   client,
   config,
@@ -141,34 +139,34 @@ await pullToOutputs({
 })
 ```
 
-## Algoritmo
+## Algorithm
 
-```
+```text
 pullToOutputs(config, environment, output?):
-  1. Carregar todas as vars do environment
-  2. Buscar shared vars de DUAS fontes:
-     - Vars com service='__shared__' (via --shared no CLI)
-     - Vars que matcham patterns de shared.include
-  3. Para cada output target:
-     a. Se output específico, filtrar só esse
-     b. Aplicar include patterns
-     c. Aplicar exclude patterns
-     d. Se inherit=true, merge shared vars (output sobrescreve)
-     e. Escrever arquivo em {path}/{filename}
+  1. Load all vars from environment
+  2. Collect shared vars from two sources:
+     - vars with service='__shared__' (set via --shared)
+     - vars that match shared.include patterns
+  3. For each output target:
+     a. If output is restricted, filter only that output
+     b. Apply include patterns
+     c. Apply exclude patterns
+     d. If inherit=true, merge shared vars (output-specific wins)
+     e. Write file to {path}/{filename}
 ```
 
 ## Glob Pattern Matching
 
-Usamos minimatch (já usado em outros lugares):
+Vaulter uses minimatch (already used in other parts of the codebase):
 
 | Pattern | Matches |
 |---------|---------|
 | `DATABASE_*` | `DATABASE_URL`, `DATABASE_HOST`, etc |
 | `NEXT_PUBLIC_*` | `NEXT_PUBLIC_API_URL`, etc |
 | `*_KEY` | `API_KEY`, `SECRET_KEY`, etc |
-| `LOG_LEVEL` | Exato match |
+| `LOG_LEVEL` | exact match |
 
-## Casos de Uso
+## Use Cases
 
 ### 1. Next.js + NestJS Monorepo
 
@@ -187,7 +185,7 @@ shared:
   include: [LOG_LEVEL, NODE_ENV]
 ```
 
-### 2. Turborepo com 3 apps
+### 2. Turborepo with 3 apps
 
 ```yaml
 outputs:
@@ -199,7 +197,7 @@ shared:
   include: [SENTRY_DSN, LOG_LEVEL]
 ```
 
-### 3. Single app com múltiplos environments
+### 3. Single app with multiple env files
 
 ```yaml
 outputs:
@@ -208,24 +206,24 @@ outputs:
     filename: .env.local
 ```
 
-### 4. Frontend precisa de subset público
+### 4. Public-only frontend subset
 
 ```yaml
 outputs:
   web:
     path: apps/web
-    include: [NEXT_PUBLIC_*]  # Só vars públicas
+    include: [NEXT_PUBLIC_*]   # public vars only
 
   api:
     path: apps/api
-    exclude: [NEXT_PUBLIC_*]  # Tudo exceto públicas
+    exclude: [NEXT_PUBLIC_*]   # everything except public vars
 ```
 
-## Migração
+## Migration
 
-### De per-app config para outputs
+### From per-app config to outputs
 
-Antes (apps/web/.vaulter/config.yaml):
+Before (`apps/web/.vaulter/config.yaml`):
 ```yaml
 version: '1'
 project: my-monorepo
@@ -233,7 +231,7 @@ service: web
 extends: ../../../.vaulter/config.yaml
 ```
 
-Depois (.vaulter/config.yaml na raiz):
+After (root `.vaulter/config.yaml`):
 ```yaml
 version: '1'
 project: my-monorepo
@@ -241,82 +239,70 @@ outputs:
   web: apps/web
 ```
 
-### Script de migração
+### Migration script
 
 ```bash
-# Detecta configs existentes e gera outputs
 vaulter migrate-outputs
 ```
 
-## Interação com Features Existentes
+## Interaction with Existing Features
 
-### `vaulter local pull` (existente)
+### `vaulter local pull` (existing)
 
 ```bash
-# Comportamento atual (sem outputs)
+# Current behavior (without outputs)
 vaulter local pull -e dev -f output.env
 
-# Novo comportamento (com outputs)
+# New behavior (with outputs)
 vaulter local pull -e dev --all
 ```
 
-### `vaulter plan` + `vaulter apply` (existente)
+### `vaulter plan` + `vaulter apply` (existing)
 
 ```bash
-# Plan mostra diferenças local vs backend
 vaulter plan -e dev
-
-# Apply executa o plano, pushando mudanças
 vaulter apply -e dev
-
-# Apply com output específico
 vaulter apply -e dev --from-output web
 ```
 
-### `vaulter diff` (existente)
+### `vaulter diff` (existing)
 
-Diff mostra diferenças entre local e backend. Use `vaulter plan` + `vaulter apply` para sincronizar.
+Diff remains unchanged and compares local vs backend. Use `vaulter plan` + `vaulter apply` for sync.
 
-### `vaulter export` (existente)
+### `vaulter export` (existing)
 
 ```bash
-# Export continua igual
 vaulter export -e dev -f env
-
-# Novo: export usando filters de um output
 vaulter export -e dev --using-output web
 ```
 
-## Questões em Aberto
+## Open Questions
 
-1. **Conflito de var names**: Se `web.include` e `api.include` têm overlap, o que acontece?
-   - **Resposta**: Não é conflito. Cada output é independente. A mesma var pode ir para múltiplos outputs.
+1. **Var name overlap between outputs:** if `web.include` and `api.include` overlap, what happens?
+   - **Answer:** No conflict. Outputs are independent and can receive the same variable.
+2. **Vars not included in any output:** should we warn or ignore silently?
+   - **Proposed:** warn in `--verbose`.
+3. **Missing output path:** auto-create or error?
+   - **Proposed:** create automatically (`mkdir -p`).
+4. **Filename per environment:** `.env.{env}` or fixed filename?
+   - **Proposed:** support placeholder `filename: .env.{env}`.
 
-2. **Vars não incluídas em nenhum output**: Warning? Ignore silently?
-   - **Proposta**: Warning no --verbose
+## Implementation Plan
 
-3. **Output path não existe**: Criar? Error?
-   - **Proposta**: Criar automaticamente (mkdir -p)
+### Phase 1: Core
+- [ ] Add types in `src/types.ts`
+- [ ] Validate config in `src/lib/config-loader.ts`
+- [ ] Add glob matching in `src/lib/glob-matcher.ts`
+- [ ] Implement `pullToOutputs()` in `src/lib/outputs.ts`
+- [ ] Add CLI flags `--all` and `--output` in `src/cli/commands/pull.ts`
 
-4. **Filename com environment**: `.env.{env}` ou sempre fixo?
-   - **Proposta**: Permitir placeholder: `filename: .env.{env}`
+### Phase 2: Polish
+- [ ] Add `vaulter migrate-outputs` command
+- [ ] Add `--using-output` flag to export
+- [ ] Add `--from-output` flag to apply/push
+- [ ] Update MCP tools
 
-## Implementação
-
-### Fase 1: Core
-- [ ] Types em `src/types.ts`
-- [ ] Validação de config em `src/lib/config-loader.ts`
-- [ ] Glob matching em `src/lib/glob-matcher.ts`
-- [ ] `pullToOutputs()` em `src/lib/outputs.ts`
-- [ ] CLI flag `--all` e `--output` em `src/cli/commands/pull.ts`
-
-### Fase 2: Polish
-- [ ] `vaulter migrate-outputs` command
-- [ ] `--using-output` flag no export
-- [ ] `--from-output` flag no push
-- [ ] MCP tools updates
-
-### Fase 3: Documentation
+### Phase 3: Documentation
 - [ ] Update README
 - [ ] Update MCP.md
-- [ ] Migration guide
+- [ ] Add migration guide
