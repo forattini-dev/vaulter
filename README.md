@@ -24,7 +24,7 @@ curl -fsSL https://raw.githubusercontent.com/forattini-dev/vaulter/main/install.
 # or: npm install -g vaulter
 ```
 
-## Quick Start
+## Quick Start (mínimo)
 
 ```bash
 vaulter init                                          # Initialize project
@@ -38,7 +38,7 @@ vaulter plan -e dev                                      # Preview changes befor
 eval $(vaulter export shell -e dev)                   # Export to shell
 ```
 
-## Quick Example (End-to-End)
+## Exemplo completo (End-to-End)
 
 Monorepo example with two services (`web`, `api`): add variables, share with team, and promote to multiple environments.
 
@@ -49,12 +49,14 @@ vaulter key generate --name master
 vaulter services
 
 # 1) Create/override vars locally (offline)
-vaulter local set NEXT_PUBLIC_APP_NAME=Portal        --shared -e dev
-vaulter local set NODE_ENV=local                    -e dev --shared
-vaulter local set DATABASE_URL=postgres://...        -e dev -s api
-vaulter local set REDIS_URL=redis://...             -e dev -s api
-vaulter local set QUEUE_ENABLED::true               -e dev -s api
-vaulter local set WORKER_CONCURRENCY::4             -e dev -s web
+# `local set` always writes to `.vaulter/local/*`; `-e/--env` is optional here.
+# `-e` passa a fazer diferença em operações que tocam backend (`local push/sync`).
+vaulter local set NEXT_PUBLIC_APP_NAME=Portal        --shared
+vaulter local set NODE_ENV=local                    --shared
+vaulter local set DATABASE_URL=postgres://...        -s api
+vaulter local set REDIS_URL=redis://...             -s api
+vaulter local set QUEUE_ENABLED::true               -s api
+vaulter local set WORKER_CONCURRENCY::4             -s web
 vaulter local pull --all                             # generates .env for local run (all outputs)
 vaulter local diff                                # review local overrides
 
@@ -63,7 +65,7 @@ vaulter local push --all -e dev
 
 # 3) Team members pull and generate local envs
 vaulter local sync -e dev
-vaulter local pull --all -e dev
+vaulter local pull --all
 
 # 4) Promote the same managed set to multiple environments
 for ENV in dev stg prd; do

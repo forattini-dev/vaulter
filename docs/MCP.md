@@ -636,11 +636,11 @@ outputs:
 ```
 
 ```bash
-vaulter local pull --output web -e dev
-vaulter local set NEXT_PUBLIC_API_URL=https://api.dev.tetis.io -e dev
-vaulter local set NODE_ENV=local -e dev
-vaulter local pull --output web -e dev
-vaulter local diff -e dev
+vaulter local pull --output web
+vaulter local set NEXT_PUBLIC_API_URL=https://api.dev.tetis.io
+vaulter local set NODE_ENV=local
+vaulter local pull --output web
+vaulter local diff
 ```
 
 #### 2) NestJS (API + worker) no monorepo
@@ -689,9 +689,9 @@ outputs:
 ```
 
 ```bash
-vaulter local set DEBUG=true -e dev
-vaulter local set DJANGO_SETTINGS_MODULE=app.settings.dev -e dev
-vaulter local pull -o django -e dev
+vaulter local set DEBUG=true
+vaulter local set DJANGO_SETTINGS_MODULE=app.settings.dev
+vaulter local pull -o django
 vaulter export helm -e dev --service django-api
 ```
 
