@@ -83,10 +83,20 @@ vaulter run -e stg -s api -- pnpm --dir apps/api migrate
 vaulter run -e prd -- docker compose -f ./deploy/docker/docker-compose.yml up
 
 # 6) Export service-specific artifacts per environment
+# Config-like outputs
+vaulter export env -e dev --service api > apps/api/.env
+vaulter export env -e stg --service web > apps/web/.env
+vaulter export shell -e prd --service api > /tmp/api-env.sh
+
+# Kubernetes artifacts
 vaulter export k8s-secret -e dev --service api --name api-secrets
 vaulter export k8s-secret -e dev --service web --name web-secrets
 vaulter export k8s-secret -e stg --service api --name api-secrets
 vaulter export k8s-secret -e prd --service api --name api-secrets
+
+# Deployment formats
+vaulter export k8s-configmap -e prd --service api --name api-configmap
+vaulter export helm -e prd --service api --name api-values
 ```
 
 > `--force` is required on `apply -e prd` and other production-like environments.
