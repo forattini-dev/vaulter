@@ -514,37 +514,45 @@ export function readProvenance(
   const content = fs.readFileSync(logPath, 'utf-8')
   const lines = content.split('\n').filter(l => l.trim())
 
-  let entries: ProvenanceLogEntry[] = []
-  for (const line of lines) {
-    try {
-      entries.push(JSON.parse(line) as ProvenanceLogEntry)
-    } catch {
-      // Skip malformed lines
-    }
-  }
+  const parsedEntries = lines
+    .map((line, index) => {
+      try {
+        return { entry: JSON.parse(line) as ProvenanceLogEntry, index }
+      } catch {
+        return null
+      }
+    })
+    .filter((item): item is { entry: ProvenanceLogEntry; index: number } => item !== null)
+
+  let entries: Array<{ entry: ProvenanceLogEntry; index: number }> = [...parsedEntries]
 
   // Apply filters
   if (filter?.key) {
-    entries = entries.filter(e => e.key === filter.key)
+    entries = entries.filter(e => e.entry.key === filter.key)
   }
   if (filter?.scope) {
-    entries = entries.filter(e => e.scope === filter.scope)
+    entries = entries.filter(e => e.entry.scope === filter.scope)
   }
   if (filter?.operation) {
-    entries = entries.filter(e => e.op === filter.operation)
+    entries = entries.filter(e => e.entry.op === filter.operation)
   }
   if (filter?.since) {
-    entries = entries.filter(e => e.ts >= filter.since!)
+    entries = entries.filter(e => e.entry.ts >= filter.since!)
   }
 
-  // Sort by timestamp descending (most recent first)
-  entries.sort((a, b) => b.ts.localeCompare(a.ts))
+  // Sort by timestamp descending (most recent first),
+  // tie-break by file order so later lines win when timestamps are equal.
+  entries.sort((a, b) => {
+    const byTime = b.entry.ts.localeCompare(a.entry.ts)
+    if (byTime !== 0) return byTime
+    return b.index - a.index
+  })
 
   if (filter?.limit && filter.limit > 0) {
     entries = entries.slice(0, filter.limit)
   }
 
-  return entries
+  return entries.map(item => item.entry)
 }
 
 /**
