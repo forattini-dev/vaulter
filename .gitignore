@@ -21,6 +21,7 @@ releases/
 .vaulter/*/secrets.env
 .vaulter/**/*.env
 artifacts/vaulter-health/
+artifacts/vaulter-plans/
 
 # IDE
 .idea/

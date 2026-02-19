@@ -6,7 +6,7 @@
  * OFFLINE-FIRST ARCHITECTURE:
  * - `vaulter local pull` reads ONLY from local files (.vaulter/local/)
  * - NO backend calls for local development
- * - Backend sync is done via `vaulter sync push/pull`
+ * - Backend sync is done via `vaulter plan` + `vaulter apply`
  *
  * For each output:
  *   1. Read shared vars: .vaulter/local/configs.env + secrets.env

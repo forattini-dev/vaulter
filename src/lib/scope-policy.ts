@@ -119,7 +119,9 @@ interface ScopePolicyCheckResult {
   strict: boolean
 }
 
-interface RawScopePolicyConfig extends ScopePolicyConfig {
+interface RawScopePolicyConfig {
+  mode?: ScopePolicyMode
+  inherit_defaults?: boolean
   rules?: Array<{
     name?: string
     pattern?: string
@@ -188,8 +190,8 @@ function parseScopePolicyConfigRules(config?: RawScopePolicyConfig): { rules: Sc
     }
 
     const expectedScope = toMode(
-      (entry as Record<string, unknown>).expected_scope ??
-      (entry as Record<string, unknown>).expectedScope
+      ((entry as Record<string, unknown>).expected_scope ??
+      (entry as Record<string, unknown>).expectedScope) as string | undefined
     )
     if (!expectedScope) {
       warnings.push(`Ignoring scope_policy rule "${pattern}": expected_scope must be shared|service`)

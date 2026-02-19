@@ -227,7 +227,7 @@ export function Dashboard(props: DashboardProps) {
     ? Box(
         { justifyContent: 'center', alignItems: 'center', height: '100%', flexDirection: 'column', gap: 1 },
         Text({ color: 'muted' }, 'No variables found'),
-        Text({ color: 'muted', dim: true }, `Try: vaulter var set MY_VAR=value -e ${environment()}`)
+        Text({ color: 'muted', dim: true }, `Try: vaulter change set MY_VAR=value -e ${environment()}`)
       )
     : Table({
         columns,

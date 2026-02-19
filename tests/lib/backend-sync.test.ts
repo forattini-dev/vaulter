@@ -20,6 +20,12 @@ class TestClient {
     this.setCalls.push(`${entry.service || '__shared__'}:${entry.key}`)
   }
 
+  setMany = async (entries: any[]): Promise<void> => {
+    for (const entry of entries) {
+      this.setCalls.push(`${entry.service || '__shared__'}:${entry.key}`)
+    }
+  }
+
   async list(filter: { project: string; environment: string; service?: string }): Promise<Array<any>> {
     this.listCalls.push(`${filter.service || '__shared__'}`)
 

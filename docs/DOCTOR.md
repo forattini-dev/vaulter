@@ -1,23 +1,21 @@
-# Vaulter Doctor - Health Checks
+# Vaulter Status - Health Checks
 
-O `vaulter doctor` é uma ferramenta de diagnóstico completa que executa **até 18 checks** para identificar problemas de configuração, performance e segurança.
+O `vaulter status` é uma ferramenta de diagnóstico completa que executa **até 18 checks** para identificar problemas de configuração, performance e segurança.
 Em `--offline`, ele valida a estrutura local e segurança do projeto sem tocar backend (útil para rotina de desenvolvimento).
-`vaulter status` é um atalho de CLI para o mesmo fluxo de diagnóstico (texto + visão de risco) e mantém a saída em sintonia com `doctor`.
 
 ## Quick Start
 
 ```bash
 # CLI
-vaulter doctor -e dev
-vaulter doctor -e dev --offline
 vaulter status -e dev
+vaulter status -e dev --offline
 
 # MCP Tool
-vaulter_doctor environment="dev" format="text"
-vaulter_doctor environment="dev" format="json"  # saída estruturada para automação/IA
+vaulter_status action="scorecard" environment="dev" format="text"
+vaulter_status action="scorecard" environment="dev" format="json"  # saída estruturada para automação/IA
 
 # Com service (monorepo)
-vaulter doctor -e dev -s api
+vaulter status -e dev -s api
 ```
 
 ## Os Checks
@@ -94,7 +92,7 @@ Verifica se arquivos `.env` locais existem.
 ```
 ✓ local-files: env file present
 ⚠ local-files: missing local env file
-  → Run "vaulter sync pull -e dev" to create local file
+  → Run "vaulter local sync" then "vaulter local pull --all" to create local file
 ```
 
 #### 9. Outputs Config
@@ -103,7 +101,7 @@ Valida configuração de outputs.
 ```
 ✓ outputs: 3 output file(s) present
 ⚠ outputs: 2/3 output file(s) missing
-  → Run "vaulter sync pull --all" to populate outputs
+  → Run "vaulter local pull --all" to populate outputs
 ○ outputs: no outputs configured
 ```
 
@@ -112,8 +110,8 @@ Valida se entradas críticas do `.vaulter` estão no `.gitignore`.
 
 ```
 ✓ gitignore: required Vaulter entries present in .gitignore
-⚠ gitignore: missing 2 required .gitignore entries (would add with --fix)
-  → Run "vaulter doctor --fix" to update .gitignore
+⚠ gitignore: missing 2 required .gitignore entries
+  → Manually add missing entries to .gitignore
 ○ gitignore: project root not resolved for .gitignore checks
 ```
 
@@ -214,9 +212,9 @@ Compara variáveis locais vs remotas.
 ```
 ✓ sync-status: local and remote in sync
 ⚠ sync-status: 5 local-only, 3 remote-only, 2 conflicts
-  → Run "vaulter sync diff -e dev --values" to see details
+  → Run "vaulter diff -e dev --values" to see details
 ⚠ sync-status: 10 difference(s) detected
-  → Run "vaulter sync diff -e dev" for details
+  → Run "vaulter diff -e dev" for details
 ○ sync-status: no local vars to compare
 ```
 
@@ -228,16 +226,16 @@ Compara variáveis locais vs remotas.
 **Próximos passos:**
 ```bash
 # Ver detalhes das diferenças
-vaulter sync diff -e dev --values
+vaulter diff -e dev --values
 
 # Push local para remoto
-vaulter sync push -e dev
+vaulter plan -e dev && vaulter apply -e dev
 
 # Pull remoto para local
-vaulter sync pull -e dev
+vaulter local sync -e dev && vaulter local pull --all
 
 # Merge (escolhe estratégia de conflito)
-vaulter sync merge -e dev --strategy local
+vaulter plan -e dev && vaulter apply -e dev
 ```
 
 #### 16. Security Issues
@@ -328,7 +326,7 @@ Valida políticas de escopo de variáveis (shared x service) com base em regras 
 - `SVC_*_URL` → `shared` (por padrão)
 
 **Comportamento:**
-- `warn` (padrão): o check mostra os erros sem bloquear o `doctor`
+- `warn` (padrão): o check mostra os erros sem bloquear o `status`
 - `strict` ou `error`: o check falha se houver violações
 - `off`: desativa validação
 
@@ -380,14 +378,14 @@ Com `format: "json"`, a saída retorna um objeto estruturado com:
   "checks": [{ "name": "config", "status": "ok", "details": "found at /project/.vaulter/config.yaml" }],
   "summary": { "ok": 13, "warn": 1, "fail": 1, "skip": 0, "healthy": false },
   "risk": { "score": 30, "level": "medium", "reasons": ["sync-status mismatch"] },
-  "suggestions": ["Add .env files to .gitignore immediately", "Run \"vaulter sync diff -e dev --values\" to see details"]
+  "suggestions": ["Add .env files to .gitignore immediately", "Run \"vaulter diff -e dev --values\" to see details"]
 }
 ```
 
 ## Output Completo - Exemplo (texto)
 
 ```
-# Vaulter Doctor Report
+# Vaulter Status Report
 
 **Project:** myproject
 **Environment:** dev
@@ -411,7 +409,7 @@ Com `format: "json"`, a saída retorna um objeto estruturado com:
 ✓ **permissions**: read/write/delete OK
 ✓ **encryption**: round-trip successful (encrypt → decrypt → match)
 ⚠ **sync-status**: 5 local-only, 3 remote-only, 2 conflicts
-  → Run "vaulter sync diff -e dev --values" to see details
+  → Run "vaulter diff -e dev --values" to see details
 ✗ **security**: 2 .env file(s) tracked in git: .vaulter/local/configs.env
   → Add .env files to .gitignore immediately and remove from git history
 
@@ -421,7 +419,7 @@ Com `format: "json"`, a saída retorna um objeto estruturado com:
 ## Suggestions
 - ⚠️ Fix failing checks before proceeding
 - Add .env files to .gitignore immediately and remove from git history
-- Run "vaulter sync diff -e dev --values" to see details
+- Run "vaulter diff -e dev --values" to see details
 ```
 
 ## Interpretando o Summary
@@ -442,7 +440,7 @@ Com `format: "json"`, a saída retorna um objeto estruturado com:
 ### 🆕 Setup Inicial
 ```bash
 # Depois de rodar vaulter init
-vaulter doctor -e dev
+vaulter status -e dev
 
 # Verifica:
 # - Config está correto
@@ -453,7 +451,7 @@ vaulter doctor -e dev
 ### 🐛 Debugging
 ```bash
 # Quando algo não funciona
-vaulter doctor -e prd
+vaulter status -e prd
 
 # Identifica:
 # - Problemas de conexão
@@ -464,7 +462,7 @@ vaulter doctor -e prd
 ### 🚀 Pre-Deploy
 ```bash
 # Antes de fazer deploy
-vaulter doctor -e prd
+vaulter status -e prd
 
 # Garante:
 # - Todas as vars sincronizadas
@@ -475,8 +473,8 @@ vaulter doctor -e prd
 ### 🔄 Rotina
 ```bash
 # Periodicamente (ex: toda semana)
-vaulter doctor -e dev
-vaulter doctor -e prd
+vaulter status -e dev
+vaulter status -e prd
 
 # Monitora:
 # - Performance degradando
@@ -490,7 +488,7 @@ vaulter doctor -e prd
 
 Use verbose mode:
 ```bash
-vaulter doctor -e dev -v
+vaulter status -e dev -v
 ```
 
 Saída mostrará detalhes dos erros:
@@ -505,19 +503,19 @@ Saída mostrará detalhes dos erros:
 Execute checks individuais:
 ```bash
 # Test write permissions
-vaulter set TEST_VAR=123 -e dev
-vaulter get TEST_VAR -e dev
-vaulter delete TEST_VAR -e dev
+vaulter change set TEST_VAR=123 -e dev
+vaulter list -e dev --filter TEST_VAR
+vaulter change delete TEST_VAR -e dev
 
 # Test latency
 time vaulter list -e dev
 
 # Test encryption
-vaulter set SECRET=xyz -e dev
-vaulter get SECRET -e dev  # Should return "xyz"
+vaulter change set SECRET=xyz -e dev
+vaulter list -e dev --filter SECRET  # Should return "xyz"
 ```
 
-### Doctor trava/timeout
+### Status trava/timeout
 
 Reduza timeout para fail-fast:
 ```yaml
@@ -542,12 +540,12 @@ jobs:
   health:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
-      - name: Run vaulter doctor
+      - name: Run vaulter status
         run: |
-          npx vaulter doctor -e dev
-          npx vaulter doctor -e prd
+          npx vaulter status -e dev
+          npx vaulter status -e prd
         env:
           VAULTER_KEY_DEV: ${{ secrets.VAULTER_KEY_DEV }}
           VAULTER_KEY_PRD: ${{ secrets.VAULTER_KEY_PRD }}

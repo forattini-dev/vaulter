@@ -104,16 +104,16 @@ export interface VaulterConfig {
 
 ```bash
 # Gera .env em todos os outputs
-vaulter pull --all
+vaulter local pull --all
 
 # Gera .env em um output específico
-vaulter pull --output web
+vaulter local pull --output web
 
-# Alias: --service também funciona para output
-vaulter pull --service web
+# Alias: -s também funciona para output
+vaulter local pull -s web
 
 # Dry-run: mostra o que seria gerado
-vaulter pull --all --dry-run
+vaulter local pull --all --dry-run
 ```
 
 ### Programmatic
@@ -250,29 +250,32 @@ vaulter migrate-outputs
 
 ## Interação com Features Existentes
 
-### `vaulter pull` (existente)
+### `vaulter local pull` (existente)
 
 ```bash
 # Comportamento atual (sem outputs)
-vaulter pull -e dev -f output.env
+vaulter local pull -e dev -f output.env
 
 # Novo comportamento (com outputs)
-vaulter pull -e dev --all
+vaulter local pull -e dev --all
 ```
 
-### `vaulter push` (existente)
+### `vaulter plan` + `vaulter apply` (existente)
 
 ```bash
-# Comportamento atual (sem outputs)
-vaulter push -e dev -f input.env
+# Plan mostra diferenças local vs backend
+vaulter plan -e dev
 
-# Novo comportamento (com outputs)
-vaulter push -e dev --from-output web
+# Apply executa o plano, pushando mudanças
+vaulter apply -e dev
+
+# Apply com output específico
+vaulter apply -e dev --from-output web
 ```
 
-### `vaulter sync` (existente)
+### `vaulter diff` (existente)
 
-Sync bidirectional continua funcionando com o arquivo local padrão. Outputs são para geração unidirecional (backend → local).
+Diff mostra diferenças entre local e backend. Use `vaulter plan` + `vaulter apply` para sincronizar.
 
 ### `vaulter export` (existente)
 

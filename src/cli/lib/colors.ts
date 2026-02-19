@@ -204,6 +204,9 @@ export const c = {
   highlight: (text: string) => enabled ? boldElectricBlue(text) : text,
   muted: (text: string) => enabled ? dim(text) : text,
 
+  // Text formatting
+  bold: (text: string) => enabled ? compose(bold, (s: string) => s)(text) : text,
+
   // Projects/Services - blue theme
   project: (text: string) => enabled ? boldNeonBlue(text) : text,
   service: (text: string) => enabled ? skyBlue(text) : text,

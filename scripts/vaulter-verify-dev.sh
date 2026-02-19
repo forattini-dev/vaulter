@@ -55,11 +55,11 @@ fi
 
 {
   if [ "$VERIFY_OFFLINE" = "1" ] || [ "$VERIFY_OFFLINE" = "true" ] || [ "$VERIFY_OFFLINE" = "yes" ]; then
-    run_vaulter doctor -e "$ENVIRONMENT" -v --offline
+    run_vaulter status -e "$ENVIRONMENT" -v --offline
   else
-    run_vaulter doctor -e "$ENVIRONMENT" -v
+    run_vaulter status -e "$ENVIRONMENT" -v
   fi
-  run_vaulter sync diff -e "$ENVIRONMENT" --values
+  run_vaulter diff -e "$ENVIRONMENT" --values
   if [ -n "$SERVICE" ]; then
     run_vaulter list -e "$ENVIRONMENT" -s "$SERVICE"
   else

@@ -480,7 +480,7 @@ export class SyncConflictError extends OperationError {
       `Sync conflicts detected: ${conflictingKeys.join(', ')}`,
       'SYNC_CONFLICT',
       {
-        suggestion: 'Use "vaulter sync merge" with a conflict strategy (--strategy local|remote|error)',
+        suggestion: 'Use "vaulter plan" to inspect drift, then "vaulter apply" to push changes',
         context: { conflictingKeys }
       }
     )
@@ -543,7 +543,7 @@ export class VersionNotFoundError extends OperationError {
       `Version ${version} not found for key "${key}"`,
       'VERSION_NOT_FOUND',
       {
-        suggestion: 'Use "vaulter var versions <key>" to see available versions',
+        suggestion: 'Use "vaulter versions <key> -e <env>" to see available versions',
         context: { key, version }
       }
     )

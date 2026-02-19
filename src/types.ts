@@ -678,6 +678,9 @@ export interface VaulterConfig {
    * ```
    */
   shared?: SharedVarsConfig
+
+  /** Custom directory for plan/apply artifacts (default: 'artifacts/vaulter-plans') */
+  artifacts_dir?: string
 }
 
 // ============================================================================
@@ -694,7 +697,9 @@ export interface CLIArgs {
   key?: string
   verbose?: boolean
   'timeout-ms'?: number
+  quiet?: boolean
   offline?: boolean
+  ci?: boolean
   'dry-run'?: boolean
   json?: boolean
   help?: boolean
@@ -703,6 +708,7 @@ export interface CLIArgs {
   // Command-specific flags
   file?: string
   output?: string
+  envs?: string
   force?: boolean
   all?: boolean
   namespace?: string
@@ -740,6 +746,7 @@ export interface CLIArgs {
   shared?: boolean
   strategy?: 'local' | 'remote' | 'error'
   values?: boolean
+  preflight?: boolean
   action?: 'merge' | 'push' | 'pull'
   apply?: boolean
   'plan-output'?: string
@@ -758,6 +765,8 @@ export interface CLIArgs {
   // Move operation scope routing
   from?: string
   to?: string
+  // Diff/list options (kebab-case aliases)
+  'show-values'?: boolean
 }
 
 export interface CommandContext {

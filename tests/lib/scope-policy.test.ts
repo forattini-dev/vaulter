@@ -70,13 +70,14 @@ describe('scope-policy', () => {
     expect(policy.policyMode).toBe('warn')
     expect(policy.rules).toHaveLength(4)
     expect(policy.rules.map((rule) => rule.name)).toEqual(
-      expect.arrayContaining(['mailgun-service-owned', 'github-service-owned', 'svc-url-shared-default', 'custom-CUSTOM_SECRET_'])
+      expect.arrayContaining(['mailgun-service-owned', 'github-service-owned', 'svc-url-shared-default', 'custom-^CUSTOM_SECRET_'])
     )
   })
 
   it('should invalidate bad custom policy rules and report warnings', () => {
     const policy = resolveScopePolicy({
       mode: 'warn',
+      inherit_defaults: false,
       rules: [
         {
           pattern: '(',

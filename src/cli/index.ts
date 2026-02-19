@@ -54,23 +54,21 @@ function getPackageVersion(): string | undefined {
 
 // CLI commands
 import { runInit } from './commands/init.js'
-import { runDoctor } from './commands/doctor.js'
 import { runKey } from './commands/key.js'
-import { runAudit } from './commands/audit.js'
+import { runStatus } from './commands/status.js'
 import { runRotation } from './commands/rotation.js'
 import { runRun } from './commands/run.js'
 import { runNuke } from './commands/nuke.js'
 import { runOutput } from './commands/output.js'
 import { runChange } from './commands/change.js'
+import { runPlan } from './commands/plan.js'
+import { runApply } from './commands/apply.js'
+import { runDiff } from './commands/diff.js'
 
-// Hierarchical command group routers
-import { runVar } from './commands/var/index.js'
-import { runSyncGroup } from './commands/sync/index.js'
 import { runExportGroup } from './commands/export/index.js'
 import { runServiceGroup } from './commands/service/index.js'
 import { runLocalGroup } from './commands/local/index.js'
 import { runSnapshotGroup } from './commands/snapshot/index.js'
-import { runReleaseGroup } from './commands/release/index.js'
 
 // MCP is loaded dynamically (not available in standalone binaries)
 const IS_STANDALONE = process.env.VAULTER_STANDALONE === 'true'
@@ -79,17 +77,13 @@ const IS_STANDALONE = process.env.VAULTER_STANDALONE === 'true'
  * CLI Schema definition
  */
 /**
- * Custom separators for vaulter CLI
+ * Custom separators for `vaulter change set`.
  *
- * Enables special syntax for setting variables:
- *   vaulter set KEY=value              → secret (encrypted, file + backend)
- *   vaulter set KEY:=123               → secret typed (number/boolean)
- *   vaulter set PORT::3000             → config (split: file only | unified: file + backend)
- *   vaulter set @tag:sensitive         → metadata
- *
- * In split mode:
- *   secrets → deploy/secrets/<env>.env + remote backend
- *   configs → deploy/configs/<env>.env (git-tracked, no backend)
+ * Enables intent-first syntax:
+ *   vaulter change set KEY=value           → secret
+ *   vaulter change set KEY:=123            → typed secret (number/boolean)
+ *   vaulter change set PORT::3000          → config (plain)
+ *   vaulter change set @tag:sensitive      → metadata
  */
 const VAULTER_SEPARATORS = {
   '=': 'secrets',                        // KEY=value → secrets bucket
@@ -241,25 +235,52 @@ const cliSchema: CLISchema = {
       }
     },
 
-    doctor: {
-      description: 'Check local and remote configuration health',
+    status: {
+      description: 'Unified health and risk check',
       options: {
         fix: {
           type: 'boolean',
           default: false,
           description: 'Apply safe repository fixes (currently .gitignore hygiene)'
         },
-        offline: {
+        values: {
           type: 'boolean',
           default: false,
-          description: 'Run local checks only (skip backend connectivity/perf/sync validation)'
-        }
-      }
-    },
-
-    status: {
-      description: 'Alias for doctor (health and risk status check)',
-      options: {
+          description: 'Show full values in `status vars` output'
+        },
+        pattern: {
+          type: 'string',
+          description: 'Filter audit entries by key pattern (supports * and ? wildcards)'
+        },
+        source: {
+          type: 'string',
+          description: 'Filter audit entries by source (cli, mcp, ci, runtime, migration, import)'
+        },
+        operation: {
+          type: 'string',
+          description: 'Filter audit entries by operation'
+        },
+        since: {
+          type: 'string',
+          description: 'Filter entries after this ISO 8601 timestamp'
+        },
+        until: {
+          type: 'string',
+          description: 'Filter entries before this ISO 8601 timestamp'
+        },
+        limit: {
+          type: 'number',
+          description: 'Maximum entries to return in audit output'
+        },
+        envs: {
+          type: 'string',
+          description: 'Comma-separated environments for inventory action'
+        },
+        ci: {
+          type: 'boolean',
+          default: false,
+          description: 'Exit with code 1 when status indicates risk'
+        },
         offline: {
           type: 'boolean',
           default: false,
@@ -283,115 +304,8 @@ const cliSchema: CLISchema = {
       }
     },
 
-    // NEW: Hierarchical var command group
-    var: {
-      description: 'Variable management commands',
-      options: {
-        from: {
-          type: 'string',
-          description: 'Source scope for move operations (shared or service:<name>)'
-        },
-        to: {
-          type: 'string',
-          description: 'Destination scope for move operations (shared or service:<name>)'
-        },
-        overwrite: {
-          type: 'boolean',
-          default: false,
-          description: 'Overwrite destination value when moving'
-        },
-        'delete-original': {
-          type: 'boolean',
-          default: true,
-          description: 'Delete source variable after move (set false to copy only)'
-        }
-      },
-      commands: {
-        get: {
-          description: 'Get a single variable',
-          positional: [
-            { name: 'key', required: true, description: 'Variable name' }
-          ],
-          options: {
-            version: {
-              type: 'number',
-              description: 'Get specific version (requires versioning enabled)'
-            }
-          }
-        },
-        set: {
-          description: 'Set variables (supports batch: KEY1=v1 KEY2=v2)'
-        },
-        delete: {
-          description: 'Delete a variable',
-          aliases: ['rm', 'remove'],
-          positional: [
-            { name: 'key', required: true, description: 'Variable name' }
-          ]
-        },
-        list: {
-          description: 'List all variables',
-          aliases: ['ls'],
-          options: {
-            'all-envs': {
-              type: 'boolean',
-              default: false,
-              description: 'List across all environments'
-            }
-          }
-        },
-        versions: {
-          description: 'List version history for a variable',
-          aliases: ['history'],
-          positional: [
-            { name: 'key', required: true, description: 'Variable name' }
-          ],
-          options: {
-            values: {
-              type: 'boolean',
-              default: false,
-              description: 'Show decrypted values (masked by default)'
-            }
-          }
-        },
-        rollback: {
-          description: 'Rollback variable to a previous version',
-          positional: [
-            { name: 'key', required: true, description: 'Variable name' },
-            { name: 'version', required: true, description: 'Version number to rollback to' }
-          ]
-        },
-        move: {
-          description: 'Move/copy a variable between scopes',
-          positional: [
-            { name: 'key', required: true, description: 'Variable name' }
-          ],
-          options: {
-            from: {
-              type: 'string',
-              description: 'Source scope (shared or service:<name>)'
-            },
-            to: {
-              type: 'string',
-              description: 'Destination scope (shared or service:<name>)'
-            },
-            overwrite: {
-              type: 'boolean',
-              default: false,
-              description: 'Overwrite destination value'
-            },
-            'delete-original': {
-              type: 'boolean',
-              default: true,
-              description: 'Delete source variable after move (set false to copy)'
-            }
-          }
-        }
-      }
-    },
-
     change: {
-      description: 'High-level mutation workflow (set/delete/move)',
+      description: 'Mutate variables (local-first). Use plan/apply to push to backend.',
       options: {
         from: {
           type: 'string',
@@ -400,6 +314,10 @@ const cliSchema: CLISchema = {
         to: {
           type: 'string',
           description: 'Destination scope for move operations (shared or service:<name>)'
+        },
+        scope: {
+          type: 'string',
+          description: 'Target scope: shared, service:<name>, or bare <name>'
         },
         overwrite: {
           type: 'boolean',
@@ -414,7 +332,7 @@ const cliSchema: CLISchema = {
       },
       commands: {
         set: {
-          description: 'Set variables'
+          description: 'Set variables (local-first)'
         },
         delete: {
           description: 'Delete a variable',
@@ -422,33 +340,9 @@ const cliSchema: CLISchema = {
         },
         move: {
           description: 'Move/copy a variable between scopes'
-        }
-      }
-    },
-
-    move: {
-      description: 'Move/copy a variable between scopes (high-signal shortcut for `change move`)',
-      positional: [
-        { name: 'key', required: true, description: 'Variable name' }
-      ],
-      options: {
-        from: {
-          type: 'string',
-          description: 'Source scope (shared or service:<name>)'
         },
-        to: {
-          type: 'string',
-          description: 'Destination scope (shared or service:<name>)'
-        },
-        overwrite: {
-          type: 'boolean',
-          default: false,
-          description: 'Overwrite destination value'
-        },
-        'delete-original': {
-          type: 'boolean',
-          default: true,
-          description: 'Delete source variable after move (set false to copy)'
+        import: {
+          description: 'Batch import from .env file'
         }
       }
     },
@@ -499,119 +393,50 @@ const cliSchema: CLISchema = {
       }
     },
 
-    // NEW: Hierarchical sync command group
-    sync: {
-      description: 'Synchronization commands',
+    // plan: compute diff between local state and backend
+    plan: {
+      description: 'Compute plan: diff local state vs backend, generate artifact',
       options: {
-        action: {
+        scope: {
           type: 'string',
-          description: 'For plan command: merge, push, pull'
-        },
-        strategy: {
-          type: 'string',
-          description: 'Conflict strategy: local (default), remote, error'
+          description: 'Filter by scope: shared, service:<name>, or bare <name>'
         },
         values: {
           type: 'boolean',
           default: false,
-          description: 'Show masked values in diff output'
+          description: 'Show values in output'
         },
-        dir: {
+        preflight: {
           type: 'boolean',
           default: false,
-          description: 'Use directory mode: push/pull entire .vaulter/{env}/ structure'
-        },
-        apply: {
-          type: 'boolean',
-          default: false,
-          description: 'Apply changes for sync plan (without this flag, plan is dry-run)'
-        },
-        'plan-output': {
-          type: 'string',
-          description: 'Base path for sync plan artifact (writes .json and .md). If omitted, defaults to artifacts/vaulter-plans/<project>-<env>-<operation>-<timestamp>.*'
-        }
-      },
-      commands: {
-        merge: {
-          description: 'Two-way merge (local ↔ remote)'
-        },
-        push: {
-          description: 'Push local to remote (use --prune to delete remote-only, --dir for directory mode)'
-        },
-        pull: {
-          description: 'Pull remote to local. Use --all or --output <name>, --dir for directory mode'
-        },
-        diff: {
-          description: 'Show differences between local and remote'
-        },
-        plan: {
-          description: 'Plan/apply sync operation (merge, push, pull) without changing context'
+          description: 'Compute plan without writing artifacts'
         }
       }
     },
 
-    // High-level release workflow for day-to-day operations
-    plan: {
-      description: 'Plan release-grade changes (alias for release plan)',
-      options: {
-        action: {
-          type: 'string',
-          description: 'Plan action: merge, push, or pull'
-        },
-        'plan-output': {
-          type: 'string',
-          description: 'Base path for plan artifact (writes .json and .md). If omitted, defaults to artifacts/vaulter-plans/<project>-<env>-<operation>-<timestamp>.*'
-        }
-      }
-    },
-
+    // apply: execute plan, push changes to backend
     apply: {
-      description: 'Apply release-grade changes (alias for release apply)',
+      description: 'Apply plan: push local changes to backend',
       options: {
-        action: {
+        scope: {
           type: 'string',
-          description: 'Apply action: merge, push, or pull'
-        },
-        'plan-output': {
-          type: 'string',
-          description: 'Base path for release plan artifact (writes .json and .md). If omitted, defaults to artifacts/vaulter-plans/<project>-<env>-<operation>-<timestamp>.*'
+          description: 'Filter by scope: shared, service:<name>, or bare <name>'
         }
       }
     },
 
-    release: {
-      description: 'Plan/apply release-grade changes from local to backend',
+    // diff: quick diff without artifact
+    diff: {
+      description: 'Quick diff: show local vs backend differences (no artifact)',
       options: {
-        action: {
+        scope: {
           type: 'string',
-          description: 'Used by plan/apply when action is passed without positional value (merge, push, pull)'
+          description: 'Filter by scope: shared, service:<name>, or bare <name>'
         },
-        'plan-output': {
-          type: 'string',
-          description: 'Base path for release plan artifact (writes .json and .md)'
-        }
-      },
-      commands: {
-        plan: {
-          description: 'Plan release changes (preview first, safe by default)'
-        },
-        apply: {
-          description: 'Apply release plan'
-        },
-        push: {
-          description: 'Push local values to backend'
-        },
-        pull: {
-          description: 'Pull backend values (for diagnostics or snapshot capture)'
-        },
-        merge: {
-          description: 'Two-way merge local ↔ remote in release flow'
-        },
-        diff: {
-          description: 'Show environment-level differences'
-        },
-        status: {
-          description: 'Run health check before release'
+        values: {
+          type: 'boolean',
+          default: false,
+          description: 'Show actual values in diff'
         }
       }
     },
@@ -1040,6 +865,10 @@ function toCliArgs(result: CommandParseResult): CLIArgs {
     'timeout-ms': opts['timeout-ms'] as number | undefined,
     'dry-run': opts['dry-run'] as boolean | undefined,
     json: opts.json as boolean | undefined,
+    quiet: opts.quiet as boolean | undefined,
+    offline: opts.offline as boolean | undefined,
+    envs: opts.envs as string | undefined,
+    ci: opts.ci as boolean | undefined,
     force: opts.force as boolean | undefined,
     all: opts.all as boolean | undefined,
     file: opts.file as string | undefined,
@@ -1077,6 +906,7 @@ function toCliArgs(result: CommandParseResult): CLIArgs {
     shared: opts.shared as boolean | undefined,
     strategy: opts.strategy as 'local' | 'remote' | 'error' | undefined,
     values: opts.values as boolean | undefined,
+    preflight: opts.preflight as boolean | undefined,
     action: opts.action as 'merge' | 'push' | 'pull' | undefined,
     apply: opts.apply as boolean | undefined,
     // Key command options
@@ -1091,6 +921,7 @@ function toCliArgs(result: CommandParseResult): CLIArgs {
     path: opts.path as string | undefined,
     from: opts.from as string | undefined,
     to: opts.to as string | undefined,
+    overwrite: opts.overwrite as boolean | undefined,
     deleteOriginal: opts['delete-original'] as boolean | undefined
   }
 }
@@ -1212,68 +1043,28 @@ async function main(): Promise<void> {
         await runInit(context)
         break
 
-      case 'doctor':
-        await runDoctor(context)
-        break
-
       case 'status':
-        await runDoctor(context)
-        break
-
-      case 'var':
-        await runVar(context)
+        await runStatus(context)
         break
 
       case 'change':
         await runChange(context)
         break
 
-      case 'move': {
-        const { runMove } = await import('./commands/move.js')
-        await runMove({
-          ...context,
-          args: {
-            ...context.args,
-            _: ['move', ...context.args._.slice(1)]
-          }
-        })
+      case 'plan':
+        await runPlan(context)
         break
-      }
 
-      case 'plan': {
-        const changedArgs = {
-          ...context.args,
-          _: ['release', 'plan', ...context.args._.slice(1)]
-        }
-        await runReleaseGroup({
-          ...context,
-          args: changedArgs
-        })
+      case 'apply':
+        await runApply(context)
         break
-      }
 
-      case 'apply': {
-        const changedArgs = {
-          ...context.args,
-          _: ['release', 'apply', ...context.args._.slice(1)]
-        }
-        await runReleaseGroup({
-          ...context,
-          args: changedArgs
-        })
+      case 'diff':
+        await runDiff(context)
         break
-      }
 
       case 'export':
         await runExportGroup(context)
-        break
-
-      case 'sync':
-        await runSyncGroup(context)
-        break
-
-      case 'release':
-        await runReleaseGroup(context)
         break
 
       case 'key':
@@ -1389,7 +1180,7 @@ async function main(): Promise<void> {
       }
 
       case 'audit':
-        await runAudit(context)
+        await runStatus(context)
         break
 
       case 'nuke':

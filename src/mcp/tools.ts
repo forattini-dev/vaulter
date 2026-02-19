@@ -1,43 +1,26 @@
 /**
- * Vaulter MCP Tools
- *
- * Re-exports all functionality from the modular tools structure.
- *
- * The implementation is split across:
- *   - tools/config.ts      - Configuration utilities
- *   - tools/definitions.ts - Tool schema definitions
- *   - tools/index.ts       - Main dispatcher
- *   - tools/handlers/      - Handler implementations by category
+ * Vaulter MCP Tools — Re-export shim
  */
-
-// Re-export everything from the modular structure
 export {
-  // Tool definitions
   registerTools,
-
-  // Main dispatcher
   handleToolCall,
-
-  // Config utilities
   setMcpOptions,
   getMcpOptions,
   getConfigAndDefaults,
   getClientForEnvironment,
   getClientForSharedVars,
+  clearClientCache,
   getMcpRuntimeOptions,
   resolveMcpConfigWithSources,
   formatResolvedConfig,
-
-  // Helpers
   sanitizeK8sName,
   base64Encode,
   textResponse,
   errorResponse,
-
-  // Types
   type McpServerOptions,
   type McpDefaults,
   type ToolResponse,
   type ConfigSource,
-  type ResolvedMcpConfig
+  type ResolvedMcpConfig,
+  type HandlerContext
 } from './tools/index.js'

@@ -614,7 +614,9 @@ describe('VaulterClient', () => {
       const result = await client.sync({}, 'sync-project', 'dev', undefined, { deleteMissing: true })
 
       expect(result.deleted).toContain('TO_DELETE')
-      expect(mockResource.delete).toHaveBeenCalledWith('1')
+      // deleteManyByKeys computes deterministic IDs via generateVarId
+      const expectedId = generateVarId('sync-project', 'dev', undefined, 'TO_DELETE')
+      expect(mockResource.delete).toHaveBeenCalledWith(expectedId)
     })
 
     it('should set source metadata', async () => {

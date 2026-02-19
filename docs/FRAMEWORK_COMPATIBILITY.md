@@ -153,10 +153,10 @@ shared:
 **Comando:**
 ```bash
 # Gera .env em apps/web/ e apps/api/
-vaulter pull --all
+vaulter local pull --all
 
 # Ou específico
-vaulter pull --service web
+vaulter local pull -s web
 ```
 
 **Prós:**
@@ -203,7 +203,7 @@ O adapter `nextjs` sabe:
 1. **Root config com services e outputs**
 2. **Shared vars com herança**
 3. **Glob patterns para filtrar vars**
-4. **`vaulter pull --all` gera todos**
+4. **`vaulter local pull --all` gera todos**
 
 ### Fase 2 (Adapters)
 
@@ -278,7 +278,7 @@ vaulter run --service web -- pnpm dev
 
 ```bash
 # Gera .env files
-vaulter pull --all
+vaulter local pull --all
 
 # Framework carrega automaticamente
 pnpm dev
@@ -377,8 +377,8 @@ services:
 
 1. [ ] Implementar Estratégia 3 (Root Config + Output Targets)
 2. [ ] Adicionar `services` section ao config schema
-3. [ ] Implementar `vaulter pull --all`
-4. [ ] Implementar `vaulter pull --service <name>`
+3. [ ] Implementar `vaulter local pull --all`
+4. [ ] Implementar `vaulter local pull -s <name>`
 5. [ ] Adicionar glob patterns para filtrar vars
 6. [ ] (Fase 2) Implementar framework adapters
 

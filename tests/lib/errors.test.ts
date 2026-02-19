@@ -304,7 +304,7 @@ describe('OperationError hierarchy', () => {
       expect(error.code).toBe('SYNC_CONFLICT')
       expect(error.message).toContain('KEY1')
       expect(error.message).toContain('KEY2')
-      expect(error.suggestion).toContain('--strategy')
+      expect(error.suggestion).toContain('vaulter plan')
     })
   })
 

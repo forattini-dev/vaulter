@@ -60,6 +60,7 @@ type MockClient = {
     }>
   ) => Promise<void>
   delete: (key: string, project: string, environment: string, service?: string) => Promise<void>
+  deleteManyByKeys: (keys: string[], project: string, environment: string, service?: string) => Promise<{ deleted: string[]; notFound: string[] }>
 }
 
 const createConfig = (project: string, outputs?: Record<string, any>) => ({
@@ -94,7 +95,7 @@ describe('local-ops', () => {
 
       await expect(
         runLocalPull({ config, configDir, all: false, output: undefined })
-      ).rejects.toThrow('Requires all=true or output=<name>')
+      ).rejects.toThrow('Missing output selection: pass output=<name> or all=true')
     })
 
     it('throws when no outputs are defined', async () => {
@@ -420,7 +421,8 @@ describe('local-ops', () => {
       expect(result.shared).toEqual({ configs: 1, secrets: 1 })
       expect(result.services.api).toEqual({ configs: 1, secrets: 1 })
       expect(result.totalPushed).toBe(4)
-      expect(client.set).toHaveBeenCalledTimes(4)
+      // setMany is called once for shared (2 vars) and once for service 'api' (2 vars)
+      expect(client.setMany).toHaveBeenCalledTimes(2)
     })
 
     it('deletes obsolete vars with overwrite mode', async () => {
@@ -444,7 +446,8 @@ describe('local-ops', () => {
         list: vi.fn(async () => backendVars),
         set: vi.fn(async () => {}),
         setMany: vi.fn(async () => {}),
-        delete: vi.fn(async () => {})
+        delete: vi.fn(async () => {}),
+        deleteManyByKeys: vi.fn(async (keys: string[]) => ({ deleted: [...keys], notFound: [] }))
       } as unknown as MockClient
 
       const result: LocalPushAllResult = await runLocalPushAll({
@@ -458,7 +461,8 @@ describe('local-ops', () => {
       expect(result.deleted.shared).toEqual(['DUMP'])
       expect(result.deleted.services.api).toEqual(['OLD_API'])
       expect(result.deleted.services.worker).toEqual(['ORPHAN_SERVICE_VAR'])
-      expect(client.delete).toHaveBeenCalledTimes(3)
+      // deleteManyByKeys called once per scope: shared, api, worker
+      expect(client.deleteManyByKeys).toHaveBeenCalledTimes(3)
     })
   })
 

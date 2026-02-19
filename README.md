@@ -29,13 +29,12 @@ curl -fsSL https://raw.githubusercontent.com/forattini-dev/vaulter/main/install.
 ```bash
 vaulter init                                          # Initialize project
 vaulter key generate --name master                    # Generate encryption key
-vaulter var set DATABASE_URL="postgres://..." -e dev  # Set secret
-vaulter var set PORT::3000 -e dev                     # Set config (plain)
-vaulter change set NODE_ENV=local -e dev              # New high-level mutation path
-vaulter move API_KEY --from shared --to api -e dev    # Shorter move/copy path
+vaulter change set DATABASE_URL="postgres://..." -e dev  # Set secret
+vaulter change set PORT::3000 -e dev                     # Set config (plain)
+vaulter change set NODE_ENV=local -e dev                 # Set config (sensitive=false)
 vaulter change move API_KEY --from shared --to api -e dev # Move variable to service
 vaulter change move API_KEY --from shared -e dev -s svc-notifications   # Infer destination service
-vaulter plan merge -e dev                             # Alias for release plan
+vaulter plan -e dev                                      # Preview changes before applying
 eval $(vaulter export shell -e dev)                   # Export to shell
 ```
 
@@ -105,11 +104,11 @@ vaulter local set PORT::3001                   # Service-specific (inferred from
 # 3. Add new variable for team? Push to backend
 vaulter local set NEW_VAR=value --shared        # Personal scratch pad
 vaulter local push                             # Share scratch locally with team
-vaulter release plan -e dev                    # Preview effective release (recommended)
-vaulter release apply -e dev                   # Apply after approval
+vaulter plan -e dev                            # Preview changes (recommended)
+vaulter apply -e dev                           # Apply after approval
 
 # 4. Check: See what's different
-vaulter release diff -e dev                     # Local vs backend view for release
+vaulter diff -e dev                             # Local vs backend diff
 
 # 5. Promote: Clone to staging/production
 vaulter clone dev stg --dry-run                # Preview
@@ -149,7 +148,7 @@ vaulter clone dev stg                          # Execute
 ```bash
 git clone <repo>                    # Gets .vaulter/config.yaml
 export VAULTER_KEY_DEV=<from-team>  # Get key securely from team
-vaulter sync pull --dir -e dev      # Pull from backend → .vaulter/local/
+vaulter local sync                  # Pull from backend → .vaulter/local/
 vaulter local pull                 # Generate .env files (offline)
 ```
 
@@ -159,23 +158,22 @@ vaulter local pull                 # Generate .env files (offline)
 vaulter local set NEW_FEATURE::enabled  # Shared config
 
 # 2. Push to backend (share with team)
-vaulter sync push --dir -e dev
+vaulter plan -e dev && vaulter apply -e dev
 
 # 3. Notify team
-# "New var added, run: vaulter sync pull --dir && vaulter local pull"
+# "New var added, run: vaulter local sync && vaulter local pull"
 ```
 
 ### MCP Tools for Workflow
 
 | Task | Tool |
 |:-----|:-----|
-| Check health | `vaulter_doctor` |
-| Pull with overrides | `vaulter_local_pull` |
-| Set shared override | `vaulter_local_shared_set key="DEBUG" value="true"` |
-| Set service override | `vaulter_local_set key="PORT" value="3001"` |
-| See differences | `vaulter_local_diff` |
-| Clone environment | `vaulter_clone_env source="dev" target="stg"` |
-| Compare environments | `vaulter_compare source="dev" target="prd"` |
+| Check health | `vaulter_status action="scorecard"` |
+| Pull with overrides | `vaulter_local action="pull"` |
+| Set shared override | `vaulter_local action="shared-set" key="DEBUG" value="true"` |
+| Set service override | `vaulter_local action="set" key="PORT" value="3001"` |
+| See differences | `vaulter_diff` |
+| Compare environments | `vaulter_search source="dev" target="prd"` |
 
 ---
 
@@ -226,16 +224,16 @@ That's it! For most local development, vaulter is just a structured dotenv.
 
 ---
 
-## 🩺 Health Check - Doctor
+## 🩺 Health Check - Status
 
-**Always start with `vaulter doctor`** to diagnose your setup:
+**Always start with `vaulter status`** to diagnose your setup:
 
 ```bash
-vaulter doctor -e dev
-vaulter doctor -e dev --offline
+vaulter status -e dev
+vaulter status -e dev --offline
 ```
 
-Doctor performs **até 18 checks** online, or a local-first subset in `--offline`.
+Status performs **up to 18 checks** online, or a local-first subset in `--offline`.
 
 | Check | What It Does |
 |-------|--------------|
@@ -280,13 +278,13 @@ VAULTER_VERIFY_OFFLINE=0 VAULTER_VERIFY_REQUIRE_CONFIG=1 pnpm run verify:vaulter
 
 The script runs:
 
-- `vaulter doctor -e <env> -v [--offline]` (offline by default)
-- `vaulter sync diff -e <env> --values`
+- `vaulter status -e <env> -v [--offline]` (offline by default)
+- `vaulter diff -e <env> --values`
 - `vaulter list -e <env>`
 
 It writes an execution log under `artifacts/vaulter-health/` for auditability.
 
-**For AI Agents:** Call `vaulter_doctor` once at the start of a new session (or when operations fail / environments change) to understand the current state before performing sensitive operations.
+**For AI Agents:** Call `vaulter_status action="scorecard"` once at the start of a new session (or when operations fail / environments change) to understand the current state before performing sensitive operations.
 
 See [docs/DOCTOR.md](docs/DOCTOR.md) for complete guide.
 
@@ -305,65 +303,40 @@ See [docs/DOCTOR.md](docs/DOCTOR.md) for complete guide.
 
 | Command | Description |
 |:--------|:------------|
-| `status -e <env>` | Health check alias (same as `doctor`) |
-| `doctor -e <env>` | Full diagnostic report with checks and suggestions |
+| `status -e <env>` | Full diagnostic report with checks and suggestions |
 
-### Variables (`var`)
+### Mutations (`change`)
 
 | Command | Description |
 |:--------|:------------|
-| `change set KEY=val -e <env>` | Set variable (secret/config/typed) |
+| `change set KEY=val -e <env>` | Set secret (encrypted) |
+| `change set KEY::val -e <env>` | Set config (plain text) |
+| `change set KEY:=123 -e <env>` | Set typed secret (number/boolean) |
 | `change delete <key> -e <env>` | Delete variable |
 | `change move <key> --from <scope> --to <scope> -e <env>` | Move/copy variable between scopes |
-| `move <key> --from <scope> --to <scope> -e <env>` | Shortcut for `change move` |
-| `var get <key> -e <env>` | Get a variable |
-| `var set KEY=val -e <env>` | Set secret (encrypted) |
-| `var set KEY::val -e <env>` | Set config (plain text) |
-| `var set KEY:=123 -e <env>` | Set typed secret (number/boolean) |
-| `var move <key> --from <scope> --to <scope> -e <env>` | Move/copy variable between scopes with rollback safety |
-| `var delete <key> -e <env>` | Delete a variable |
-| `var list -e <env>` | List all variables |
+| `change import -f <file> -e <env>` | Import variables from file |
+| `list -e <env>` | List all variables |
 
 **Set syntax**: `=` encrypted secret · `::` plain config · `:=` typed secret
 
-💡 In monorepo mode, when `--service` is resolved, one of `--from` or `--to` can be omitted and inferred from the active service.
+In monorepo mode, when `--service` is resolved, one of `--from` or `--to` can be omitted and inferred from the active service.
 
-### Sync
-
-| Command | Description |
-|:--------|:------------|
-| `sync merge -e <env>` | Bidirectional merge (default) |
-| `sync merge` | Two-way local↔remote merge |
-| `sync pull -e <env>` | Download from backend to outputs |
-| `sync pull --dir -e <env>` | Download to `.vaulter/{env}/` directory |
-| `sync push -e <env>` | Upload .env file to backend |
-| `sync push --dir -e <env>` | Upload `.vaulter/{env}/` directory to backend |
-| `sync push --prune -e <env>` | Upload, delete remote-only vars |
-| `sync plan <merge\|push\|pull> [--plan-output <file>] -e <env>` | Preview or apply planned sync (`--apply`) and write plan artifact (`.json` + `.md`). If `--plan-output` is omitted, defaults to `artifacts/vaulter-plans/<project>-<env>-<operation>-<timestamp>.*` |
-| `sync diff -e <env>` | Show differences without changes |
-
-### Release (AI-friendly workflow)
+### Plan & Apply
 
 | Command | Description |
 |:--------|:------------|
-| `plan [merge\|push\|pull] -e <env>` | Alias for `release plan` |
-| `apply [merge\|push\|pull] -e <env>` | Alias for `release apply` |
-| `release plan [merge\|push\|pull] -e <env>` | Preview changes before applying |
-| `release apply [merge\|push\|pull] -e <env>` | Execute a plan (recommended after review) |
-| `release merge -e <env>` | Shortcut for `release apply merge` |
-| `release push -e <env>` | Shortcut for `release apply push` |
-| `release pull -e <env>` | Shortcut for `release apply pull` |
-| `release plan [--plan-output <file>] [--apply] -e <env>` | Preview or apply with release workflow. If `--plan-output` is omitted, defaults to `artifacts/vaulter-plans/<project>-<env>-<operation>-<timestamp>.*` |
-| `release diff -e <env>` | Quick diff/compatibility check |
-| `release status -e <env>` | Health check before deployment actions |
+| `plan -e <env>` | Compute diff local vs backend, generate plan artifact |
+| `apply -e <env>` | Execute plan, push changes to backend |
+| `diff -e <env>` | Quick diff without plan artifacts |
+| `plan --dir -e <env>` | Plan from `.vaulter/{env}/` directory |
+| `plan [--plan-output <file>] -e <env>` | Write plan artifact (`.json` + `.md`). If `--plan-output` is omitted, defaults to `artifacts/vaulter-plans/<project>-<env>-<timestamp>.*` |
 
 ### Recommended daily path
 
 - `vaulter local pull` → `vaulter local set` → `vaulter local push` (when ready)
-- `vaulter change set` → `vaulter change move` → `vaulter release plan -e <env>` → `vaulter release apply -e <env>`
-- `vaulter release plan -e <env>` → validate → `vaulter release apply -e <env>`
+- `vaulter change set` → `vaulter change move` → `vaulter plan -e <env>` → `vaulter apply -e <env>`
+- `vaulter plan -e <env>` → validate → `vaulter apply -e <env>`
 - `vaulter status -e <env>` for quick pre-flight health check
-- `vaulter release status -e <env>` before deploying or running high-impact changes
 
 ### Export
 
@@ -548,10 +521,10 @@ encryption:
 **Example flow:**
 ```bash
 # Set shared var (uses dev key because shared_key_environment: dev)
-vaulter var set LOG_LEVEL=debug -e dev --shared
+vaulter change set LOG_LEVEL=debug -e dev --scope shared
 
 # Read shared var from prd (still uses dev key for shared vars)
-vaulter var list -e prd --shared  # Works! Uses dev key for shared
+vaulter list -e prd --shared  # Works! Uses dev key for shared
 ```
 
 ---
@@ -644,7 +617,7 @@ Vaulter separates **local development** from **deployment** configurations:
 | `local/configs.env` | Developer's machine | Ignored | Non-sensitive local vars |
 | `local/secrets.env` | Developer's machine | Ignored | Sensitive local secrets |
 | `deploy/configs/*.env` | CI/CD configs | Committed | Non-sensitive (PORT, HOST, LOG_LEVEL) |
-| `deploy/secrets/*.env` | CI/CD secrets | Ignored | Pulled via `vaulter sync pull` |
+| `deploy/secrets/*.env` | CI/CD secrets | Ignored | Pulled via `vaulter local sync` |
 
 **Gitignore:**
 
@@ -817,7 +790,8 @@ You can also use the CLI directly:
     AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
     AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
   run: |
-    npx vaulter sync pull -e prd
+    npx vaulter local sync -e prd
+    npx vaulter local pull -e prd
     npx vaulter run -e prd -- pnpm build
 ```
 
@@ -860,8 +834,8 @@ Auto-detects NX, Turborepo, Lerna, pnpm, Yarn workspaces, Rush.
 
 ```bash
 vaulter service list                       # List discovered services
-vaulter sync push -e dev -s api            # Push specific service
-vaulter sync push -e dev --shared          # Push shared variables
+vaulter plan -e dev -s api                 # Plan changes for specific service
+vaulter apply -e dev -s api               # Apply planned changes
 vaulter export shell -e dev -s api         # Export with shared inheritance
 vaulter export shell -e dev --shared       # Export only shared variables
 ```
@@ -927,7 +901,7 @@ shared:
 
 ```bash
 # Pull to all outputs at once
-vaulter sync pull --all
+vaulter local pull --all
 
 # Result:
 # ✓ web: apps/web/.env.local (5 vars)
@@ -939,10 +913,10 @@ vaulter sync pull --all
 
 ```bash
 # Pull only web
-vaulter sync pull --output web
+vaulter local pull --output web
 
 # Preview without writing
-vaulter sync pull --all --dry-run
+vaulter local pull --all --dry-run
 ```
 
 ### How It Works
@@ -953,7 +927,7 @@ vaulter sync pull --all --dry-run
 │  DATABASE_URL, JWT_SECRET, NEXT_PUBLIC_API, LOG_LEVEL   │
 └────────────────────────┬────────────────────────────────┘
                          │
-              vaulter sync pull --all
+              vaulter local pull --all
                          │
          ┌───────────────┼───────────────┐
          ▼               ▼               ▼
@@ -1340,7 +1314,7 @@ const result = await loadRuntime({
 
 ## MCP Server
 
-Claude AI integration via Model Context Protocol. **59 tools, 7 resources, 12 prompts.**
+Claude AI integration via Model Context Protocol. **16 Tools | 4 Resources | 5 Prompts.**
 
 ```bash
 vaulter mcp
@@ -1359,59 +1333,51 @@ vaulter mcp
 }
 ```
 
-### Tools (59)
+### Tools (16)
 
-| Category | Tools |
-|:---------|:------|
-| **Core (6)** | `vaulter_get`, `vaulter_set`, `vaulter_change`, `vaulter_delete`, `vaulter_list`, `vaulter_export` |
-| **Batch (3)** | `vaulter_multi_get`, `vaulter_multi_set`, `vaulter_multi_delete` |
-| **Sync (4)** | `vaulter_pull`, `vaulter_push`, `vaulter_sync_plan`, `vaulter_release` |
-| **Analysis (2)** | `vaulter_compare`, `vaulter_search` |
-| **Status (2)** | `vaulter_status`, `vaulter_audit_list` |
-| **K8s (2)** | `vaulter_k8s_secret`, `vaulter_k8s_configmap` |
-| **IaC (2)** | `vaulter_helm_values`, `vaulter_tf_vars` |
-| **Keys (6)** | `vaulter_key_generate`, `vaulter_key_list`, `vaulter_key_show`, `vaulter_key_export`, `vaulter_key_import`, `vaulter_key_rotate` |
-| **Monorepo (5)** | `vaulter_init`, `vaulter_scan`, `vaulter_services`, `vaulter_shared_list`, `vaulter_inheritance_info` |
-| **Categorization (1)** | `vaulter_categorize_vars` |
-| **Dangerous (1)** | `vaulter_nuke_preview` |
-| **Utility (5)** | `vaulter_copy`, `vaulter_move`, `vaulter_rename`, `vaulter_promote_shared`, `vaulter_demote_shared` |
-| **Local Overrides (11)** | `vaulter_local_pull`, `vaulter_local_push`, `vaulter_local_set`, `vaulter_local_delete`, `vaulter_local_shared_set`, `vaulter_local_shared_delete`, `vaulter_local_shared_list`, `vaulter_local_push_all`, `vaulter_local_sync`, `vaulter_local_diff`, `vaulter_local_status` |
-| **Snapshot (3)** | `vaulter_snapshot_create`, `vaulter_snapshot_list`, `vaulter_snapshot_restore` |
-| **Versioning (3)** | `vaulter_list_versions`, `vaulter_get_version`, `vaulter_rollback` |
-| **Diagnostic (3)** | `vaulter_doctor`, `vaulter_clone_env`, `vaulter_diff` |
+> **Tool Architecture:** Each tool is action-based (one tool per domain with `action` parameter).
 
-### Resources (7)
+| Category | Tool | Actions / Description |
+|:---------|:-----|:---------------------|
+| **Mutation Flow** | `vaulter_change` | set, delete, move, import (writes local state only) |
+| | `vaulter_plan` | Compute diff local vs backend, generate plan artifact |
+| | `vaulter_apply` | Execute plan, push changes to backend |
+| **Read** | `vaulter_get` | Get single var or multi-get via `keys[]` |
+| | `vaulter_list` | List vars with optional filter |
+| | `vaulter_search` | Search by pattern or compare environments |
+| | `vaulter_diff` | Quick diff without plan artifacts |
+| **Status** | `vaulter_status` | scorecard, vars, audit, drift, inventory |
+| **Export** | `vaulter_export` | k8s-secret, k8s-configmap, helm, terraform, env, shell, json |
+| **Keys** | `vaulter_key` | generate, list, show, export, import, rotate |
+| **Local Dev** | `vaulter_local` | pull, push, push-all, sync, set, delete, diff, status, shared-set, shared-delete, shared-list |
+| **Backup** | `vaulter_snapshot` | create, list, restore, delete |
+| | `vaulter_versions` | list, get, rollback |
+| **Setup** | `vaulter_init` | Initialize project |
+| | `vaulter_services` | Discover monorepo services |
+| **Danger** | `vaulter_nuke` | Preview backend deletion (CLI-only execution) |
+
+### Resources (4)
 
 Static data views (no input required). For actions with parameters, use tools.
 
 | URI | Description |
 |:----|:------------|
-| `vaulter://instructions` | **Read first!** How vaulter stores data (s3db.js architecture) |
+| `vaulter://instructions` | **Read first!** s3db.js architecture + tool overview |
 | `vaulter://tools-guide` | Which tool to use for each scenario |
-| `vaulter://workflow` | Development workflow (local-first, commits/config/local) |
-| `vaulter://monorepo-example` | Complete monorepo isolation example with var counts |
-| `vaulter://mcp-config` | MCP settings sources (priority chain) |
 | `vaulter://config` | Project configuration (YAML) |
 | `vaulter://services` | Monorepo services list |
 
-### Prompts (12)
+### Prompts (5)
 
 Pre-configured workflows for common tasks.
 
 | Prompt | Description |
 |:-------|:------------|
 | `setup_project` | Initialize new vaulter project |
-| `migrate_dotenv` | Migrate existing .env files |
 | `deploy_secrets` | Deploy to Kubernetes |
 | `compare_environments` | Compare dev vs prd |
-| `security_audit` | Audit secrets for issues |
 | `rotation_workflow` | Check/rotate/report on rotation |
-| `shared_vars_workflow` | Manage monorepo shared vars |
-| `batch_operations` | Multi-set/get/delete operations |
-| `copy_environment` | Copy variables between environments |
-| `sync_workflow` | Sync local files with remote backend |
-| `monorepo_deploy` | Complete monorepo setup with isolation |
-| `local_overrides_workflow` | Manage local dev overrides (shared + service) |
+| `local_dev_workflow` | Manage local dev overrides (shared + service) |
 
 > **Full MCP documentation:** See [docs/MCP.md](docs/MCP.md) for complete tool reference with parameters.
 

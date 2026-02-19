@@ -194,7 +194,7 @@ mcp:
 **Symptom:** Operations still hang forever despite config.
 
 **Check:**
-1. Config is loaded correctly: `vaulter doctor`
+1. Config is loaded correctly: `vaulter status`
 2. Using latest version: `npm list vaulter`
 3. Client is created after config load (for programmatic usage)
 
@@ -230,17 +230,10 @@ Timeout handles are properly cleaned up after operation completes or times out t
 
 MCP server creates one client per environment to handle per-environment encryption keys. Timeout is applied to each client instance.
 
-## Migration
+## Default Behavior
 
-No code changes needed! Existing code automatically gets timeout protection:
+All client operations have built-in timeout protection (30s default):
 
-**Before:**
-```typescript
-const client = new VaulterClient({ connectionString: 's3://...' })
-await client.set({ key: 'FOO', value: 'bar', ... })  // Could hang forever
-```
-
-**After (automatic):**
 ```typescript
 const client = new VaulterClient({ connectionString: 's3://...' })
 await client.set({ key: 'FOO', value: 'bar', ... })  // Has 30s timeout
@@ -338,7 +331,7 @@ const result = await withRetry(
 **Check:**
 1. Backend is accessible: `ping backend-host`
 2. Credentials are valid: check AWS_ACCESS_KEY_ID
-3. Encryption key is correct: `vaulter doctor -e dev`
+3. Encryption key is correct: `vaulter status -e dev`
 4. Network allows S3 traffic: check firewall rules
 
 **Enable verbose mode to see retry attempts:**

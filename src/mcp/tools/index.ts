@@ -1,20 +1,21 @@
 /**
- * Vaulter MCP Tools - Main Entry Point
+ * Vaulter MCP Tool Dispatcher
  *
- * Re-exports tool definitions and provides the main handleToolCall dispatcher
+ * 16 action-based tools delegating to domain layer.
  */
 
 import type { Environment } from '../../types.js'
 import type { VaulterClient } from '../../client.js'
-import { SHARED_SERVICE } from '../../lib/shared.js'
 import { inferServiceFromPath } from '../../lib/monorepo.js'
+import { findConfigDir } from '../../lib/config-loader.js'
 import { withRetry } from '../../lib/timeout.js'
+import { buildMcpErrorHints } from '../../lib/error-hints.js'
 import {
   getConfigAndDefaults,
   getClientForEnvironment,
   getClientForSharedVars,
-  clearClientCache,
   getMcpOptions,
+  errorResponse,
   type ToolResponse
 } from './config.js'
 
@@ -42,529 +43,198 @@ export {
 } from './config.js'
 
 // Import handlers
-import { handleInitCall } from './handlers/init.js'
-import {
-  handleGetCall,
-  handleSetCall,
-  handleDeleteCall,
-  handleListCall,
-  handleExportCall,
-  handleNukePreviewCall
-} from './handlers/core.js'
-import {
-  handleMultiGetCall,
-  handleMultiSetCall,
-  handleMultiDeleteCall
-} from './handlers/batch.js'
-import {
-  handlePullCall,
-  handlePushCall,
-  handleSyncPlanCall
-} from './handlers/sync.js'
-import {
-  handleCompareCall,
-  handleSearchCall,
-  handleScanCall,
-  handleServicesCall
-} from './handlers/analysis.js'
-import {
-  handleK8sSecretCall,
-  handleK8sConfigMapCall
-} from './handlers/k8s.js'
-import {
-  handleHelmValuesCall,
-  handleTfVarsCall
-} from './handlers/iac.js'
-import {
-  handleKeyGenerateCall,
-  handleKeyListCall,
-  handleKeyShowCall,
-  handleKeyExportCall,
-  handleKeyImportCall,
-  handleKeyRotateCall
-} from './handlers/keys.js'
-import {
-  handleCategorizeVarsCall,
-  handleSharedListCall,
-  handleInheritanceInfoCall,
-  handleAuditListCall,
-  handleStatusCall
-} from './handlers/monorepo.js'
-import {
-  handleChangeCall,
-  handleCopyCall,
-  handleMoveCall,
-  handleRenameCall,
-  handlePromoteSharedCall,
-  handleDemoteSharedCall
-} from './handlers/utility.js'
-import {
-  handleDoctorCall,
-  handleCloneEnvCall,
-  handleDiffCall
-} from './handlers/doctor.js'
-import {
-  handleLocalPullCall,
-  handleLocalPushCall,
-  handleLocalPushAllCall,
-  handleLocalSyncCall,
-  handleLocalSetCall,
-  handleLocalDeleteCall,
-  handleLocalDiffCall,
-  handleLocalStatusCall,
-  handleLocalSharedSetCall,
-  handleLocalSharedDeleteCall,
-  handleLocalSharedListCall,
-  handleSnapshotCreateCall,
-  handleSnapshotListCall,
-  handleSnapshotRestoreCall
-} from './handlers/local.js'
-import {
-  handleListVersions,
-  handleGetVersion,
-  handleRollback
-} from './handlers/versioning.js'
+import { handleChange } from './handlers/change.js'
+import { handlePlan } from './handlers/plan.js'
+import { handleApply } from './handlers/apply.js'
+import { handleGet, handleList } from './handlers/read.js'
+import { handleStatus } from './handlers/status.js'
+import { handleSearch } from './handlers/search.js'
+import { handleDiff } from './handlers/diff.js'
+import { handleExport } from './handlers/export.js'
+import { handleKey } from './handlers/key.js'
+import { handleSnapshot } from './handlers/snapshot.js'
+import { handleVersions } from './handlers/versions.js'
+import { handleLocal } from './handlers/local.js'
+import { handleInit } from './handlers/init.js'
+import { handleServices } from './handlers/services.js'
+import { handleNuke } from './handlers/nuke.js'
+
+/**
+ * Shared handler context
+ */
+export interface HandlerContext {
+  config: import('../../types.js').VaulterConfig | null
+  project: string
+  environment: string
+  service: string | undefined
+  configDir: string | null
+  connectionStrings: string[]
+}
+
+function resolveContext(args: Record<string, unknown>): HandlerContext {
+  const { config, defaults, connectionStrings } = getConfigAndDefaults()
+  const project = (args.project as string) || defaults.project
+  const environment = (args.environment as string) || defaults.environment
+  const explicitService = args.service as string | undefined
+  const service = explicitService || (config && inferServiceFromPath(process.cwd(), config)) || undefined
+  const configDir = findConfigDir() || null
+
+  return { config, project, environment, service, configDir, connectionStrings }
+}
+
+async function resolveClient(
+  ctx: HandlerContext,
+  args: Record<string, unknown>
+): Promise<VaulterClient> {
+  const isSharedOperation = args.shared === true
+  const timeoutMs = args.timeout_ms as number | undefined
+
+  let client: VaulterClient
+  if (isSharedOperation) {
+    const { client: sharedClient } = await getClientForSharedVars({
+      config: ctx.config,
+      connectionStrings: ctx.connectionStrings,
+      project: ctx.project,
+      timeoutMs
+    })
+    client = sharedClient
+  } else {
+    client = await getClientForEnvironment(ctx.environment as Environment, {
+      config: ctx.config,
+      connectionStrings: ctx.connectionStrings,
+      project: ctx.project,
+      timeoutMs
+    })
+  }
+
+  if (!client.isConnected()) {
+    const options = getMcpOptions()
+    await withRetry(
+      () => client.connect(),
+      {
+        maxAttempts: 3,
+        delayMs: 1000,
+        onRetry: (attempt, error) => {
+          if (options.verbose) {
+            console.error(`[vaulter] Connection attempt ${attempt} failed, retrying...`, error.message)
+          }
+        }
+      }
+    )
+  }
+
+  return client
+}
 
 /**
  * Main tool call dispatcher
- *
- * Routes tool calls to appropriate handlers.
- * Uses per-environment clients for proper encryption key handling.
  */
 export async function handleToolCall(
   name: string,
   args: Record<string, unknown>
 ): Promise<ToolResponse> {
-  // Step 1: Get config and defaults (without creating client yet)
-  const { config, defaults, connectionStrings } = getConfigAndDefaults()
+  const ctx = resolveContext(args)
 
-  // Step 2: Resolve project, environment, service from args/defaults
-  const project = (args.project as string) || defaults.project
-  const environment = (args.environment as Environment) || defaults.environment
-  const explicitService = args.service as string | undefined
-  const service = explicitService || (config && inferServiceFromPath(process.cwd(), config)) || undefined
-  const argsWithInferredService = explicitService
-    ? args
-    : service ? { ...args, service } : args
-  const timeoutMs = args.timeout_ms as number | undefined
+  // ─── No-backend tools ──────────────────────────────────────────────
+  switch (name) {
+    case 'vaulter_change':
+      return handleChange(ctx, args)
 
-  // Determine if this is a shared var operation
-  const isSharedOperation = args.shared === true || service === SHARED_SERVICE
+    case 'vaulter_init':
+      return handleInit(args)
 
-  // Tools that don't need backend connection
-  if (name === 'vaulter_scan') {
-    return handleScanCall(args)
+    case 'vaulter_services':
+      return handleServices(args)
+
+    case 'vaulter_key':
+      return handleKey(ctx, args)
   }
 
-  if (name === 'vaulter_services') {
-    return handleServicesCall(args)
-  }
-
-  if (name === 'vaulter_init') {
-    return handleInitCall(args)
-  }
-
-  // Local tools that don't need backend
-  if (name === 'vaulter_local_set' && config) {
-    return handleLocalSetCall(config, argsWithInferredService)
-  }
-  if (name === 'vaulter_local_delete' && config) {
-    return handleLocalDeleteCall(config, argsWithInferredService)
-  }
-  if (name === 'vaulter_local_status' && config) {
-    return handleLocalStatusCall(config, argsWithInferredService)
-  }
-  // Local shared tools (don't need backend)
-  if (name === 'vaulter_local_shared_set' && config) {
-    return handleLocalSharedSetCall(config, args)
-  }
-  if (name === 'vaulter_local_shared_delete' && config) {
-    return handleLocalSharedDeleteCall(config, args)
-  }
-  if (name === 'vaulter_local_shared_list' && config) {
-    return handleLocalSharedListCall(config, args)
-  }
-  if (name === 'vaulter_snapshot_list' && config && config.snapshots?.driver !== 's3db') {
-    return handleSnapshotListCall(config, args)
-  }
-
-  // Key management tools - don't need backend, but need project for scoping
-  if (name === 'vaulter_key_generate') {
-    return handleKeyGenerateCall(args, config)
-  }
-
-  if (name === 'vaulter_key_list') {
-    return handleKeyListCall(args, config)
-  }
-
-  if (name === 'vaulter_key_show') {
-    return handleKeyShowCall(args, config)
-  }
-
-  if (name === 'vaulter_key_export') {
-    return handleKeyExportCall(args, config)
-  }
-
-  if (name === 'vaulter_key_import') {
-    return handleKeyImportCall(args, config)
-  }
-
-  if (name === 'vaulter_key_rotate') {
-    // Key rotate needs a client factory that creates per-environment clients
-    // Also clears cache to pick up new keys after rotation
-    const createClientForRotation = async (env?: string) => {
-      clearClientCache()
-      const targetEnv = env || environment
-      const newClient = await getClientForEnvironment(targetEnv, { config, connectionStrings, project })
-      return newClient
+  // Local actions that don't need backend
+  if (name === 'vaulter_local') {
+    const action = args.action as string
+    const offlineActions = ['pull', 'set', 'delete', 'status', 'shared-set', 'shared-delete', 'shared-list']
+    if (offlineActions.includes(action)) {
+      return handleLocal(ctx, null, args)
     }
-    return handleKeyRotateCall(args, config, createClientForRotation)
   }
 
-  // Doctor tool - handles its own connection testing
-  if (name === 'vaulter_doctor') {
-    return handleDoctorCall(
-      config,
-      project,
-      environment,
-      service,
-      args,
-      async () => {
-        try {
-          const testClient = await getClientForEnvironment(environment, { config, connectionStrings, project })
-          await testClient.connect()
-          try {
-            const vars = await testClient.list({ project, environment, service })
-            return { connected: true, varsCount: vars.length }
-          } finally {
-            await testClient.disconnect()
-          }
-        } catch (error) {
-          return { connected: false, error: (error as Error).message }
-        }
-      }
+  // ─── Client-required tools ─────────────────────────────────────────
+  if (!ctx.project && !['vaulter_init', 'vaulter_services'].includes(name)) {
+    return errorResponse(
+      'Project not specified. Either set project in args or run from a directory with .vaulter/config.yaml',
+      [
+        'Set project: { "project": "<name>" }',
+        'Run from a directory containing .vaulter/config.yaml',
+        'Run vaulter init in the current project'
+      ]
     )
   }
 
-  // Clone env tool - handles multiple clients
-  if (name === 'vaulter_clone_env') {
-    if (!project) {
-      return {
-        content: [{
-          type: 'text',
-          text: 'Error: Project not specified. Either set project in args or run from a directory with .vaulter/config.yaml'
-        }]
-      }
-    }
-    return handleCloneEnvCall(
-      async (env: Environment) => {
-        const envClient = await getClientForEnvironment(env, { config, connectionStrings, project })
-        await envClient.connect()
-        return {
-          client: envClient,
-          disconnect: () => envClient.disconnect()
-        }
-      },
-      project,
-      service,
-      args
-    )
-  }
-
-  if (!project && !['vaulter_services', 'vaulter_init'].includes(name)) {
-    return {
-      content: [{
-        type: 'text',
-        text: 'Error: Project not specified. Either set project in args or run from a directory with .vaulter/config.yaml'
-      }]
-    }
-  }
-
-  // Step 3: Get client with correct encryption key for this environment
-  // For shared vars, use the shared key environment
-  let client: VaulterClient | undefined
+  let client: VaulterClient
   try {
-    const createConnectionCheck = async () => {
-      try {
-        const testClient = await getClientForEnvironment(environment, { config, connectionStrings, project })
-        await testClient.connect()
-        try {
-          const vars = await testClient.list({ project, environment, service })
-          return { connected: true, varsCount: vars.length }
-        } finally {
-          await testClient.disconnect()
-        }
-      } catch (error) {
-        return { connected: false, error: (error as Error).message }
-      }
-    }
+    client = await resolveClient(ctx, args)
+  } catch (err) {
+    const hints = buildMcpErrorHints(err, {
+      tool: name,
+      environment: ctx.environment,
+      timeoutMs: args.timeout_ms as number | undefined
+    })
+    const message = err instanceof Error ? err.message : String(err)
+    return errorResponse(`Backend connection failed: ${message}`, hints)
+  }
 
-    if (isSharedOperation) {
-      const { client: sharedClient } = await getClientForSharedVars({ config, connectionStrings, project, timeoutMs })
-      client = sharedClient
-    } else {
-      client = await getClientForEnvironment(environment, { config, connectionStrings, project, timeoutMs })
-    }
-
-    // Only connect if not already connected (reuse existing connection)
-    if (!client.isConnected()) {
-      // Retry connection with exponential backoff (3 attempts: 1s, 2s, 4s)
-      const options = getMcpOptions()
-      await withRetry(
-        () => client!.connect(),
-        {
-          maxAttempts: 3,
-          delayMs: 1000,
-          onRetry: (attempt, error) => {
-            if (options.verbose) {
-              console.error(`[vaulter] Connection attempt ${attempt} failed, retrying...`, error.message)
-            }
-          }
-        }
-      )
-    }
-
+  try {
     switch (name) {
+      case 'vaulter_plan':
+        return handlePlan(ctx, client, args)
+
+      case 'vaulter_apply':
+        return handleApply(ctx, client, args)
+
       case 'vaulter_get':
-        return await handleGetCall(client, project, environment, service, args)
-
-      case 'vaulter_set':
-        return await handleSetCall(client, project, environment, service, config, args)
-
-      case 'vaulter_change':
-        return await handleChangeCall(client, project, environment, service, config, args)
-
-      case 'vaulter_delete':
-        return await handleDeleteCall(client, project, environment, service, args)
+        return handleGet(ctx, client, args)
 
       case 'vaulter_list':
-        return await handleListCall(client, project, environment, service, args)
+        return handleList(ctx, client, args)
 
-      case 'vaulter_export':
-        return await handleExportCall(client, project, environment, service, args)
-
-      // === BATCH OPERATIONS ===
-      case 'vaulter_multi_get':
-        return await handleMultiGetCall(client, project, environment, service, args)
-
-      case 'vaulter_multi_set':
-        return await handleMultiSetCall(client, project, environment, service, config, args)
-
-      case 'vaulter_multi_delete':
-        return await handleMultiDeleteCall(client, project, environment, service, args)
-
-      // === SYNC TOOLS ===
-      case 'vaulter_pull':
-        return await handlePullCall(client, config, project, environment, service, args)
-
-      case 'vaulter_push':
-        return await handlePushCall(client, config, project, environment, service, args)
-
-      case 'vaulter_sync_plan':
-        return await handleSyncPlanCall(client, config, project, environment, service, args)
-
-      case 'vaulter_release':
-        {
-          const operation = ((args.operation as string) || 'plan').toLowerCase()
-          const requestedAction = typeof args.action === 'string' ? args.action.toLowerCase() : undefined
-          const normalizeAction = (value: string | undefined, fallbackToMerge: boolean): 'merge' | 'push' | 'pull' | undefined => {
-            if (value === 'push' || value === 'pull' || value === 'merge') return value
-            if (fallbackToMerge) return 'merge'
-            return undefined
-          }
-          const actionError = (value: string): string => `Invalid action \"${value}\". Valid actions: merge, push, pull`
-
-          const validatedAction = (value: string | undefined): 'merge' | 'push' | 'pull' | undefined => {
-            const action = normalizeAction(value, false)
-            if (value && !action) {
-              return undefined
-            }
-            return action ?? 'merge'
-          }
-
-          switch (operation) {
-            case 'status':
-              return handleDoctorCall(
-                config,
-                project,
-                environment,
-                service,
-                args,
-                createConnectionCheck
-              )
-            case 'diff':
-              return handleDiffCall(client, config, project, environment, service, args)
-
-            case 'apply':
-              if (requestedAction && !normalizeAction(requestedAction, false)) {
-                return {
-                  content: [{ type: 'text', text: actionError(requestedAction) }]
-                }
-              }
-              return handleSyncPlanCall(
-                client,
-                config,
-                project,
-                environment,
-                service,
-                {
-                  ...args,
-                  action: validatedAction(requestedAction),
-                  apply: args.dryRun === true ? false : true
-                }
-              )
-            case 'plan':
-              if (requestedAction && !normalizeAction(requestedAction, false)) {
-                return {
-                  content: [{ type: 'text', text: actionError(requestedAction) }]
-                }
-              }
-              return handleSyncPlanCall(
-                client,
-                config,
-                project,
-                environment,
-                service,
-                {
-                  ...args,
-                  action: validatedAction(requestedAction),
-                  apply: false,
-                  dryRun: true
-                }
-              )
-            case 'push':
-            case 'pull':
-            case 'merge':
-              return handleSyncPlanCall(
-                client,
-                config,
-                project,
-                environment,
-                service,
-                {
-                  ...args,
-                  action: operation,
-                  apply: true
-                }
-              )
-            default:
-              return {
-                content: [{
-                  type: 'text',
-                  text: 'Error: operation must be one of: plan, apply, push, pull, merge, diff, status'
-                }]
-              }
-          }
-        }
-
-      // === ANALYSIS TOOLS ===
-      case 'vaulter_compare':
-        return await handleCompareCall(client, project, service, args)
+      case 'vaulter_status':
+        return handleStatus(ctx, client, args)
 
       case 'vaulter_search':
-        return await handleSearchCall(client, project, service, args, config)
-
-      // === KUBERNETES TOOLS ===
-      case 'vaulter_k8s_secret':
-        return await handleK8sSecretCall(client, config, project, environment, service, args)
-
-      case 'vaulter_k8s_configmap':
-        return await handleK8sConfigMapCall(client, config, project, environment, service, args)
-
-      // === IAC TOOLS ===
-      case 'vaulter_helm_values':
-        return await handleHelmValuesCall(client, config, project, environment, service, args)
-
-      case 'vaulter_tf_vars':
-        return await handleTfVarsCall(client, config, project, environment, service, args)
-
-      // === AUDIT TOOLS ===
-      case 'vaulter_audit_list':
-        return await handleAuditListCall(config, project, environment, service, args)
-
-      // === CATEGORIZATION TOOLS ===
-      case 'vaulter_categorize_vars':
-        return await handleCategorizeVarsCall(client, config, project, environment, service)
-
-      // === SHARED VARIABLES TOOLS ===
-      case 'vaulter_shared_list':
-        return await handleSharedListCall(client, project, environment, args)
-
-      case 'vaulter_inheritance_info':
-        return await handleInheritanceInfoCall(client, project, environment, args)
-
-      // === STATUS TOOL (consolidated) ===
-      case 'vaulter_status':
-        return await handleStatusCall(client, config, project, environment, service, args)
-
-      // === DANGEROUS OPERATIONS (preview only) ===
-      case 'vaulter_nuke_preview':
-        return await handleNukePreviewCall(client)
-
-      // === UTILITY TOOLS (for full autonomy) ===
-      case 'vaulter_copy':
-        return await handleCopyCall(client, project, environment, service, args)
-
-      case 'vaulter_move':
-        return await handleMoveCall(client, project, environment, service, config, args)
-
-      case 'vaulter_rename':
-        return await handleRenameCall(client, project, environment, service, args)
-
-      case 'vaulter_promote_shared':
-        return await handlePromoteSharedCall(client, project, environment, service, config, args)
-
-      case 'vaulter_demote_shared':
-        return await handleDemoteSharedCall(client, project, environment, service, config, args)
+        return handleSearch(ctx, client, args)
 
       case 'vaulter_diff':
-        return await handleDiffCall(client, config, project, environment, service, args)
+        return handleDiff(ctx, client, args)
 
-      // === LOCAL OVERRIDES TOOLS (need client for base env) ===
-      case 'vaulter_local_pull':
-        return await handleLocalPullCall(client, config!, project, environment, service, args)
+      case 'vaulter_export':
+        return handleExport(ctx, client, args)
 
-      case 'vaulter_local_push':
-        return await handleLocalPushCall(client, config!, project, environment, service, args)
+      case 'vaulter_snapshot':
+        return handleSnapshot(ctx, client, args)
 
-      case 'vaulter_local_diff':
-        return await handleLocalDiffCall(client, config!, project, environment, service, args)
+      case 'vaulter_versions':
+        return handleVersions(ctx, client, args)
 
-      case 'vaulter_local_push_all':
-        return await handleLocalPushAllCall(client, config!, project, environment, service, args)
+      case 'vaulter_local':
+        return handleLocal(ctx, client, args)
 
-      case 'vaulter_local_sync':
-        return await handleLocalSyncCall(client, config!, project, environment, service, args)
-
-      // === SNAPSHOT TOOLS (need client) ===
-      case 'vaulter_snapshot_create':
-        return await handleSnapshotCreateCall(client, config!, project, environment, service, args)
-
-      case 'vaulter_snapshot_list':
-        return await handleSnapshotListCall(config!, args, client)
-
-      case 'vaulter_snapshot_restore':
-        return await handleSnapshotRestoreCall(client, config!, project, environment, service, args)
-
-      // === VERSIONING TOOLS ===
-      case 'vaulter_list_versions':
-        return await handleListVersions(args, { client, project, config: config! })
-
-      case 'vaulter_get_version':
-        return await handleGetVersion(args, { client, project, config: config! })
-
-      case 'vaulter_rollback':
-        return await handleRollback(args, { client, project, config: config! })
+      case 'vaulter_nuke':
+        return handleNuke(client)
 
       default:
-        return { content: [{ type: 'text', text: `Unknown tool: ${name}` }] }
+        return errorResponse(`Unknown tool: ${name}`, [
+          'Check tool name against registerTools output',
+          'Use tools list for canonical command names'
+        ])
     }
-  } catch (error) {
-    // Re-throw to let caller handle it
-    throw error
+  } catch (err) {
+    const hints = buildMcpErrorHints(err, {
+      tool: name,
+      environment: ctx.environment,
+      timeoutMs: args.timeout_ms as number | undefined
+    })
+    const message = err instanceof Error ? err.message : String(err)
+    return errorResponse(message, hints)
   }
-  // NOTE: We intentionally do NOT disconnect the client here.
-  // Clients are cached and reused across MCP calls for better performance.
-  // Disconnecting would force a new connection on every call, adding latency.
-  // The connection will be kept alive for the lifetime of the MCP server.
 }

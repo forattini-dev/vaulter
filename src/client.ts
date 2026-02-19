@@ -656,9 +656,9 @@ export class VaulterClient {
    * - Retry with exponential backoff
    * - Rate limiting and throttling protection
    *
-   * Performance comparison (per variable):
-   * - Old approach: getOrNull (GET) + update (HEAD + GET + PUT) = 4 S3 ops
-   * - New approach: replace (PUT only) = 1 S3 op
+   * Performance (per variable):
+   * - Default: replace (PUT only) = 1 S3 op
+   * - With preserveMetadata: getOrNull + update = 4 S3 ops
    *
    * @param inputs - Array of environment variables to set
    * @param options - Optional settings

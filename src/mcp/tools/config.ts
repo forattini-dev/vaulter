@@ -797,18 +797,38 @@ export function base64Encode(value: string): string {
 /**
  * Standard MCP tool response type
  */
-export type ToolResponse = { content: Array<{ type: 'text'; text: string }> }
+export type ToolResponse = {
+  content: Array<{ type: 'text'; text: string }>
+  isError?: boolean
+  meta?: {
+    ok?: boolean
+    code?: string
+    suggestions?: string[]
+  }
+}
 
 /**
  * Create a successful tool response
  */
 export function textResponse(text: string): ToolResponse {
-  return { content: [{ type: 'text', text }] }
+  return {
+    content: [{ type: 'text', text }],
+    isError: false,
+    meta: { ok: true }
+  }
 }
 
 /**
  * Create an error tool response
  */
-export function errorResponse(message: string): ToolResponse {
-  return { content: [{ type: 'text', text: `Error: ${message}` }] }
+export function errorResponse(message: string, suggestions: string[] = []): ToolResponse {
+  return {
+    content: [{ type: 'text', text: `Error: ${message}` }],
+    isError: true,
+    meta: {
+      ok: false,
+      code: 'TOOL_ERROR',
+      suggestions: suggestions.length > 0 ? suggestions : undefined
+    }
+  }
 }

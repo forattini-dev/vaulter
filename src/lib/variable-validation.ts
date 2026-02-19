@@ -47,6 +47,11 @@ const SENSITIVE_NAME_PATTERNS: Array<{
   }
 ]
 
+/** Check if a key name suggests secret material (e.g. _SECRET, _TOKEN, _PASSWORD) */
+export function isSensitiveKeyName(key: string): boolean {
+  return SENSITIVE_NAME_PATTERNS.some(p => p.test(key))
+}
+
 const URL_PATTERNS = [
   {
     code: 'svc-url-required',

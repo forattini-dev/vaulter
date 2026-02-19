@@ -635,7 +635,7 @@ async function runRotationRun(context: RotationContext): Promise<void> {
       }
       ui.log('')
       ui.log('To rotate a secret:')
-      ui.log(`  ${c.command('vaulter set')} <KEY> "<new-value>" ${c.highlight('-e')} <env>`)
+      ui.log(`  ${c.command('vaulter change set')} <KEY>="<new-value>" ${c.highlight('-e')} <env>`)
       ui.log('')
       ui.log('The rotatedAt timestamp will be updated automatically.')
     } else {

@@ -4,9 +4,9 @@
  * Model Context Protocol server for Claude integration
  * Exposes vaulter tools, resources, and prompts via stdio transport
  *
- * Tools:     58 tools for managing secrets and configs
- * Resources: 7 resource types (instructions, workflow, tools-guide, monorepo-example, mcp-config, config, services)
- * Prompts:   12 workflow prompts (setup, migrate, deploy, compare, audit, rotation, shared, batch, copy, sync, monorepo_deploy, local_overrides)
+ * Tools:     16 action-based tools delegating to domain layer
+ * Resources: 4 resources (instructions, config, services, tools-guide)
+ * Prompts:   5 workflow prompts (setup, deploy, compare, rotation, local_dev)
  *
  * ═══════════════════════════════════════════════════════════════════════
  * CRITICAL: HOW VAULTER STORES DATA
@@ -20,10 +20,10 @@
  * ❌ NEVER modify S3 objects outside of vaulter
  *
  * ✅ ALWAYS use vaulter CLI commands:
- *    - npx vaulter sync push -e <env>   → Push local .env to backend
- *    - npx vaulter sync pull -e <env>   → Pull from backend to local
- *    - npx vaulter var set KEY=value    → Set individual variable
- *    - npx vaulter sync merge -e <env>  → Bidirectional sync
+ *    - npx vaulter change set KEY=value -e <env>  → Set individual variable (local-first)
+ *    - npx vaulter plan -e <env>                  → Preview diff local vs backend
+ *    - npx vaulter apply -e <env>                 → Push local changes to backend
+ *    - npx vaulter diff -e <env>                  → Quick diff without plan artifact
  *
  * If you see empty {} metadata in S3 objects, the data was uploaded wrong!
  * The correct structure stores encrypted values in x-amz-meta-* headers.
@@ -135,7 +135,7 @@ export function createServer(): Server {
     resources: await listResources()
   }))
 
-  server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
+  server.setRequestHandler(ReadResourceRequestSchema, async (request, _extra) => {
     const { uri } = request.params
     try {
       return await handleResourceRead(uri)
@@ -152,7 +152,7 @@ export function createServer(): Server {
     prompts: registerPrompts()
   }))
 
-  server.setRequestHandler(GetPromptRequestSchema, async (request) => {
+  server.setRequestHandler(GetPromptRequestSchema, async (request, _extra) => {
     const { name, arguments: args } = request.params
     try {
       return getPrompt(name, args || {})

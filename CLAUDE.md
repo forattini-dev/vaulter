@@ -1,43 +1,25 @@
-<!-- OPENSPEC:START -->
-# OpenSpec Instructions
-
-These instructions are for AI assistants working in this project.
-
-Always open `@/openspec/AGENTS.md` when the request:
-- Mentions planning or proposals (words like proposal, spec, change, plan)
-- Introduces new capabilities, breaking changes, architecture shifts, or big performance/security work
-- Sounds ambiguous and you need the authoritative spec before coding
-
-Use `@/openspec/AGENTS.md` to learn:
-- How to create and apply change proposals
-- Spec format and conventions
-- Project structure and guidelines
-
-Keep this managed block so 'openspec update' can refresh the instructions.
-
-<!-- OPENSPEC:END -->
 
 # Vaulter - Environment Variables & Secrets Manager
 
 ## 🤖 Para AI Agents - Leia Primeiro!
 
-### 🎯 Quando Usar `vaulter_doctor`
+### 🎯 Quando Usar `vaulter_status action="scorecard"`
 
-**USE `vaulter_doctor` nestes cenários:**
+**USE `vaulter_status` nestes cenários:**
 
 #### ✅ 1. Início de Conversa (Uma vez)
 ```
 User inicia conversa pela primeira vez
-  → Agent: vaulter_doctor environment="dev"
+  → Agent: vaulter_status action="scorecard" environment="dev"
   → Entende o contexto atual
   → Prossegue com operações normais
 ```
 
 #### ✅ 2. Quando Operação Falha (Diagnóstico)
 ```
-Agent: vaulter_set ← Tenta normalmente
+Agent: vaulter_change action="set" ← Tenta normalmente
   ↓ FALHA (timeout, erro, etc)
-Agent: vaulter_doctor ← AGORA SIM, diagnostica
+Agent: vaulter_status action="scorecard" ← AGORA SIM, diagnostica
   → Identifica problema
   → Informa user com sugestões
 ```
@@ -47,20 +29,20 @@ Agent: vaulter_doctor ← AGORA SIM, diagnostica
 User: "Meu setup está ok?"
 User: "Por que está lento?"
 User: "Variáveis sincronizadas?"
-  → Agent: vaulter_doctor
+  → Agent: vaulter_status action="scorecard"
 ```
 
 #### ❌ NÃO use antes de toda operação
 ```
 ❌ ERRADO (muito lento):
-  vaulter_doctor → vaulter_set
-  vaulter_doctor → vaulter_get
-  vaulter_doctor → vaulter_list
+  vaulter_status → vaulter_change
+  vaulter_status → vaulter_get
+  vaulter_status → vaulter_list
 
 ✅ CORRETO (rápido):
-  vaulter_set (tenta direto)
+  vaulter_change action="set" (tenta direto)
     ↓ se falhar
-  vaulter_doctor (diagnostica)
+  vaulter_status action="scorecard" (diagnostica)
 ```
 
 **Estratégia de Retry Inteligente:**
@@ -70,19 +52,19 @@ User: "Variáveis sincronizadas?"
 
 try {
   // 1. Tentar operação normalmente (timeout: 30s)
-  await vaulter_set({ key, value, environment })
+  await vaulter_change({ action: 'set', key, value, environment })
   return "✓ Success"
 
 } catch (error) {
   if (error.message.includes("timeout")) {
     // 2. Retry com timeout maior (60s)
     try {
-      await vaulter_set({ key, value, environment, timeout_ms: 60000 })
+      await vaulter_change({ action: 'set', key, value, environment, timeout_ms: 60000 })
       return "✓ Success (slower than expected)"
 
     } catch (retryError) {
-      // 3. AGORA SIM - diagnosticar com doctor
-      const diagnosis = await vaulter_doctor({ environment })
+      // 3. AGORA SIM - diagnosticar com status
+      const diagnosis = await vaulter_status({ action: 'scorecard', environment })
 
       // 4. Informar user com diagnóstico
       return `❌ Operation failed. Diagnosis:\n${formatDiagnosis(diagnosis)}`
@@ -90,14 +72,14 @@ try {
   }
 
   // Se não foi timeout, diagnosticar direto
-  const diagnosis = await vaulter_doctor({ environment })
+  const diagnosis = await vaulter_status({ action: 'scorecard', environment })
   return `❌ ${error.message}\n\nDiagnosis:\n${formatDiagnosis(diagnosis)}`
 }
 ```
 
 **Por que essa estratégia é melhor:**
 - ⚡ **Rápido** - Não adiciona latência quando tudo funciona
-- 🎯 **Eficiente** - Doctor só quando necessário
+- 🎯 **Eficiente** - Status check só quando necessário
 - 🔍 **Diagnóstico preciso** - Quando falha, mostra o porquê
 - 📊 **Retry inteligente** - Aumenta timeout antes de desistir
 
@@ -113,9 +95,9 @@ mcp:
 
 Ver [docs/TIMEOUT.md](docs/TIMEOUT.md) para detalhes.
 
-### 🩺 Vaulter Doctor - Checks Completos
+### 🩺 Vaulter Status Scorecard - Checks Completos
 
-O `vaulter doctor` agora executa **15 checks** para diagnosticar problemas:
+O `vaulter_status action="scorecard"` executa **15 checks** para diagnosticar problemas:
 
 **Checks Básicos:**
 1. ✅ Config file - `.vaulter/config.yaml` existe
@@ -150,38 +132,26 @@ O `vaulter doctor` agora executa **15 checks** para diagnosticar problemas:
 
 | Tarefa | Tool | Exemplo |
 |--------|------|---------|
-| Diagnosticar setup | `vaulter_doctor` | Sempre primeiro! |
+| Diagnosticar setup | `vaulter_status` | `action="scorecard" environment="dev"` |
 | Ver diferenças local/remoto | `vaulter_diff` | `environment="prd" showValues=true` |
-| Clonar dev → stg/prd | `vaulter_clone_env` | `source="dev" target="stg" dryRun=true` |
-| Copiar vars específicas | `vaulter_copy` | `source="dev" target="prd" pattern="DATABASE_*"` |
-| Comparar environments | `vaulter_compare` | `source="dev" target="prd"` |
-| Setar múltiplas vars | `vaulter_multi_set` | `variables=[{key,value,sensitive}]` |
+| Comparar environments | `vaulter_search` | `source="dev" target="prd" showValues=true` |
+| Setar variável | `vaulter_change` | `action="set" key="DB_URL" value="xxx" sensitive=true` |
 | Listar vars | `vaulter_list` | `environment="dev" showValues=true` |
 | **Versioning** | | |
-| Ver histórico de versões | `vaulter_list_versions` | `key="API_KEY" environment="dev" showValues=true` |
-| Ver versão específica | `vaulter_get_version` | `key="API_KEY" version=2 environment="dev"` |
-| Rollback para versão anterior | `vaulter_rollback` | `key="API_KEY" version=2 environment="dev" dryRun=true` |
+| Ver histórico de versões | `vaulter_versions` | `action="list" key="API_KEY" environment="dev" showValues=true` |
+| Ver versão específica | `vaulter_versions` | `action="get" key="API_KEY" version=2 environment="dev"` |
+| Rollback para versão anterior | `vaulter_versions` | `action="rollback" key="API_KEY" version=2 environment="dev" dryRun=true` |
 | **Local Overrides** | | |
-| Shared var (todos services) | `vaulter_local_shared_set` | `key="DEBUG" value="true"` |
-| Listar shared vars | `vaulter_local_shared_list` | — |
-| Deletar shared var | `vaulter_local_shared_delete` | `key="DEBUG"` |
-| Override por service | `vaulter_local_set` | `key="PORT" value="3001" service="web"` |
-| Pull local + overrides | `vaulter_local_pull` | `all=true` (backend + shared + overrides) |
-| Diff overrides vs base | `vaulter_local_diff` | — |
-| Status local | `vaulter_local_status` | — |
-| Snapshot backup | `vaulter_snapshot_create` | `environment="dev"` |
-| Listar snapshots | `vaulter_snapshot_list` | `environment="dev"` |
-| Restaurar snapshot | `vaulter_snapshot_restore` | `id="dev_2026..." environment="dev"` |
-
-### Ambiente Vazio? Use clone:
-
-```bash
-# Preview
-vaulter_clone_env source="dev" target="prd" dryRun=true
-
-# Executar
-vaulter_clone_env source="dev" target="prd"
-```
+| Shared var (todos services) | `vaulter_local` | `action="shared-set" key="DEBUG" value="true"` |
+| Listar shared vars | `vaulter_local` | `action="shared-list"` |
+| Deletar shared var | `vaulter_local` | `action="shared-delete" key="DEBUG"` |
+| Override por service | `vaulter_local` | `action="set" key="PORT" value="3001" service="web"` |
+| Pull local + overrides | `vaulter_local` | `action="pull" all=true` |
+| Diff overrides vs base | `vaulter_local` | `action="diff"` |
+| Status local | `vaulter_local` | `action="status"` |
+| Snapshot backup | `vaulter_snapshot` | `action="create" environment="dev"` |
+| Listar snapshots | `vaulter_snapshot` | `action="list" environment="dev"` |
+| Restaurar snapshot | `vaulter_snapshot` | `action="restore" id="dev_2026..." environment="dev"` |
 
 ### Workflow: Local Overrides (Dev) - OFFLINE FIRST
 
@@ -284,18 +254,18 @@ vaulter local status
 **MCP Tools:**
 ```bash
 # === EDITAR LOCALMENTE ===
-vaulter_local_shared_set key="DEBUG" value="true"     # shared config
-vaulter_local_set key="PORT" value="3001" service="web"  # service config
+vaulter_local action="shared-set" key="DEBUG" value="true"     # shared config
+vaulter_local action="set" key="PORT" value="3001" service="web"  # service config
 
 # === GERAR .ENV [OFFLINE] ===
-vaulter_local_pull all=true
+vaulter_local action="pull" all=true
 
 # === COMPARTILHAR COM TIME ===
-vaulter_local_push_all                    # Envia tudo para backend
+vaulter_local action="push-all"           # Envia tudo para backend
 
 # === RECEBER DO TIME ===
-vaulter_local_sync                        # Baixa backend → .vaulter/local/
-vaulter_local_pull all=true               # Gera .env files
+vaulter_local action="sync"               # Baixa backend → .vaulter/local/
+vaulter_local action="pull" all=true      # Gera .env files
 ```
 
 **JSON Output:**
@@ -373,8 +343,8 @@ versioning:
 **CLI Workflow:**
 ```bash
 # 1. Ver histórico de mudanças
-vaulter var versions API_KEY -e prd
-# ● v3 (current)
+vaulter versions API_KEY -e prd
+# ● latest (current)
 #   └─ 2h ago - admin
 #      Operation: set Source: cli
 #      Value: sk-****xxx
@@ -388,34 +358,34 @@ vaulter var versions API_KEY -e prd
 #      Value: sk-****zzz
 
 # 2. Ver valores completos (decrypted)
-vaulter var versions API_KEY -e prd --values
+vaulter versions API_KEY -e prd --values
 
 # 3. Visualizar versão específica
-vaulter var get API_KEY --version 2 -e prd
+vaulter versions API_KEY --get 2 -e prd
 
 # 4. Rollback (dry-run primeiro)
-vaulter var rollback API_KEY 2 -e prd --dry-run
-# From: v3 → sk-****xxx
+vaulter versions API_KEY --rollback 2 -e prd --dry-run
+# From: latest → sk-****xxx
 # To:   v2 → sk-****yyy
 
 # 5. Executar rollback
-vaulter var rollback API_KEY 2 -e prd
+vaulter versions API_KEY --rollback 2 -e prd
 # ✓ Rolled back API_KEY
-# From: v3
-# To:   v2
-# New:  v4 (rollback operation)
+# From: latest
+# To:   previous
+# New:  rollback
 ```
 
 **MCP Tools:**
 ```bash
 # Ver histórico
-vaulter_list_versions key="API_KEY" environment="prd" showValues=false
+vaulter_versions action="list" key="API_KEY" environment="prd" showValues=false
 
 # Ver versão específica
-vaulter_get_version key="API_KEY" version=2 environment="prd"
+vaulter_versions action="get" key="API_KEY" version=2 environment="prd"
 
 # Rollback
-vaulter_rollback key="API_KEY" version=2 environment="prd" dryRun=true
+vaulter_versions action="rollback" key="API_KEY" version=2 environment="prd" dryRun=true
 ```
 
 **Comportamento:**
@@ -429,32 +399,34 @@ vaulter_rollback key="API_KEY" version=2 environment="prd" dryRun=true
 
 ```bash
 # 1. Ver diferenças (com valores mascarados)
-vaulter sync diff -e prd --values
+vaulter diff -e prd --values
 
 # 2. Editar arquivo local (.vaulter/local/prd.env)
 # ... editar no seu editor ...
 
 # 3. Ver diferenças novamente
-vaulter sync diff -e prd --values
+vaulter diff -e prd --values
 
-# 4. Push para remoto
-vaulter sync push -e prd
+# 4. Gerar plano de mudanças
+vaulter plan -e prd
 
-# Ou push + deletar vars remotas que não existem local
-vaulter sync push -e prd --prune
+# 5. Aplicar plano no backend
+vaulter apply -e prd
+
+# Ou aplicar + deletar vars remotas que não existem local
+vaulter apply -e prd --prune
 ```
 
-### Merge com Estratégia de Conflito
+### Conflict Resolution via Plan/Apply
 
 ```bash
-# Local ganha (default)
-vaulter sync merge -e dev --strategy local
+# Gerar plano com estratégia de conflito
+vaulter plan -e dev --strategy local     # Local ganha (default)
+vaulter plan -e dev --strategy remote    # Remoto ganha
+vaulter plan -e dev --strategy error     # Erro em conflitos (não faz nada)
 
-# Remoto ganha
-vaulter sync merge -e dev --strategy remote
-
-# Erro em conflitos (não faz nada)
-vaulter sync merge -e dev --strategy error
+# Revisar plano e aplicar
+vaulter apply -e dev
 ```
 
 ### Sync com Directory Mode (--dir)
@@ -462,14 +434,16 @@ vaulter sync merge -e dev --strategy error
 O modo `--dir` sincroniza a estrutura completa `.vaulter/{env}/`:
 
 ```bash
-# Push: .vaulter/dev/ → backend
-vaulter sync push --dir -e dev
+# Push: .vaulter/dev/ → backend (plan + apply)
+vaulter plan --dir -e dev
+vaulter apply -e dev
 
 # Pull: backend → .vaulter/dev/
-vaulter sync pull --dir -e dev
+vaulter plan --dir --pull -e dev
+vaulter apply -e dev
 
 # Dry-run para ver o que seria feito
-vaulter sync push --dir -e dev --dry-run
+vaulter plan --dir -e dev --dry-run
 ```
 
 **Estrutura sincronizada:**
@@ -497,17 +471,15 @@ vaulter init
 vaulter key generate
 
 # Set variáveis (secrets vs configs)
-vaulter set DATABASE_URL=postgres://... -e dev    # secret (sensitive=true)
-vaulter set LOG_LEVEL::debug -e dev               # config (sensitive=false)
+vaulter change set DATABASE_URL=postgres://... -e dev    # secret (sensitive=true)
+vaulter change set LOG_LEVEL::debug -e dev               # config (sensitive=false)
 
 # List variáveis (mostra TYPE: secret/config)
 vaulter list -e dev
 
-# Push para backend (S3)
-vaulter sync push -e dev
-
-# Pull do backend
-vaulter sync pull -e dev
+# Gerar plano e aplicar no backend (S3)
+vaulter plan -e dev
+vaulter apply -e dev
 
 # Export para K8s (separação automática)
 vaulter k8s:secret -e dev      # só secrets (sensitive=true)
@@ -533,15 +505,15 @@ Cada variável tem um campo `sensitive` que indica se é um **secret** (sensíve
 
 ```bash
 # Secret (sensitive=true) - usa "="
-vaulter set DATABASE_URL=postgres://... -e dev
-vaulter set API_KEY=sk-xxx -e dev
+vaulter change set DATABASE_URL=postgres://... -e dev
+vaulter change set API_KEY=sk-xxx -e dev
 
 # Config (sensitive=false) - usa "::"
-vaulter set LOG_LEVEL::debug -e dev
-vaulter set NODE_ENV::production -e dev
+vaulter change set LOG_LEVEL::debug -e dev
+vaulter change set NODE_ENV::production -e dev
 
 # Batch: mistura secrets e configs
-vaulter set DB_URL=xxx LOG_LEVEL::info PORT::3000 -e dev
+vaulter change set DB_URL=xxx LOG_LEVEL::info PORT::3000 -e dev
 ```
 
 ### List mostra o tipo
@@ -570,18 +542,9 @@ vaulter k8s:configmap -e dev
 ### MCP Tools
 
 ```json
-// vaulter_set com sensitive
-{ "key": "DATABASE_URL", "value": "postgres://...", "environment": "dev", "sensitive": true }
-{ "key": "LOG_LEVEL", "value": "debug", "environment": "dev", "sensitive": false }
-
-// vaulter_multi_set com sensitive por variável
-{
-  "variables": [
-    { "key": "DB_URL", "value": "xxx", "sensitive": true },
-    { "key": "LOG_LEVEL", "value": "info", "sensitive": false }
-  ],
-  "environment": "dev"
-}
+// vaulter_change action="set" com sensitive
+{ "action": "set", "key": "DATABASE_URL", "value": "postgres://...", "environment": "dev", "sensitive": true }
+{ "action": "set", "key": "LOG_LEVEL", "value": "debug", "environment": "dev", "sensitive": false }
 
 // vaulter_list retorna sensitive
 [
@@ -621,7 +584,7 @@ Vaulter detecta automaticamente valores que parecem já estar codificados ou enc
 Ao salvar uma variável com valor que parece pré-codificado:
 
 ```bash
-$ vaulter set PASSWORD=$2b$10$... -e dev
+$ vaulter change set PASSWORD=$2b$10$... -e dev
 ⚠️ Warning: PASSWORD - Value appears to be a bcrypt hash. Vaulter will encrypt it again.
   Vaulter automatically encrypts all values. Pre-encoding is usually unnecessary.
 ✓ Set secret PASSWORD in myproject/dev
@@ -631,7 +594,7 @@ $ vaulter set PASSWORD=$2b$10$... -e dev
 
 ### MCP Tools
 
-Os tools `vaulter_set` e `vaulter_multi_set` incluem warnings na resposta:
+O tool `vaulter_change action="set"` inclui warnings na resposta:
 
 ```
 ✓ Set API_KEY (secret) in myproject/dev
@@ -694,44 +657,44 @@ await client.deleteManyByKeys(['OLD1', 'OLD2'], 'project', 'dev')
 
 ## MCP Server
 
-**53 Tools | 6 Resources | 11 Prompts**
+**16 Tools | 4 Resources | 5 Prompts**
 
-### Tools (53)
+### Tools (16)
 
-| Category | Tools |
-|----------|-------|
-| **🩺 Diagnostic (3)** | `vaulter_doctor` ⭐, `vaulter_diff`, `vaulter_clone_env` |
-| **Core (5)** | `vaulter_get`, `vaulter_set`, `vaulter_delete`, `vaulter_list`, `vaulter_export` |
-| **Batch (3)** | `vaulter_multi_get`, `vaulter_multi_set`, `vaulter_multi_delete` |
-| **Sync (3)** | `vaulter_sync` ⚠️ deprecated, `vaulter_pull`, `vaulter_push` (supports dryRun) |
-| **Analysis (2)** | `vaulter_compare`, `vaulter_search` |
-| **Utility (4)** | `vaulter_copy`, `vaulter_rename`, `vaulter_promote_shared`, `vaulter_demote_shared` |
-| **Status (2)** | `vaulter_status`, `vaulter_audit_list` |
-| **K8s (2)** | `vaulter_k8s_secret`, `vaulter_k8s_configmap` |
-| **IaC (2)** | `vaulter_helm_values`, `vaulter_tf_vars` |
-| **Keys (6)** | `vaulter_key_generate`, `vaulter_key_list`, `vaulter_key_show`, `vaulter_key_export`, `vaulter_key_import`, `vaulter_key_rotate` |
-| **Monorepo (5)** | `vaulter_init`, `vaulter_scan`, `vaulter_services`, `vaulter_shared_list`, `vaulter_inheritance_info` |
-| **Local (8)** | `vaulter_local_pull`, `vaulter_local_set`, `vaulter_local_delete`, `vaulter_local_diff`, `vaulter_local_status`, `vaulter_local_shared_set` ✨, `vaulter_local_shared_delete` ✨, `vaulter_local_shared_list` ✨ |
-| **Snapshot (3)** | `vaulter_snapshot_create`, `vaulter_snapshot_list`, `vaulter_snapshot_restore` |
-| **Versioning (3)** | `vaulter_list_versions`, `vaulter_get_version`, `vaulter_rollback` |
-| **Other (2)** | `vaulter_categorize_vars`, `vaulter_nuke_preview` |
+| Category | Tool | Actions / Description |
+|----------|------|----------------------|
+| **Mutation Flow** | `vaulter_change` | set, delete, move, import (writes local state only) |
+| | `vaulter_plan` | Compute diff local vs backend, generate plan artifact |
+| | `vaulter_apply` | Execute plan, push changes to backend |
+| **Read** | `vaulter_get` | Get single var or multi-get via `keys[]` |
+| | `vaulter_list` | List vars with optional filter |
+| | `vaulter_search` | Search by pattern or compare environments |
+| | `vaulter_diff` | Quick diff without plan artifacts |
+| **Status** | `vaulter_status` | scorecard, vars, audit, drift, inventory |
+| **Export** | `vaulter_export` | k8s-secret, k8s-configmap, helm, terraform, env, shell, json |
+| **Keys** | `vaulter_key` | generate, list, show, export, import, rotate |
+| **Local Dev** | `vaulter_local` | pull, push, push-all, sync, set, delete, diff, status, shared-set, shared-delete, shared-list |
+| **Backup** | `vaulter_snapshot` | create, list, restore, delete |
+| | `vaulter_versions` | list, get, rollback |
+| **Setup** | `vaulter_init` | Initialize project |
+| | `vaulter_services` | Discover monorepo services |
+| **Danger** | `vaulter_nuke` | Preview backend deletion (CLI-only execution) |
 
-> ⭐ **AI Agents:** Sempre chame `vaulter_doctor` primeiro para entender o estado do setup!
+> **Tool Architecture:** Each tool is action-based (one tool per domain with `action` parameter).
+> Use `vaulter_status action="scorecard"` for health checks.
 
-### Resources (6)
+### Resources (4)
 
 | URI | Description |
 |-----|-------------|
-| `vaulter://instructions` | **Read first!** s3db.js architecture |
-| `vaulter://tools-guide` | Which tool for each scenario |
-| `vaulter://monorepo-example` | **Complete monorepo isolation example** with var counts |
-| `vaulter://mcp-config` | MCP settings sources |
+| `vaulter://instructions` | s3db.js architecture + tool overview |
+| `vaulter://tools-guide` | Which tool to use for each scenario |
 | `vaulter://config` | Project YAML config |
 | `vaulter://services` | Monorepo services |
 
-### Prompts (12)
+### Prompts (5)
 
-`setup_project`, `migrate_dotenv`, `deploy_secrets`, `compare_environments`, `security_audit`, `rotation_workflow`, `shared_vars_workflow`, `batch_operations`, `copy_environment`, `sync_workflow`, `monorepo_deploy`, `local_overrides_workflow` ✨
+`setup_project`, `deploy_secrets`, `compare_environments`, `rotation_workflow`, `local_dev_workflow`
 
 **Full reference:** See [docs/MCP.md](docs/MCP.md)
 
@@ -839,27 +802,24 @@ Funciona para ambos cenários:
 
 Shared vars são variáveis que se aplicam a **todos os services** de um monorepo.
 
-**CLI - Use `--shared`:**
+**CLI - Use `--shared` ou `--scope shared`:**
 
 ```bash
 # Set shared var
-vaulter set LOG_LEVEL=debug -e dev --shared
-
-# Get shared var
-vaulter get LOG_LEVEL -e dev --shared
+vaulter change set LOG_LEVEL=debug -e dev --scope shared
 
 # List all shared vars
 vaulter list -e dev --shared
 
 # Delete shared var
-vaulter delete LOG_LEVEL -e dev --shared
+vaulter change delete LOG_LEVEL -e dev --scope shared
 ```
 
-**MCP Tools - Use `shared: true`:**
+**MCP Tools - Use `shared: true` ou `scope: "shared"`:**
 
 ```json
-// vaulter_set com shared=true
-{ "key": "LOG_LEVEL", "value": "debug", "environment": "dev", "shared": true }
+// vaulter_change action="set" com scope="shared"
+{ "action": "set", "key": "LOG_LEVEL", "value": "debug", "scope": "shared" }
 
 // vaulter_list com shared=true
 { "environment": "dev", "shared": true }
@@ -931,13 +891,13 @@ shared:
 
 ```bash
 # Pull para todos os outputs
-vaulter sync pull --all
+vaulter local pull --all
 
 # Pull para output específico
-vaulter sync pull --output web
+vaulter local pull --output web
 
 # Dry-run (mostra o que seria escrito)
-vaulter sync pull --all --dry-run
+vaulter local pull --all --dry-run
 ```
 
 ### Algoritmo de Filtragem
