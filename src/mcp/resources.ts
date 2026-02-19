@@ -123,7 +123,7 @@ NOT in the object body. This means:
 | \`vaulter_services\` | Discover monorepo services |
 | \`vaulter_nuke\` | Preview backend deletion |
 
-`vaulter_run` is useful for local tasks like `pnpm build`, `pnpm dev`, `docker compose`, or custom scripts after loading the correct var set.
+\`vaulter_run\` is useful for local tasks like \`pnpm build\`, \`pnpm dev\`, \`docker compose\`, or custom scripts after loading the correct var set.
 
 ## Workflow: Local-First Mutations
 
