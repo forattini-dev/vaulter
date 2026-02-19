@@ -10,6 +10,7 @@ const EXPECTED_TOOLS = [
   'vaulter_change',
   'vaulter_plan',
   'vaulter_apply',
+  'vaulter_run',
   'vaulter_get',
   'vaulter_list',
   'vaulter_status',
@@ -42,8 +43,8 @@ const ACTION_OPTIONAL_TOOLS: Record<string, string[]> = {
 describe('MCP Tool Registration', () => {
   const tools = registerTools()
 
-  it('should register exactly 16 tools', () => {
-    expect(tools).toHaveLength(16)
+  it('should register exactly 17 tools', () => {
+    expect(tools).toHaveLength(17)
   })
 
   it('should have all expected tool names', () => {

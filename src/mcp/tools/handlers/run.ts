@@ -96,8 +96,7 @@ export async function handleRun(
       service,
       cwd,
       override,
-      verbose,
-      silent: true
+      verbose
     })
   } catch (err) {
     return errorResponse(
