@@ -207,25 +207,59 @@ vaulter clone dev stg                          # Execute
 
 ### Team Collaboration
 
-**New team member setup:**
+Team collaboration assumes one shared truth for each environment (backend) and private, local overrides per developer.
+
+**New team member setup (2 minutes):**
 ```bash
 git clone <repo>                    # Gets .vaulter/config.yaml
 export VAULTER_KEY_DEV=<from-team>  # Get key securely from team
-vaulter local sync                  # Pull from backend → .vaulter/local/
-vaulter local pull                 # Generate .env files (offline)
+vaulter local sync -e dev           # Pull remote vars to .vaulter/local/
+vaulter local pull --all            # Generate .env files (offline)
 ```
 
-**Sharing a new variable:**
+**Why this is stable for teams**
+
+- `vaulter local set` is always a private, working-copy edit. It does **not** change what others consume by itself.
+- `vaulter local push` is how you publish team-visible changes from local overrides.
+- `vaulter local sync` is how others consume published changes.
+- Use environment-specific gates (`status`, `diff`, and `plan/apply`) before merging critical updates.
+
+**Recommended sharing flow (single variable):**
 ```bash
-# 1. Add locally
-vaulter local set NEW_FEATURE::enabled  # Shared config
+# 1) Add locally first
+vaulter local set --shared NEW_FEATURE::enabled  # Shared config
+vaulter local diff                                 # Verify local change before publishing
 
-# 2. Push to backend (share with team)
-vaulter plan -e dev && vaulter apply -e dev
+# 2) Optional dry-run share preview
+vaulter local push --shared --dry-run -e dev         # Checks what would be pushed
 
-# 3. Notify team
-# "New var added, run: vaulter local sync && vaulter local pull"
+# 3) Share to backend (explicit approval step before running)
+vaulter local push --shared -e dev
+
+# 4) Notify team
+# "New var published. Run: vaulter local sync -e dev && vaulter local pull --all"
 ```
+
+**Monorepo service rule (recommended):**
+
+- Defaults are shared only when genuinely global.
+- Service behavior should live in service scope (`-s svc-*`) unless explicitly cross-service.
+- Keep service ownership rules documented in `.vaulter/config.yaml` (`policy`), so mistakes are prevented early.
+
+**Conflict resolution if two devs edit same key**
+
+```bash
+vaulter local diff -s <service>          # See your local delta
+vaulter local sync -e dev                # Pull latest from backend
+vaulter local pull --all                  # Rebuild outputs
+vaulter local diff -s <service>          # Re-check before pushing
+```
+
+If divergence remains:
+- Ask one owner to pause and re-publish.
+- Prefer `vaulter plan -e dev` + manual review for sensitive or cross-service keys.
+
+**Important:** Most `local` commands are local-only. Passing `-e/--env` is only needed when publishing or syncing with backend.
 
 ### MCP Tools for Workflow
 
@@ -406,8 +440,8 @@ In monorepo mode, when `--service` is resolved, one of `--from` or `--to` can be
 | Command | Description |
 |:--------|:------------|
 | `export shell -e <env>` | Export for shell `eval $(...)` |
-| `export k8s-secret -e <env>` | Generate Kubernetes Secret |
-| `export k8s-configmap -e <env>` | Generate Kubernetes ConfigMap |
+| `export k8s-secret -e <env>` | Generate Kubernetes Secret (sensitive vars only) |
+| `export k8s-configmap -e <env>` | Generate Kubernetes ConfigMap (config vars only) |
 | `export helm -e <env>` | Generate Helm values.yaml |
 | `export terraform -e <env>` | Generate Terraform .tfvars |
 | `export docker -e <env>` | Docker env-file format |

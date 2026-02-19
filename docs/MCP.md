@@ -110,6 +110,50 @@ Format diagnosis for user
 DONE
 ```
 
+### Team Workflow (AI-first)
+
+Use this flow when multiple people or agents edit variables in parallel:
+
+#### 1) Team bootstrap
+
+```typescript
+// Start session
+{ "tool": "vaulter_status", "action": "scorecard", "environment": "dev" }  // context
+{ "tool": "vaulter_local", "action": "sync", "environment": "dev" }
+{ "tool": "vaulter_local", "action": "pull", "all": true }
+```
+
+#### 2) Private edits
+
+```typescript
+{ "tool": "vaulter_local", "action": "set", "key": "DEBUG", "value": "true", "sensitive": false, "shared": true }
+{ "tool": "vaulter_local", "action": "set", "key": "DB_URL", "value": "postgres://...", "shared": false, "service": "api" }
+{ "tool": "vaulter_local", "action": "diff", "service": "api" }
+```
+
+#### 3) Publish only when ready
+
+```typescript
+{ "tool": "vaulter_local", "action": "push", "environment": "dev", "shared": true, "dryRun": true }   // preflight
+{ "tool": "vaulter_local", "action": "push", "environment": "dev", "shared": true }                       // publish
+{ "tool": "vaulter_local", "action": "pull", "all": true }                                          // update outputs
+```
+
+#### 4) Cross-check before release
+
+```typescript
+{ "tool": "vaulter_status", "action": "scorecard", "environment": "dev" }
+{ "tool": "vaulter_plan", "environment": "dev" }             // review artifact
+{ "tool": "vaulter_apply", "environment": "dev" }
+```
+
+#### 5) Conflict handling (parallel edits)
+
+- If publish conflicts:
+  - `vaulter_local action="sync" -e dev` and `vaulter_local action="diff"` to re-evaluate local state.
+  - Ask one owner to pause, then re-run `plan/apply` with explicit review.
+  - Use `local` vs `change` in the same service with clear ownership policies in `.vaulter/config.yaml`.
+
 ---
 
 ## Quick Start
@@ -313,6 +357,11 @@ Export variables in various formats.
 | `namespace` | string | No | - | K8s namespace override |
 | `name` | string | No | - | K8s resource name override |
 | `tfFormat` | string | No | `tfvars` | Terraform sub-format: `tfvars` or `json` |
+
+**Format behavior**
+- `k8s-secret`: exports only sensitive vars (`sensitive=true`).
+- `k8s-configmap`: exports only config vars (`sensitive=false`).
+- `shell`, `env`, `json`, `terraform`, `helm`: export both vars unless filtered by `shared/includeShared/service`.
 
 ---
 
