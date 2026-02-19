@@ -136,6 +136,33 @@ export async function handleToolCall(
 ): Promise<ToolResponse> {
   const ctx = resolveContext(args)
 
+  const knownTools = new Set([
+    'vaulter_change',
+    'vaulter_plan',
+    'vaulter_apply',
+    'vaulter_run',
+    'vaulter_get',
+    'vaulter_list',
+    'vaulter_status',
+    'vaulter_search',
+    'vaulter_diff',
+    'vaulter_export',
+    'vaulter_key',
+    'vaulter_snapshot',
+    'vaulter_versions',
+    'vaulter_local',
+    'vaulter_init',
+    'vaulter_services',
+    'vaulter_nuke'
+  ])
+
+  if (!knownTools.has(name)) {
+    return errorResponse(`Unknown tool: ${name}`, [
+      'Check tool name against registerTools output',
+      'Use tools list for canonical command names'
+    ])
+  }
+
   // ─── No-backend tools ──────────────────────────────────────────────
   switch (name) {
     case 'vaulter_change':
@@ -225,13 +252,12 @@ export async function handleToolCall(
 
       case 'vaulter_nuke':
         return handleNuke(client)
-
-      default:
-        return errorResponse(`Unknown tool: ${name}`, [
-          'Check tool name against registerTools output',
-          'Use tools list for canonical command names'
-        ])
     }
+
+    return errorResponse(`Unknown tool: ${name}`, [
+      'Check tool name against registerTools output',
+      'Use tools list for canonical command names'
+    ])
   } catch (err) {
     const hints = buildMcpErrorHints(err, {
       tool: name,
