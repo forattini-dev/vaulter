@@ -72,27 +72,33 @@ const commonOptions = {
   logLevel: 'info'
 }
 
-// Plugin to fix import.meta.url in ESM modules when bundling for CJS
-// This patches fdir (used by tinyglobby) which uses createRequire(import.meta.url)
+// Plugin to fix import.meta.url in ESM modules when bundling for CJS.
+// Patches any bundled .mjs/.js file that calls createRequire or fileURLToPath
+// with import.meta.url (e.g. fdir, yargs, tuiuiu.js).
 const fixImportMetaUrl = {
   name: 'fix-import-meta-url',
   setup(build) {
-    // Only apply to fdir module
-    build.onLoad({ filter: /fdir.*\.mjs$/ }, async (args) => {
-      let contents = readFileSync(args.path, 'utf8')
+    build.onLoad({ filter: /\.(mjs|js)$/ }, async (args) => {
+      const contents = readFileSync(args.path, 'utf8')
 
-      // Replace createRequire(import.meta.url) with a pkg-compatible version
-      // The original: __require = createRequire(import.meta.url)
-      // We replace import.meta.url with a fallback that works in pkg binaries
-      contents = contents.replace(
-        /createRequire\s*\(\s*import\.meta\.url\s*\)/g,
-        'createRequire(typeof __filename !== "undefined" ? __filename : process.execPath)'
-      )
+      // Only process files that actually use import.meta.url
+      if (!contents.includes('import.meta.url')) return null
 
-      return {
-        contents,
-        loader: 'js'
-      }
+      const patched = contents
+        // createRequire(import.meta.url) → works in pkg/CJS via __filename fallback
+        .replace(
+          /createRequire\s*\(\s*import\.meta\.url\s*\)/g,
+          'createRequire(typeof __filename !== "undefined" ? __filename : process.execPath)'
+        )
+        // fileURLToPath(import.meta.url) → equivalent to __filename in CJS
+        .replace(
+          /fileURLToPath\s*\(\s*import\.meta\.url\s*\)/g,
+          '(typeof __filename !== "undefined" ? __filename : process.execPath)'
+        )
+
+      if (patched === contents) return null
+
+      return { contents: patched, loader: 'js' }
     })
   }
 }
