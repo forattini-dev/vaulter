@@ -79,6 +79,7 @@ export async function runApply(context: VarContext): Promise<void> {
       }
 
       // 3. Show summary
+      if (!plan) return
       const total = plan.changes.length
       if (total === 0) {
         ui.log(`${symbols.success} Nothing to apply — local and backend are in sync.`)

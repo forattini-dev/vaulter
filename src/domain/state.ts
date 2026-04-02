@@ -36,7 +36,6 @@ import type {
 } from './types.js'
 import type { VaulterConfig } from '../types.js'
 import {
-  type PlanStateSource,
   sharedScope,
   serviceScope,
   serializeScope,
