@@ -252,6 +252,16 @@ export class VaulterClient {
           cache: this.cacheConfig
         })
 
+        // Prevent unhandled 'error' events from s3db Database instance
+        // These occur when batch operations fail on missing keys (e.g., during list/export)
+        // Without this handler, Node.js throws ERR_UNHANDLED_ERROR and pollutes logs
+        this.db.on('error', (err: unknown) => {
+          if (this.verbose) {
+            const msg = err instanceof Error ? err.message : String(err)
+            console.warn(`[vaulter] s3db warning: ${msg}`)
+          }
+        })
+
         await withTimeout(this.db.connect(), this.timeoutMs, 'connect to backend')
 
         // Create or get the environment-variables resource
