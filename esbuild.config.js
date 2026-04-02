@@ -107,21 +107,20 @@ const fixImportMetaUrl = {
 const stubOptionalNative = {
   name: 'stub-optional-native',
   setup(build) {
-    // node:sqlite - undici's optional cache store (from recker)
-    build.onResolve({ filter: /^node:sqlite$/ }, () => ({
-      path: 'node:sqlite',
-      namespace: 'stub-native'
-    }))
-    // bcrypt - optional password hashing (from s3db.js)
-    build.onResolve({ filter: /^bcrypt$/ }, () => ({
-      path: 'bcrypt',
-      namespace: 'stub-native'
-    }))
-    // pino-pretty - optional log formatting (from pino via s3db.js)
-    build.onResolve({ filter: /^pino-pretty$/ }, () => ({
-      path: 'pino-pretty',
-      namespace: 'stub-native'
-    }))
+    const stubs = [
+      /^node:sqlite$/,    // undici optional cache (from recker)
+      /^bcrypt$/,         // optional password hashing (s3db.js)
+      /^argon2$/,         // optional password hashing (s3db.js)
+      /^pino-pretty$/,    // optional log formatting (pino/s3db.js)
+      /^sqlite-vec$/,     // optional sqlite vector extension (s3db.js)
+      /^node-cron$/,      // optional cron support (s3db.js)
+    ]
+    for (const filter of stubs) {
+      build.onResolve({ filter }, (args) => ({
+        path: args.path,
+        namespace: 'stub-native'
+      }))
+    }
     // Return empty module for all stubs
     build.onLoad({ filter: /.*/, namespace: 'stub-native' }, () => ({
       contents: 'module.exports = {};',
@@ -140,7 +139,6 @@ const fullConfig = {
     js: pkgCompatBanner
   },
   external: [
-    's3db.js/lite',
     'yaml',
     '@modelcontextprotocol/sdk',
     '@aws-sdk/client-s3'
