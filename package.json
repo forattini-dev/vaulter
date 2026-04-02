@@ -94,6 +94,8 @@
     "test": "vitest run",
     "test:watch": "vitest watch",
     "test:coverage": "vitest run --coverage",
+    "test:bundle": "pnpm build:bundle && node dist/bin/vaulter.cjs --help > /dev/null && node dist/bin/vaulter.cjs --version > /dev/null && echo 'bundle smoke test passed'",
+    "ci": "pnpm typecheck && pnpm test && pnpm test:bundle",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist releases",
     "lint": "echo \"No linting configured for this project.\" && exit 0",
