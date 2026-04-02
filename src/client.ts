@@ -247,7 +247,7 @@ export class VaulterClient {
 
         this.db = new S3db({
           connectionString,
-          passphrase: this.passphrase,
+          security: { passphrase: this.passphrase },
           logLevel: this.verbose ? 'debug' : 'silent',
           cache: this.cacheConfig
         })
@@ -484,22 +484,15 @@ export class VaulterClient {
         }
       }
 
-      await withTimeout<any>(
+      const result = await withTimeout<any>(
         this.resource.update(id, {
           value: encryptedValue,
-          tags: input.tags,
+          tags: input.tags !== undefined ? input.tags : existing.tags,
           sensitive,
           metadata: updatedMetadata
         }),
         this.timeoutMs,
         `update variable ${input.key}`
-      )
-
-      // Get updated document to return with all metadata
-      const result = await withTimeout<any>(
-        this.resource.get(id),
-        this.timeoutMs,
-        `get updated variable ${input.key}`
       )
 
       // Parse versions if present (s3db.js serializes JSON items as strings)

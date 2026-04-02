@@ -123,6 +123,14 @@ export interface RuntimeLoaderOptions {
    */
   silent?: boolean
 
+  /**
+   * Fall back to local .env files when backend is unavailable or not configured.
+   * Reads .env.{environment}, .env.local, then .env from cwd (in that order).
+   * When true, no warning is emitted for missing backend — fallback is expected.
+   * Defaults to false.
+   */
+  localFallback?: boolean
+
   // ============================================================================
   // Callbacks
   // ============================================================================
@@ -186,6 +194,7 @@ export interface ResolvedRuntimeOptions {
   includeShared: boolean
   verbose: boolean
   silent: boolean
+  localFallback: boolean
   filter: {
     include: string[]
     exclude: string[]

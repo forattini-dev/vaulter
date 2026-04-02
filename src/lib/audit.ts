@@ -109,7 +109,7 @@ export class AuditLogger {
 
     this.db = new S3db({
       connectionString,
-      passphrase: passphrase || 'vaulter-audit-key',
+      security: { passphrase: passphrase || 'vaulter-audit-key' },
       logLevel: verbose ? 'debug' : 'silent'
     })
 

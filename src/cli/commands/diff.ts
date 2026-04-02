@@ -15,7 +15,7 @@ import type { VarContext } from './change.js'
 import { findConfigDir } from '../../lib/config-loader.js'
 import { withClient } from '../lib/create-client.js'
 import { computePlan } from '../../domain/plan.js'
-import { parseScope, formatScope } from '../../domain/types.js'
+import { parseScope, formatScope, type PlanStateSource } from '../../domain/types.js'
 import type { PlanChange } from '../../domain/types.js'
 import { c, symbols, colorEnv, print } from '../lib/colors.js'
 import * as ui from '../ui.js'
@@ -36,6 +36,7 @@ export async function runDiff(context: VarContext): Promise<void> {
   const scope = scopeRaw ? parseScope(scopeRaw) : (service ? parseScope(service) : null)
   const showValues = Boolean(args.values || args['show-values'])
   const prune = Boolean(args.prune)
+  const stateSource = resolveStateSource(args['state-source'] as string | undefined, environment)
 
   const plan = await withClient(
     { args, config, project, environment, verbose },
@@ -48,7 +49,8 @@ export async function runDiff(context: VarContext): Promise<void> {
         environment,
         scope,
         service,
-        prune
+        prune,
+        stateSource
       })
     }
   )
@@ -134,4 +136,19 @@ function displayDiffChange(change: PlanChange, showValues: boolean): void {
       break
     }
   }
+}
+
+function resolveStateSource(
+  stateSourceArg: string | undefined,
+  environment: string
+): PlanStateSource {
+  const normalized = (stateSourceArg ?? '').trim().toLowerCase()
+  if (normalized === 'local' || normalized === 'deploy') {
+    return normalized
+  }
+  if (stateSourceArg !== undefined && stateSourceArg.length > 0) {
+    print.error(`Invalid --state-source value '${stateSourceArg}'. Use 'local' or 'deploy'.`)
+    process.exit(1)
+  }
+  return environment.toLowerCase() === 'local' ? 'local' : 'deploy'
 }

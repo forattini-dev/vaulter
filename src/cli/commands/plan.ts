@@ -15,7 +15,7 @@ import type { VaulterConfig } from '../../types.js'
 import { findConfigDir } from '../../lib/config-loader.js'
 import { withClient } from '../lib/create-client.js'
 import { computePlan, writePlanArtifact } from '../../domain/plan.js'
-import { parseScope, formatScope } from '../../domain/types.js'
+import { parseScope, formatScope, type PlanStateSource } from '../../domain/types.js'
 import type { Plan, PlanChange } from '../../domain/types.js'
 import { c, symbols, colorEnv, print } from '../lib/colors.js'
 import * as ui from '../ui.js'
@@ -36,6 +36,7 @@ export async function runPlan(context: VarContext): Promise<void> {
   const scope = scopeRaw ? parseScope(scopeRaw) : (service ? parseScope(service) : null)
   const prune = Boolean(args.prune)
   const preflight = Boolean(args.preflight)
+  const stateSource = resolveStateSource(args['state-source'] as string | undefined, environment)
 
   ui.log(`${symbols.info} Computing plan for ${colorEnv(environment)}...`)
 
@@ -50,7 +51,8 @@ export async function runPlan(context: VarContext): Promise<void> {
         environment,
         scope,
         service,
-        prune
+        prune,
+        stateSource
       })
     }
   )
@@ -186,4 +188,19 @@ function displayChange(change: PlanChange): void {
 
 function resolveArtifactDir(config: VaulterConfig | null): string | undefined {
   return config?.artifacts_dir || undefined
+}
+
+function resolveStateSource(
+  stateSourceArg: string | undefined,
+  environment: string
+): PlanStateSource {
+  const normalized = (stateSourceArg ?? '').trim().toLowerCase()
+  if (normalized === 'local' || normalized === 'deploy') {
+    return normalized
+  }
+  if (stateSourceArg !== undefined && stateSourceArg.length > 0) {
+    print.error(`Invalid --state-source value '${stateSourceArg}'. Use 'local' or 'deploy'.`)
+    process.exit(1)
+  }
+  return environment.toLowerCase() === 'local' ? 'local' : 'deploy'
 }

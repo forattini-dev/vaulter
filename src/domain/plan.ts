@@ -16,7 +16,8 @@ import type {
   PlanChange,
   PlanSummary,
   Scope,
-  ResolvedVariable
+  ResolvedVariable,
+  PlanStateSource
 } from './types.js'
 import {
   serviceScope,
@@ -26,7 +27,7 @@ import {
   formatScope,
   emptyPlanSummary
 } from './types.js'
-import { readLocalState, listLocalServices } from './state.js'
+import { readLocalState, readDeployState, listLocalServices } from './state.js'
 import { checkGovernance } from './governance.js'
 import { buildScorecard } from './scorecard.js'
 
@@ -46,6 +47,8 @@ export interface ComputePlanOptions {
   service?: string
   /** Whether to include delete actions for remote-only vars */
   prune?: boolean
+  /** Source of baseline state for comparison */
+  stateSource?: PlanStateSource
 }
 
 /**
@@ -71,17 +74,25 @@ export async function computePlan(options: ComputePlanOptions): Promise<Plan> {
     environment,
     scope: filterScope = null,
     service: filterService,
-    prune = false
+    prune = false,
+    stateSource
   } = options
 
   // Resolve scope filter
   const effectiveScope = filterScope ?? (filterService ? serviceScope(filterService) : null)
 
-  // 1. Read local state
-  const localVars = readLocalState(configDir, environment, {
-    service: filterService,
-    includeShared: effectiveScope ? effectiveScope.kind === 'shared' : true
-  })
+  // 1. Read baseline state (local env state vs deploy state)
+  const resolvedStateSource = stateSource ?? 'local'
+  const localVars = resolvedStateSource === 'local'
+    ? readLocalState(configDir, environment, {
+      service: filterService,
+      includeShared: effectiveScope ? effectiveScope.kind === 'shared' : true
+    })
+    : readDeployState(configDir, environment, {
+      config,
+      service: filterService,
+      includeShared: effectiveScope ? effectiveScope.kind === 'shared' : true
+    })
 
   // Filter by scope if specified and not already handled by readLocalState
   const filteredLocalVars = effectiveScope
@@ -122,6 +133,7 @@ export async function computePlan(options: ComputePlanOptions): Promise<Plan> {
     id,
     project,
     environment,
+    stateSource: resolvedStateSource,
     scope: effectiveScope,
     status: 'planned',
     generatedAt: now.toISOString(),
@@ -415,6 +427,7 @@ function buildPlanMarkdown(plan: Plan): string {
   lines.push(`- **ID:** ${plan.id}`)
   lines.push(`- **Project:** ${plan.project}`)
   lines.push(`- **Environment:** ${plan.environment}`)
+  lines.push(`- **State Source:** ${plan.stateSource ?? 'local (legacy)'}`)
   if (plan.scope) {
     lines.push(`- **Scope:** ${formatScope(plan.scope)}`)
   }

@@ -401,6 +401,10 @@ const cliSchema: CLISchema = {
           type: 'string',
           description: 'Filter by scope: shared, service:<name>, or bare <name>'
         },
+        'state-source': {
+          type: 'string',
+          description: 'Baseline source: local or deploy (default: local for -e local, deploy otherwise)'
+        },
         values: {
           type: 'boolean',
           default: false,
@@ -421,6 +425,10 @@ const cliSchema: CLISchema = {
         scope: {
           type: 'string',
           description: 'Filter by scope: shared, service:<name>, or bare <name>'
+        },
+        'state-source': {
+          type: 'string',
+          description: 'Baseline source: local or deploy (default: local for -e local, deploy otherwise)'
         }
       }
     },
@@ -432,6 +440,10 @@ const cliSchema: CLISchema = {
         scope: {
           type: 'string',
           description: 'Filter by scope: shared, service:<name>, or bare <name>'
+        },
+        'state-source': {
+          type: 'string',
+          description: 'Baseline source: local or deploy (default: local for -e local, deploy otherwise)'
         },
         values: {
           type: 'boolean',
@@ -922,7 +934,8 @@ function toCliArgs(result: CommandParseResult): CLIArgs {
     from: opts.from as string | undefined,
     to: opts.to as string | undefined,
     overwrite: opts.overwrite as boolean | undefined,
-    deleteOriginal: opts['delete-original'] as boolean | undefined
+    deleteOriginal: opts['delete-original'] as boolean | undefined,
+    'state-source': opts['state-source'] as 'local' | 'deploy' | undefined
   }
 }
 

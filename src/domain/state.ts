@@ -22,6 +22,8 @@ import {
   getLocalDir,
   getServiceDir
 } from '../lib/local.js'
+import { getBaseDir } from '../lib/config-loader.js'
+import { parseEnvString } from '../lib/env-parser.js'
 import { detectUser } from '../lib/audit.js'
 import type {
   Scope,
@@ -32,7 +34,9 @@ import type {
   MoveResult,
   ProvenanceLogEntry
 } from './types.js'
+import type { VaulterConfig } from '../types.js'
 import {
+  type PlanStateSource,
   sharedScope,
   serviceScope,
   serializeScope,
@@ -110,6 +114,199 @@ export function readLocalState(
   }
 
   return variables
+}
+
+export interface ReadDeployStateOptions {
+  /** Optional app config (for custom deploy paths) */
+  config?: VaulterConfig | null
+  /** Filter by specific service (returns shared + that service) */
+  service?: string
+  /** Include shared vars (default: true) */
+  includeShared?: boolean
+}
+
+/**
+ * Read all variables from .vaulter/deploy/ for an environment.
+ *
+ * Uses config.deploy paths when present, otherwise falls back to defaults:
+ * - shared: .vaulter/deploy/shared/configs/{env}.env + .vaulter/deploy/shared/secrets/{env}.env
+ * - service: .vaulter/deploy/services/<service>/{configs|secrets}/{env}.env
+ */
+export function readDeployState(
+  configDir: string,
+  environment: string,
+  options?: ReadDeployStateOptions
+): ResolvedVariable[] {
+  const includeShared = options?.includeShared !== false
+  const service = options?.service
+  const config = options?.config ?? null
+  const variables: ResolvedVariable[] = []
+
+  const includeServices = service ? [service] : listDeployServices(configDir, config)
+  const sharedPaths = resolveDeployPaths(configDir, config, environment)
+
+  if (includeShared) {
+    appendDeployFileVars(sharedPaths.sharedConfigs, environment, sharedScope(), false, variables)
+    appendDeployFileVars(sharedPaths.sharedSecrets, environment, sharedScope(), true, variables)
+  }
+
+  for (const serviceName of includeServices) {
+    const servicePaths = resolveDeployPaths(configDir, config, environment, serviceName)
+    appendDeployFileVars(servicePaths.serviceConfigs, environment, serviceScope(serviceName), false, variables)
+    appendDeployFileVars(servicePaths.serviceSecrets, environment, serviceScope(serviceName), true, variables)
+  }
+
+  return variables
+}
+
+interface DeployPaths {
+  sharedConfigs: string
+  sharedSecrets: string
+  serviceConfigs?: string
+  serviceSecrets?: string
+}
+
+function resolveDeployPaths(
+  configDir: string,
+  config: VaulterConfig | null,
+  environment: string,
+  service?: string
+): DeployPaths {
+  const baseDir = getBaseDir(configDir)
+  const deployConfig = config?.deploy
+
+  const sharedConfigsTemplate = deployConfig?.shared?.configs
+    ?? deployConfig?.configs
+    ?? '.vaulter/deploy/shared/configs/{env}.env'
+  const sharedSecretsTemplate = deployConfig?.shared?.secrets
+    ?? deployConfig?.secrets
+    ?? '.vaulter/deploy/shared/secrets/{env}.env'
+
+  const sharedConfigs = resolveDeployFilePath(baseDir, sharedConfigsTemplate, environment, service)
+  const sharedSecrets = resolveDeployFilePath(baseDir, sharedSecretsTemplate, environment, service)
+
+  const serviceConfigsTemplate = deployConfig?.services?.configs
+  const serviceSecretsTemplate = deployConfig?.services?.secrets
+
+  if (!service) {
+    return {
+      sharedConfigs,
+      sharedSecrets
+    }
+  }
+
+  const resolvedServiceConfigs = serviceConfigsTemplate
+    ? resolveDeployFilePath(baseDir, serviceConfigsTemplate, environment, service)
+    : resolveDeployFilePath(baseDir, '.vaulter/deploy/services/{service}/configs/{env}.env', environment, service)
+
+  const resolvedServiceSecrets = serviceSecretsTemplate
+    ? resolveDeployFilePath(baseDir, serviceSecretsTemplate, environment, service)
+    : resolveDeployFilePath(baseDir, '.vaulter/deploy/services/{service}/secrets/{env}.env', environment, service)
+
+  return {
+    sharedConfigs,
+    sharedSecrets,
+    serviceConfigs: resolvedServiceConfigs,
+    serviceSecrets: resolvedServiceSecrets
+  }
+}
+
+function replaceTemplateVars(template: string, environment: string, service?: string): string {
+  if (!template) return template
+  return template
+    .replaceAll('{env}', environment)
+    .replaceAll('{service}', service ?? '')
+}
+
+function listDeployServices(configDir: string, config: VaulterConfig | null): string[] {
+  const baseDir = getBaseDir(configDir)
+  const template = config?.deploy?.services?.configs ?? config?.deploy?.services?.secrets
+  const serviceRoot = template ? resolveTemplateServiceRoot(template) : '.vaulter/deploy/services'
+
+  const servicesDir = resolveDeployDirectoryPath(baseDir, serviceRoot)
+  if (!fs.existsSync(servicesDir)) {
+    return []
+  }
+
+  return fs.readdirSync(servicesDir, { withFileTypes: true })
+    .filter(entry => entry.isDirectory())
+    .map(entry => entry.name)
+    .sort()
+}
+
+function resolveDeployFilePath(
+  baseDir: string,
+  template: string,
+  environment: string,
+  service?: string
+): string {
+  const interpolated = replaceTemplateVars(template, environment, service)
+  const normalizedWithPrefix = path.join(baseDir, interpolated)
+
+  if (!interpolated.startsWith('.vaulter/')) {
+    return normalizedWithPrefix
+  }
+
+  const withoutPrefix = path.join(baseDir, interpolated.slice('.vaulter/'.length))
+  if (fs.existsSync(withoutPrefix) && !fs.existsSync(normalizedWithPrefix)) {
+    return withoutPrefix
+  }
+
+  return normalizedWithPrefix
+}
+
+function resolveDeployDirectoryPath(baseDir: string, dir: string): string {
+  const normalizedWithPrefix = path.join(baseDir, dir)
+
+  if (!dir.startsWith('.vaulter/')) {
+    return normalizedWithPrefix
+  }
+
+  const withoutPrefix = path.join(baseDir, dir.slice('.vaulter/'.length))
+  if (fs.existsSync(withoutPrefix) && !fs.existsSync(normalizedWithPrefix)) {
+    return withoutPrefix
+  }
+
+  return normalizedWithPrefix
+}
+
+function resolveTemplateServiceRoot(template: string): string {
+  const marker = template.indexOf('{service}')
+  if (marker < 0) {
+    return '.vaulter/deploy/services'
+  }
+
+  const before = template.slice(0, marker)
+  const cleaned = before.replace(/[/\\]$/, '')
+  return cleaned || '.vaulter/deploy/services'
+}
+
+function appendDeployFileVars(
+  filePath: string | undefined,
+  environment: string,
+  scope: Scope,
+  sensitive: boolean,
+  out: ResolvedVariable[]
+): void {
+  if (!filePath) return
+
+  if (!fs.existsSync(filePath)) {
+    return
+  }
+
+  const content = fs.readFileSync(filePath, 'utf-8')
+  const vars = parseEnvString(content, { expand: false })
+
+  for (const [key, value] of Object.entries(vars)) {
+    out.push({
+      key,
+      value,
+      environment,
+      scope,
+      sensitive,
+      lifecycle: 'active'
+    })
+  }
 }
 
 function appendServiceVars(

@@ -18,7 +18,7 @@ import { withClient } from '../lib/create-client.js'
 import { computePlan, readLatestPlan, isPlanStale, writePlanArtifact } from '../../domain/plan.js'
 import { executePlan, updatePlanArtifact } from '../../domain/apply.js'
 import type { Plan, ApplyResult } from '../../domain/index.js'
-import { parseScope, formatScope } from '../../domain/types.js'
+import { parseScope, formatScope, type PlanStateSource } from '../../domain/types.js'
 import { c, symbols, colorEnv, print } from '../lib/colors.js'
 import * as ui from '../ui.js'
 
@@ -38,6 +38,7 @@ export async function runApply(context: VarContext): Promise<void> {
   const prune = Boolean(args.prune)
   const scopeRaw = args.scope as string | undefined
   const scope = scopeRaw ? parseScope(scopeRaw) : (service ? parseScope(service) : null)
+  const stateSource = resolveStateSource(args['state-source'] as string | undefined, environment)
 
   await withClient(
     { args, config, project, environment, verbose },
@@ -45,10 +46,18 @@ export async function runApply(context: VarContext): Promise<void> {
       // 1. Try to read existing plan
       const artifactDir = resolveArtifactDir(config)
       let plan = readLatestPlan(environment, project, artifactDir)
+      const needsRecompute = !plan
+        || isPlanStale(plan, configDir)
+        || plan.stateSource !== stateSource
 
-      // 2. Auto-plan if needed
-      if (!plan || isPlanStale(plan, configDir)) {
-        const reason = !plan ? 'No existing plan found' : 'Plan is stale (local changes detected)'
+      if (needsRecompute) {
+        const reason = !plan
+          ? 'No existing plan found'
+          : !plan.stateSource
+            ? 'Plan does not declare state source'
+            : plan.stateSource !== stateSource
+              ? `Plan source is ${plan.stateSource}, but intent is ${stateSource}`
+              : 'Plan is stale (local changes detected)'
         ui.log(`${symbols.info} ${reason} — computing plan...`)
 
         plan = await computePlan({
@@ -59,7 +68,8 @@ export async function runApply(context: VarContext): Promise<void> {
           environment,
           scope,
           service,
-          prune
+          prune,
+          stateSource
         })
 
         // Write artifact
@@ -161,4 +171,19 @@ function displayResult(result: ApplyResult, environment: string): void {
 
 function resolveArtifactDir(config: import('../../types.js').VaulterConfig | null): string | undefined {
   return config?.artifacts_dir || undefined
+}
+
+function resolveStateSource(
+  stateSourceArg: string | undefined,
+  environment: string
+): PlanStateSource {
+  const normalized = (stateSourceArg ?? '').trim().toLowerCase()
+  if (normalized === 'local' || normalized === 'deploy') {
+    return normalized
+  }
+  if (stateSourceArg !== undefined && stateSourceArg.length > 0) {
+    print.error(`Invalid --state-source value '${stateSourceArg}'. Use 'local' or 'deploy'.`)
+    process.exit(1)
+  }
+  return environment.toLowerCase() === 'local' ? 'local' : 'deploy'
 }

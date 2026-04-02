@@ -745,6 +745,7 @@ export interface CLIArgs {
   prune?: boolean
   shared?: boolean
   strategy?: 'local' | 'remote' | 'error'
+  'state-source'?: 'local' | 'deploy'
   values?: boolean
   preflight?: boolean
   action?: 'merge' | 'push' | 'pull'

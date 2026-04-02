@@ -21,6 +21,7 @@
  * ```
  */
 
+import fs from 'node:fs'
 import path from 'node:path'
 import type { VaulterConfig, AsymmetricAlgorithm } from '../types.js'
 import type {
@@ -170,6 +171,7 @@ async function resolveOptions(
   const includeShared = options.includeShared ?? true
   const verbose = options.verbose ?? process.env.VAULTER_VERBOSE === '1'
   const silent = options.silent ?? false
+  const localFallback = options.localFallback ?? false
 
   const filter = {
     include: options.filter?.include || [],
@@ -188,6 +190,7 @@ async function resolveOptions(
     includeShared,
     verbose,
     silent,
+    localFallback,
     filter,
     config
   }
@@ -264,6 +267,52 @@ async function createRuntimeClient(
 }
 
 // ============================================================================
+// Local Fallback
+// ============================================================================
+
+/**
+ * Load vars from local .env files as a fallback when backend is unavailable.
+ * Reads (in order): .env.{environment}, .env.local, .env — merges all found.
+ * Does NOT throw; missing files are silently skipped.
+ */
+function loadLocalEnvFallback(
+  cwd: string,
+  environment: string,
+  override: boolean
+): string[] {
+  const candidates = [
+    path.join(cwd, `.env.${environment}`),
+    path.join(cwd, '.env.local'),
+    path.join(cwd, '.env'),
+  ]
+
+  const loaded: string[] = []
+
+  for (const filePath of candidates) {
+    if (!fs.existsSync(filePath)) continue
+    try {
+      const content = fs.readFileSync(filePath, 'utf8')
+      for (const line of content.split('\n')) {
+        const trimmed = line.trim()
+        if (!trimmed || trimmed.startsWith('#')) continue
+        const eqIdx = trimmed.indexOf('=')
+        if (eqIdx === -1) continue
+        const key = trimmed.slice(0, eqIdx).trim()
+        const value = trimmed.slice(eqIdx + 1).trim().replace(/^["']|["']$/g, '')
+        if (key && (override || process.env[key] === undefined)) {
+          process.env[key] = value
+          loaded.push(key)
+        }
+      }
+    } catch {
+      // skip unreadable files
+    }
+  }
+
+  return loaded
+}
+
+// ============================================================================
 // Main Loader Function
 // ============================================================================
 
@@ -302,6 +351,22 @@ export async function loadRuntime(
 
     // Check if backend is configured
     if (!opts.backend) {
+      if (opts.localFallback) {
+        log('No backend configured, falling back to local .env files', opts.verbose, opts.silent)
+        const keys = loadLocalEnvFallback(opts.cwd, opts.environment, opts.override)
+        log(`Loaded ${keys.length} variables from local .env files`, opts.verbose, opts.silent)
+        return {
+          varsLoaded: keys.length,
+          environment: opts.environment,
+          project: opts.project,
+          service: opts.service,
+          backend: 'local',
+          durationMs: Date.now() - startTime,
+          includedShared: opts.includeShared,
+          keys,
+          dryRun: false
+        }
+      }
       const errMsg = 'No backend configured. Set VAULTER_BACKEND env var or configure backend in .vaulter/config.yaml'
       if (opts.required) {
         throw new Error(errMsg)
@@ -389,12 +454,40 @@ export async function loadRuntime(
     // Resolve options again for error handling (may fail, use defaults)
     let required = true
     let silent = false
+    let localFallback = false
+    let cwd = process.cwd()
+    let environment = options.environment || process.env.NODE_ENV || DEFAULT_ENVIRONMENT
     try {
       const opts = await resolveOptions(options)
       required = opts.required
       silent = opts.silent
+      localFallback = opts.localFallback
+      cwd = opts.cwd
+      environment = opts.environment
     } catch {
       // Use defaults
+    }
+
+    // localFallback: try local .env files before giving up
+    if (localFallback) {
+      log(`Backend unavailable, falling back to local .env files`, false, silent)
+      try {
+        const keys = loadLocalEnvFallback(cwd, environment, options.override ?? false)
+        log(`Loaded ${keys.length} variables from local .env files`, false, silent)
+        return {
+          varsLoaded: keys.length,
+          environment,
+          project: options.project || 'unknown',
+          service: options.service,
+          backend: 'local',
+          durationMs: Date.now() - startTime,
+          includedShared: options.includeShared ?? true,
+          keys,
+          dryRun: false
+        }
+      } catch {
+        // fallback also failed, continue to normal error handling
+      }
     }
 
     // Handle error
@@ -411,7 +504,7 @@ export async function loadRuntime(
       // Return empty result
       return {
         varsLoaded: 0,
-        environment: options.environment || process.env.NODE_ENV || DEFAULT_ENVIRONMENT,
+        environment,
         project: options.project || 'unknown',
         service: options.service,
         backend: 'unknown',
