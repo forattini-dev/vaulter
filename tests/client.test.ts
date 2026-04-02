@@ -20,7 +20,8 @@ const { mockResource, mockDb, TasksPool } = vi.hoisted(() => {
   const mockDb = {
     connect: vi.fn(),
     disconnect: vi.fn(),
-    createResource: vi.fn()
+    createResource: vi.fn(),
+    on: vi.fn()
   }
 
   // TasksPool.map() - simplified version for testing
@@ -67,6 +68,7 @@ vi.mock('s3db.js/lite', () => {
       ;(this as any).connect = mockDb.connect
       ;(this as any).disconnect = mockDb.disconnect
       ;(this as any).createResource = mockDb.createResource
+      ;(this as any).on = mockDb.on
     },
     TasksPool
   }
